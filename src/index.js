@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import './styles/main.css';
+import { GameUI } from './components/GameUI';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -8,8 +9,22 @@ class SimpleGame {
     this.assetsLoaded = false;
     this.shipModelLoaded = false;
     
+    // Create sounds map
+    this.sounds = new Map();
+    
     // Setup basic Three.js scene
     this.setupScene();
+    
+    // Create game UI
+    this.ui = new GameUI();
+    
+    // Initialize player state
+    this.health = 100;
+    this.maxHealth = 100;
+    this.energy = 100;
+    this.maxEnergy = 100;
+    this.energyRechargeRate = 20; // Units per second
+    this.currentWeapon = 'LASER';
     
     // Load assets
     this.loadAssets();
@@ -43,6 +58,9 @@ class SimpleGame {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(this.renderer.domElement);
     
+    // Create clock for timing
+    this.clock = new THREE.Clock();
+    
     // Add lights
     const ambientLight = new THREE.AmbientLight(0x404040);
     this.scene.add(ambientLight);
@@ -62,11 +80,70 @@ class SimpleGame {
     // Create placeholder ship until model loads
     this.createDefaultShip();
     
+    // Load sounds
+    this.loadSounds();
+    
     // Load the 3D ship model
     this.loadShipModel();
     
     // Check loading progress
     this.checkLoadingProgress();
+  }
+  
+  loadSounds() {
+    const audioListener = new THREE.AudioListener();
+    this.camera.add(audioListener);
+    
+    // Define sounds to load
+    const soundsToLoad = [
+      { name: 'laser', path: 'assets/sounds/laser.mp3' },
+      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3' },
+      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3' }
+    ];
+    
+    // Load each sound
+    const audioLoader = new THREE.AudioLoader();
+    
+    soundsToLoad.forEach(soundInfo => {
+      const sound = new THREE.Audio(audioListener);
+      
+      audioLoader.load(
+        soundInfo.path,
+        buffer => {
+          sound.setBuffer(buffer);
+          sound.setVolume(0.5);
+          this.sounds.set(soundInfo.name, sound);
+          console.log(`Loaded sound: ${soundInfo.name}`);
+        },
+        xhr => {
+          console.log(`${soundInfo.name} ${(xhr.loaded / xhr.total * 100)}% loaded`);
+        },
+        error => {
+          console.error(`Error loading sound ${soundInfo.name}:`, error);
+        }
+      );
+    });
+  }
+  
+  playSound(name) {
+    const sound = this.sounds.get(name);
+    if (!sound) {
+      console.warn(`Sound "${name}" not found or not loaded yet.`);
+      return;
+    }
+    
+    try {
+      // Always stop the sound first if it's playing
+      if (sound.isPlaying) {
+        sound.stop();
+      }
+      
+      // Then play it from the beginning
+      sound.play();
+    } catch (error) {
+      console.warn(`Error playing sound "${name}":`, error);
+      // Continue game without sound rather than crashing
+    }
   }
   
   createDefaultShip() {
@@ -204,8 +281,13 @@ class SimpleGame {
     // Hide start screen
     document.getElementById('start-screen').classList.add('hidden');
     
-    // Show controls info
-    document.querySelector('.controls-info').classList.remove('hidden');
+    // Show game UI
+    this.ui.show();
+    
+    // Update UI with initial values
+    this.ui.updateHealth(this.health, this.maxHealth);
+    this.ui.updateEnergy(this.energy, this.maxEnergy);
+    this.ui.updateWeapon(this.currentWeapon);
     
     // Show control indicators
     if (this.controlsContainer) {
@@ -383,7 +465,8 @@ class SimpleGame {
       right: false,
       strafeLeft: false,
       strafeRight: false,
-      fire: false
+      fire: false,
+      switchWeapon: false
     };
     
     // Store key mappings (for visual feedback)
@@ -398,8 +481,16 @@ class SimpleGame {
       ArrowRight: 'right',
       KeyQ: 'strafeLeft',
       KeyE: 'strafeRight',
-      Space: 'fire'
+      Space: 'fire',
+      Digit1: 'selectLaser',
+      Digit2: 'selectGrenade',
+      Digit3: 'selectBounce',
+      Tab: 'switchWeapon'
     };
+    
+    // Available weapons
+    this.availableWeapons = ['LASER', 'GRENADE', 'BOUNCE'];
+    this.weaponIndex = 0;
     
     // Store active keys for visual feedback
     this.activeKeys = new Set();
@@ -416,18 +507,24 @@ class SimpleGame {
       if (!action) return;
       
       // Set key state to active
-      this.keys[action] = true;
+      if (action === 'selectLaser' || action === 'selectGrenade' || action === 'selectBounce') {
+        this.selectWeapon(action);
+      } else if (action === 'switchWeapon') {
+        this.cycleWeapon();
+      } else {
+        this.keys[action] = true;
+      }
       
       // Store active key for visual feedback
       this.activeKeys.add(event.code);
       
       // Handle fire action immediately (not just in update loop)
       if (action === 'fire') {
-        this.fireLaser();
+        this.fireCurrentWeapon();
       }
       
       // Prevent default browser behavior for these keys
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(event.code)) {
         event.preventDefault();
       }
     });
@@ -438,6 +535,11 @@ class SimpleGame {
       
       // Skip if key isn't mapped
       if (!action) return;
+      
+      // Skip weapon selection keys on keyup
+      if (action === 'selectLaser' || action === 'selectGrenade' || action === 'selectBounce' || action === 'switchWeapon') {
+        return;
+      }
       
       // Set key state to inactive
       this.keys[action] = false;
@@ -464,12 +566,37 @@ class SimpleGame {
       fire: { key: 'SPACE', label: '🔥' }
     };
     
+    // Create movement controls group
+    const movementControls = document.createElement('div');
+    movementControls.className = 'control-group movement-controls';
+    controlsContainer.appendChild(movementControls);
+    
     for (const [action, info] of Object.entries(indicators)) {
       const indicator = document.createElement('div');
       indicator.className = 'key-indicator';
       indicator.id = `indicator-${action}`;
       indicator.innerHTML = `<span class="key">${info.key}</span><span class="label">${info.label}</span>`;
-      controlsContainer.appendChild(indicator);
+      movementControls.appendChild(indicator);
+    }
+    
+    // Create weapon selector group
+    const weaponKeys = {
+      selectLaser: { key: '1', label: 'LASER' },
+      selectGrenade: { key: '2', label: 'GRENADE' },
+      selectBounce: { key: '3', label: 'BOUNCE' },
+      switchWeapon: { key: 'TAB', label: 'SWITCH' }
+    };
+    
+    const weaponControls = document.createElement('div');
+    weaponControls.className = 'control-group weapon-controls';
+    controlsContainer.appendChild(weaponControls);
+    
+    for (const [action, info] of Object.entries(weaponKeys)) {
+      const indicator = document.createElement('div');
+      indicator.className = 'key-indicator weapon-key';
+      indicator.id = `indicator-${action}`;
+      indicator.innerHTML = `<span class="key">${info.key}</span><span class="label">${info.label}</span>`;
+      weaponControls.appendChild(indicator);
     }
     
     // Store reference to the container
@@ -496,7 +623,83 @@ class SimpleGame {
     }
   }
   
+  selectWeapon(action) {
+    if (action === 'selectLaser') {
+      this.currentWeapon = 'LASER';
+    } else if (action === 'selectGrenade') {
+      this.currentWeapon = 'GRENADE';
+    } else if (action === 'selectBounce') {
+      this.currentWeapon = 'BOUNCE';
+    }
+    
+    // Update UI
+    this.ui.updateWeapon(this.currentWeapon);
+  }
+  
+  cycleWeapon() {
+    this.weaponIndex = (this.weaponIndex + 1) % this.availableWeapons.length;
+    this.currentWeapon = this.availableWeapons[this.weaponIndex];
+    
+    // Update UI
+    this.ui.updateWeapon(this.currentWeapon);
+  }
+  
+  fireCurrentWeapon() {
+    switch (this.currentWeapon) {
+      case 'LASER':
+        this.fireLaser();
+        break;
+      case 'GRENADE':
+        this.fireGrenade();
+        break;
+      case 'BOUNCE':
+        this.fireBouncingLaser();
+        break;
+    }
+  }
+  
+  fireGrenade() {
+    // Check if we have enough energy
+    if (this.energy < this.maxEnergy) return; // Requires full energy
+    
+    // Consume all energy
+    this.energy = 0;
+    this.ui.updateEnergy(this.energy, this.maxEnergy);
+    
+    console.log("Fired grenade (not yet implemented)");
+    
+    // Play grenade sound
+    this.playSound('grenade-laser');
+  }
+  
+  fireBouncingLaser() {
+    // Energy cost for bouncing laser
+    const energyCost = this.maxEnergy / 3; // One third of max energy
+    
+    // Check if we have enough energy
+    if (this.energy < energyCost) return;
+    
+    // Consume energy
+    this.energy -= energyCost;
+    this.ui.updateEnergy(this.energy, this.maxEnergy);
+    
+    console.log("Fired bouncing laser (not yet implemented)");
+    
+    // Play bounce laser sound
+    this.playSound('laser-bounce');
+  }
+  
   fireLaser() {
+    // Energy cost for laser
+    const energyCost = 5;
+    
+    // Check if we have enough energy
+    if (this.energy < energyCost) return;
+    
+    // Consume energy
+    this.energy -= energyCost;
+    this.ui.updateEnergy(this.energy, this.maxEnergy);
+    
     // Create a simple laser geometry
     const geometry = new THREE.CylinderGeometry(0.05, 0.05, 1, 8);
     geometry.rotateX(Math.PI / 2);
@@ -539,13 +742,22 @@ class SimpleGame {
       lifeTime: 0,
       maxLifeTime: 100
     });
+    
+    // Play laser sound
+    this.playSound('laser');
   }
   
   animate() {
     requestAnimationFrame(() => this.animate());
     
+    // Get delta time for consistent updates
+    const deltaTime = this.clock ? this.clock.getDelta() : 0.016;
+    
     // Update player position and rotation
-    this.updatePlayer();
+    this.updatePlayer(deltaTime);
+    
+    // Recharge energy
+    this.updateEnergy(deltaTime);
     
     // Update lasers
     this.updateLasers();
@@ -567,7 +779,7 @@ class SimpleGame {
     this.renderer.render(this.scene, this.camera);
   }
   
-  updatePlayer() {
+  updatePlayer(deltaTime) {
     // Apply rotation when left/right keys are pressed
     if (this.keys.left) {
       this.playerShip.rotation.y += this.rotationSpeed;
@@ -900,6 +1112,15 @@ class SimpleGame {
     setTimeout(() => {
       document.body.removeChild(flashOverlay);
     }, 150);
+  }
+  
+  updateEnergy(deltaTime) {
+    // Recharge energy
+    if (this.energy < this.maxEnergy) {
+      this.energy = Math.min(this.energy + this.energyRechargeRate * deltaTime, this.maxEnergy);
+      // Update UI
+      this.ui.updateEnergy(this.energy, this.maxEnergy);
+    }
   }
 }
 
