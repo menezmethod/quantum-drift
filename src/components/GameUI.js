@@ -39,7 +39,7 @@ export class GameUI {
     
     const healthLabel = document.createElement('div');
     healthLabel.className = 'bar-label';
-    healthLabel.textContent = 'HEALTH';
+    healthLabel.innerHTML = '❤️'; // Heart emoji for health
     healthBarContainer.appendChild(healthLabel);
     
     const healthBarOuter = document.createElement('div');
@@ -50,6 +50,12 @@ export class GameUI {
     this.healthBar.className = 'bar-inner health-bar';
     healthBarOuter.appendChild(this.healthBar);
     
+    // Create health percentage display
+    this.healthPercentage = document.createElement('div');
+    this.healthPercentage.className = 'bar-percentage';
+    this.healthPercentage.textContent = '100%';
+    healthBarContainer.appendChild(this.healthPercentage);
+    
     // Create energy bar
     const energyBarContainer = document.createElement('div');
     energyBarContainer.className = 'bar-container energy-bar-container';
@@ -57,7 +63,7 @@ export class GameUI {
     
     const energyLabel = document.createElement('div');
     energyLabel.className = 'bar-label';
-    energyLabel.textContent = 'ENERGY';
+    energyLabel.innerHTML = '⚡'; // Lightning emoji for energy
     energyBarContainer.appendChild(energyLabel);
     
     const energyBarOuter = document.createElement('div');
@@ -68,18 +74,24 @@ export class GameUI {
     this.energyBar.className = 'bar-inner energy-bar';
     energyBarOuter.appendChild(this.energyBar);
     
+    // Create energy percentage display
+    this.energyPercentage = document.createElement('div');
+    this.energyPercentage.className = 'bar-percentage';
+    this.energyPercentage.textContent = '100%';
+    energyBarContainer.appendChild(this.energyPercentage);
+    
     // Create weapon indicator
     this.weaponIndicator = document.createElement('div');
     this.weaponIndicator.className = 'weapon-indicator';
-    statusBars.appendChild(this.weaponIndicator);
+    this.uiContainer.appendChild(this.weaponIndicator);
     
     const weaponLabel = document.createElement('div');
     weaponLabel.className = 'weapon-label';
-    weaponLabel.textContent = 'WEAPON';
+    weaponLabel.textContent = '🔫';  // Weapon emoji
     this.weaponIndicator.appendChild(weaponLabel);
     
     this.weaponName = document.createElement('div');
-    this.weaponName.className = 'weapon-name';
+    this.weaponName.className = 'weapon-name laser';
     this.weaponName.textContent = 'LASER';
     this.weaponIndicator.appendChild(this.weaponName);
     
@@ -119,6 +131,8 @@ export class GameUI {
     } else {
       this.healthBar.classList.remove('critical', 'warning');
     }
+    
+    this.healthPercentage.textContent = `${percentage.toFixed(0)}%`;
   }
   
   /**
@@ -139,6 +153,8 @@ export class GameUI {
     } else {
       this.energyBar.classList.remove('critical', 'warning');
     }
+    
+    this.energyPercentage.textContent = `${percentage.toFixed(0)}%`;
   }
   
   /**
@@ -148,16 +164,20 @@ export class GameUI {
   updateWeapon(weaponName) {
     this.weaponName.textContent = weaponName;
     
-    // Remove previous weapon classes
+    // Remove all weapon classes
     this.weaponName.classList.remove('laser', 'grenade', 'bounce');
     
-    // Add appropriate class based on weapon
-    if (weaponName.includes('LASER')) {
-      this.weaponName.classList.add('laser');
-    } else if (weaponName.includes('GRENADE')) {
-      this.weaponName.classList.add('grenade');
-    } else if (weaponName.includes('BOUNCE')) {
-      this.weaponName.classList.add('bounce');
+    // Add the appropriate class for styling
+    switch(weaponName.toLowerCase()) {
+      case 'laser':
+        this.weaponName.classList.add('laser');
+        break;
+      case 'grenade':
+        this.weaponName.classList.add('grenade');
+        break;
+      case 'bounce':
+        this.weaponName.classList.add('bounce');
+        break;
     }
   }
 } 
