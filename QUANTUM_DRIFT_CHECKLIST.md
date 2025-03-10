@@ -243,3 +243,104 @@ This document serves as our roadmap and progress tracker for developing Quantum 
 - Create varied map layouts to support different play styles 
 
 src/assets/models/ships/ 
+
+## Core Environment and Setup
+- [x] Basic Three.js setup
+- [x] Webpack configuration with code splitting
+- [x] Asset loading system
+- [x] Basic ship controls
+- [x] Camera system
+- [x] Collision detection
+- [x] GitHub repository setup
+
+## Ship Controls and Physics
+- [x] Ship movement (forward/backward/strafing)
+- [x] Ship rotation
+- [x] Camera following with smooth transitions
+- [x] Boundary constraints
+- [x] Collision feedback
+
+## Weapons System
+- [x] Regular Laser implementation
+  - [x] Visual effects
+  - [x] Collision detection
+  - [ ] Energy consumption and recharge mechanics
+- [ ] Grenade Weapon
+  - [ ] Projectile trajectory
+  - [ ] Explosion effect
+  - [ ] Area damage
+  - [ ] Full energy consumption
+- [ ] Bouncing Laser
+  - [ ] Ricochet mechanics (bouncing off walls)
+  - [ ] Visual effects
+  - [ ] 1/3 energy consumption
+
+## Energy System
+- [ ] Energy bar display in UI
+- [ ] Recharge mechanics
+  - [ ] Regular laser: Gradual depletion with simultaneous recharge
+  - [ ] Balanced recharge rate for exciting combat
+  - [ ] Visual feedback for energy levels
+  - [ ] Audio cues for low energy
+
+## Room/Level Design
+- [ ] Room generation with tactical walls
+  - [ ] Open areas for maneuverability
+  - [ ] Cover spots for tactical gameplay
+  - [ ] Narrow passages for intense firefights
+- [ ] Multiple room types/layouts
+- [ ] Room transition system
+
+## Power-ups
+- [ ] Convert current obstacles to power-ups
+- [ ] Weapon recharge booster
+  - [ ] Visual effects
+  - [ ] Temporary faster energy recharge
+- [ ] Speed booster
+  - [ ] Visual effects
+  - [ ] Temporary speed increase
+- [ ] Shield power-up
+  - [ ] Visual shield effect
+  - [ ] Temporary invulnerability
+- [ ] Weapon enhancements
+  - [ ] Temporary damage boost
+  - [ ] Temporary fire rate boost
+
+## Enemy AI
+- [ ] Basic enemy movement
+- [ ] Enemy targeting system
+- [ ] Different enemy types
+- [ ] Enemy spawning system
+- [ ] Difficulty progression
+
+## Multiplayer
+- [ ] Basic networking
+- [ ] Player synchronization
+- [ ] Room-based matchmaking
+- [ ] Scoreboard
+- [ ] Team modes
+
+## UI and Feedback
+- [ ] Health display
+- [ ] Energy/Ammo display
+- [ ] Score display
+- [ ] Minimap
+- [ ] Weapon selection indicator
+- [ ] Hit markers and damage feedback
+- [ ] Kill notifications
+
+## Audio
+- [ ] Weapon sounds
+- [ ] Ship engine sounds
+- [ ] Explosion effects
+- [ ] Power-up sounds
+- [ ] Background music
+- [ ] UI sound effects
+
+## Polish and Optimization
+- [ ] Performance optimization
+- [ ] Mobile responsiveness
+- [ ] Visual effects polish
+- [ ] Menu system
+- [ ] Tutorial
+- [ ] Settings menu 

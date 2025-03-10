@@ -21,7 +21,7 @@ A fast-paced neon spaceship combat game built with Three.js and WebGL.
 
 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/quantum-drift.git
+git clone https://github.com/menezmethod/quantum-drift.git
 cd quantum-drift
 ```
 
