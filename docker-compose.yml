@@ -1,0 +1,22 @@
+version: '3'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    command: npm start
+    
+  # This will be a production-ready service that we can uncomment later
+  # web:
+  #   build: .
+  #   ports:
+  #     - "80:80"
+  #   restart: always 
