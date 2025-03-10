@@ -98,7 +98,8 @@ class SimpleGame {
     const soundsToLoad = [
       { name: 'laser', path: 'assets/sounds/laser.mp3' },
       { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3' },
-      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3' }
+      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3' },
+      { name: 'bounce', path: 'assets/sounds/bounce.mp3' }
     ];
     
     // Load each sound
@@ -660,16 +661,183 @@ class SimpleGame {
   
   fireGrenade() {
     // Check if we have enough energy
-    if (this.energy < this.maxEnergy) return; // Requires full energy
+    if (this.energy < this.maxEnergy / 2) return; // Requires half energy
     
-    // Consume all energy
-    this.energy = 0;
+    // Consume half energy
+    this.energy -= this.maxEnergy / 2;
     this.ui.updateEnergy(this.energy, this.maxEnergy);
     
-    console.log("Fired grenade (not yet implemented)");
+    // Flag to show we're in grenade targeting mode
+    this.grenadeTargetingMode = true;
     
-    // Play grenade sound
-    this.playSound('grenade-laser');
+    // Show a targeting indicator on mouse move
+    if (!this.grenadeTargetIndicator) {
+      // Create targeting indicator
+      const targetGeometry = new THREE.RingGeometry(0.2, 0.3, 32);
+      const targetMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xff4500, 
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide
+      });
+      this.grenadeTargetIndicator = new THREE.Mesh(targetGeometry, targetMaterial);
+      this.grenadeTargetIndicator.rotation.x = Math.PI / 2; // Make it horizontal
+      
+      // Add pulsing animation
+      this.grenadeTargetIndicator.pulse = 0;
+      
+      // Add to scene
+      this.scene.add(this.grenadeTargetIndicator);
+    }
+    
+    // Set up a one-time click handler for the grenade throw
+    const clickHandler = (event) => {
+      event.preventDefault();
+      
+      // Remove the event listener and targeting indicator
+      document.removeEventListener('click', clickHandler);
+      document.removeEventListener('mousemove', this.grenadeTargetingMove);
+      this.scene.remove(this.grenadeTargetIndicator);
+      this.grenadeTargetingMode = false;
+      
+      // Get the position where to throw the grenade
+      const mouse = new THREE.Vector2(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        -(event.clientY / window.innerHeight) * 2 + 1
+      );
+      
+      // Raycasting to get the point on the floor
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, this.camera);
+      
+      // Only consider the floor for targeting
+      const intersects = raycaster.intersectObject(this.floor);
+      
+      if (intersects.length > 0) {
+        const targetPoint = intersects[0].point;
+        
+        // Check if the target is within maximum range
+        const maxRange = 20;
+        const shipPosition = this.playerShip.position.clone();
+        shipPosition.y = 0; // Project to ground plane
+        
+        // Vector from ship to target
+        const toTarget = targetPoint.clone().sub(shipPosition);
+        const distance = toTarget.length();
+        
+        // If beyond max range, limit to max range
+        if (distance > maxRange) {
+          toTarget.normalize().multiplyScalar(maxRange);
+          targetPoint.copy(shipPosition).add(toTarget);
+        }
+        
+        // Create grenade mesh
+        const grenadeGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+        const grenadeMaterial = new THREE.MeshPhongMaterial({
+          color: 0xff4500,
+          emissive: 0xff2000,
+          emissiveIntensity: 0.5
+        });
+        const grenade = new THREE.Mesh(grenadeGeometry, grenadeMaterial);
+        
+        // Position at the ship
+        grenade.position.copy(this.playerShip.position);
+        grenade.position.y = 0.5; // Slightly above floor
+        
+        // Add to scene
+        this.scene.add(grenade);
+        
+        // Add grenade trail effect
+        const trail = new THREE.Points(
+          new THREE.BufferGeometry(),
+          new THREE.PointsMaterial({
+            color: 0xff4500,
+            size: 0.1,
+            transparent: true,
+            opacity: 0.8
+          })
+        );
+        this.scene.add(trail);
+        
+        // Add a point light to make it glow
+        const light = new THREE.PointLight(0xff4500, 1, 3);
+        grenade.add(light);
+        
+        // Store grenade data for animation
+        if (!this.grenades) {
+          this.grenades = [];
+        }
+        
+        // Calculate the arc of the grenade
+        const startPos = grenade.position.clone();
+        const endPos = targetPoint.clone();
+        const midPos = startPos.clone().add(endPos.clone().sub(startPos).multiplyScalar(0.5));
+        midPos.y += 5; // Arc height
+        
+        this.grenades.push({
+          mesh: grenade,
+          trail: trail,
+          startPos: startPos,
+          midPos: midPos,
+          endPos: endPos,
+          progress: 0,
+          exploded: false,
+          explosionRadius: 4,
+          trailPoints: []
+        });
+        
+        // Play grenade sound
+        this.playSound('grenade-laser');
+      }
+    };
+    
+    // Set up mouse move for targeting
+    this.grenadeTargetingMove = (event) => {
+      const mouse = new THREE.Vector2(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        -(event.clientY / window.innerHeight) * 2 + 1
+      );
+      
+      // Raycasting to get the point on the floor
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, this.camera);
+      
+      // Only consider the floor for targeting
+      const intersects = raycaster.intersectObject(this.floor);
+      
+      if (intersects.length > 0) {
+        const targetPoint = intersects[0].point;
+        
+        // Check if the target is within maximum range
+        const maxRange = 20;
+        const shipPosition = this.playerShip.position.clone();
+        shipPosition.y = 0; // Project to ground plane
+        
+        // Vector from ship to target
+        const toTarget = targetPoint.clone().sub(shipPosition);
+        const distance = toTarget.length();
+        
+        // Update indicator color based on range
+        if (distance > maxRange) {
+          this.grenadeTargetIndicator.material.color.set(0xff0000); // Red for out of range
+        } else {
+          this.grenadeTargetIndicator.material.color.set(0x00ff00); // Green for valid
+        }
+        
+        // Position the targeting indicator
+        this.grenadeTargetIndicator.position.copy(targetPoint);
+        this.grenadeTargetIndicator.position.y = 0.1; // Slightly above floor
+        
+        // Pulse animation
+        this.grenadeTargetIndicator.pulse += 0.1;
+        const scale = 1 + 0.2 * Math.sin(this.grenadeTargetIndicator.pulse);
+        this.grenadeTargetIndicator.scale.set(scale, scale, scale);
+      }
+    };
+    
+    // Add event listeners
+    document.addEventListener('click', clickHandler);
+    document.addEventListener('mousemove', this.grenadeTargetingMove);
   }
   
   fireBouncingLaser() {
@@ -683,7 +851,67 @@ class SimpleGame {
     this.energy -= energyCost;
     this.ui.updateEnergy(this.energy, this.maxEnergy);
     
-    console.log("Fired bouncing laser (not yet implemented)");
+    // Create bouncing laser geometry
+    const geometry = new THREE.CylinderGeometry(0.08, 0.08, 1, 8);
+    geometry.rotateX(Math.PI / 2);
+    
+    // Create glowing material with animation
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x00ff99,
+      transparent: true,
+      opacity: 0.8
+    });
+    
+    // Create laser mesh
+    const laser = new THREE.Mesh(geometry, material);
+    
+    // Position in front of the ship
+    laser.position.copy(this.playerShip.position);
+    laser.rotation.copy(this.playerShip.rotation);
+    
+    // Move the laser in front of the ship
+    const direction = new THREE.Vector3(0, 0, 1);
+    direction.applyQuaternion(this.playerShip.quaternion);
+    laser.position.add(direction);
+    
+    // Add to scene
+    this.scene.add(laser);
+    
+    // Add glow effect
+    const light = new THREE.PointLight(0x00ff99, 1.5, 3);
+    laser.add(light);
+    
+    // Add a trail effect
+    const trail = new THREE.Points(
+      new THREE.BufferGeometry(),
+      new THREE.PointsMaterial({
+        color: 0x00ff99,
+        size: 0.05,
+        transparent: true,
+        opacity: 0.6
+      })
+    );
+    this.scene.add(trail);
+    
+    // Store bouncing laser data
+    if (!this.bouncingLasers) {
+      this.bouncingLasers = [];
+    }
+    
+    this.bouncingLasers.push({
+      mesh: laser,
+      trail: trail,
+      direction: direction,
+      speed: 0.35, // Slower than regular lasers
+      bounces: 0,
+      maxBounces: 5,
+      lifeTime: 0,
+      maxLifeTime: 150,
+      trailPoints: [],
+      lastPosition: laser.position.clone(),
+      canHitPlayer: false, // Initially can't hit player
+      bounceTimeout: 10 // Wait frames before allowing player collision
+    });
     
     // Play bounce laser sound
     this.playSound('laser-bounce');
@@ -774,6 +1002,12 @@ class SimpleGame {
       const pulseFactor = (Math.sin(Date.now() * 0.003) + 1) / 2; // 0 to 1
       this.playerHighlight.material.opacity = 0.05 + pulseFactor * 0.1;
     }
+    
+    // Update grenades
+    this.updateGrenades();
+    
+    // Update bouncing lasers
+    this.updateBouncingLasers();
     
     // Render scene
     this.renderer.render(this.scene, this.camera);
@@ -1120,6 +1354,307 @@ class SimpleGame {
       this.energy = Math.min(this.energy + this.energyRechargeRate * deltaTime, this.maxEnergy);
       // Update UI
       this.ui.updateEnergy(this.energy, this.maxEnergy);
+    }
+  }
+  
+  updateGrenades() {
+    if (!this.grenades || this.grenades.length === 0) return;
+    
+    for (let i = this.grenades.length - 1; i >= 0; i--) {
+      const grenade = this.grenades[i];
+      
+      // If the grenade has exploded, handle explosion effects
+      if (grenade.exploded) {
+        // Increase the explosion radius until maximum
+        grenade.explosionMesh.scale.addScalar(0.2);
+        grenade.explosionLight.intensity -= 0.1;
+        
+        // Remove explosion after it's done
+        if (grenade.explosionLight.intensity <= 0) {
+          this.scene.remove(grenade.explosionMesh);
+          this.scene.remove(grenade.trail);
+          this.grenades.splice(i, 1);
+        }
+        continue;
+      }
+      
+      // Update the grenade position along the arc
+      grenade.progress += 0.02;
+      
+      if (grenade.progress >= 1) {
+        // Explode when reaching the target
+        this.explodeGrenade(grenade, i);
+      } else {
+        // Move along a quadratic bezier curve for arcing trajectory
+        const p0 = grenade.startPos;
+        const p1 = grenade.midPos;
+        const p2 = grenade.endPos;
+        
+        // Quadratic bezier formula: p = (1-t)^2 * p0 + 2(1-t)t * p1 + t^2 * p2
+        const t = grenade.progress;
+        const oneMinusT = 1 - t;
+        
+        grenade.mesh.position.x = oneMinusT * oneMinusT * p0.x + 2 * oneMinusT * t * p1.x + t * t * p2.x;
+        grenade.mesh.position.y = oneMinusT * oneMinusT * p0.y + 2 * oneMinusT * t * p1.y + t * t * p2.y;
+        grenade.mesh.position.z = oneMinusT * oneMinusT * p0.z + 2 * oneMinusT * t * p1.z + t * t * p2.z;
+        
+        // Add trail effect
+        const point = grenade.mesh.position.clone();
+        grenade.trailPoints.push(point);
+        
+        // Keep only the last 20 trail points
+        if (grenade.trailPoints.length > 20) {
+          grenade.trailPoints.shift();
+        }
+        
+        // Update trail geometry
+        const positions = new Float32Array(grenade.trailPoints.length * 3);
+        for (let j = 0; j < grenade.trailPoints.length; j++) {
+          positions[j * 3] = grenade.trailPoints[j].x;
+          positions[j * 3 + 1] = grenade.trailPoints[j].y;
+          positions[j * 3 + 2] = grenade.trailPoints[j].z;
+        }
+        
+        grenade.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        grenade.trail.geometry.attributes.position.needsUpdate = true;
+      }
+    }
+  }
+  
+  explodeGrenade(grenade, index) {
+    // Remove the grenade mesh
+    this.scene.remove(grenade.mesh);
+    
+    // Create explosion geometry
+    const explosionGeometry = new THREE.SphereGeometry(0.5, 32, 32);
+    const explosionMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff6600,
+      transparent: true,
+      opacity: 0.8
+    });
+    const explosionMesh = new THREE.Mesh(explosionGeometry, explosionMaterial);
+    explosionMesh.position.copy(grenade.mesh.position);
+    
+    // Add to scene
+    this.scene.add(explosionMesh);
+    
+    // Add explosion light
+    const explosionLight = new THREE.PointLight(0xff6600, 3, 10);
+    explosionMesh.add(explosionLight);
+    
+    // Mark as exploded
+    grenade.exploded = true;
+    grenade.explosionMesh = explosionMesh;
+    grenade.explosionLight = explosionLight;
+    
+    // Check for obstacle hits in explosion radius
+    for (const obstacle of this.obstacles) {
+      const distance = grenade.mesh.position.distanceTo(obstacle.position);
+      if (distance < grenade.explosionRadius) {
+        // Create hit effect at the point closest to the explosion
+        const direction = obstacle.position.clone().sub(grenade.mesh.position).normalize();
+        const hitPoint = grenade.mesh.position.clone().add(direction.multiplyScalar(distance * 0.8));
+        this.createHitEffect(hitPoint);
+      }
+    }
+    
+    // Check for player hit
+    const playerPosition = this.playerShip.position.clone();
+    playerPosition.y = 0; // Project to ground plane
+    const grenadePosition = grenade.mesh.position.clone();
+    grenadePosition.y = 0; // Project to ground plane
+    
+    const playerDistance = playerPosition.distanceTo(grenadePosition);
+    if (playerDistance < grenade.explosionRadius) {
+      // Calculate damage based on distance (closer = more damage)
+      const damagePercent = 1 - (playerDistance / grenade.explosionRadius);
+      const damage = Math.floor(30 * damagePercent); // Up to 30 damage
+      
+      // Apply damage to player
+      this.health -= damage;
+      if (this.health < 0) this.health = 0;
+      
+      // Update UI
+      this.ui.updateHealth(this.health, this.maxHealth);
+      
+      // Flash the screen
+      this.flashCollisionWarning();
+    }
+    
+    // Play explosion sound
+    this.playSound('grenade-laser');
+  }
+  
+  updateBouncingLasers() {
+    if (!this.bouncingLasers || this.bouncingLasers.length === 0) return;
+    
+    const tempRay = new THREE.Ray();
+    const tempMatrix = new THREE.Matrix4();
+    const tempVector = new THREE.Vector3();
+    
+    for (let i = this.bouncingLasers.length - 1; i >= 0; i--) {
+      const laser = this.bouncingLasers[i];
+      
+      // Move laser
+      const movement = laser.direction.clone().multiplyScalar(laser.speed);
+      const newPosition = laser.mesh.position.clone().add(movement);
+      
+      // Store current position for trail
+      laser.trailPoints.push(laser.mesh.position.clone());
+      if (laser.trailPoints.length > 20) {
+        laser.trailPoints.shift();
+      }
+      
+      // Update trail geometry
+      const positions = new Float32Array(laser.trailPoints.length * 3);
+      for (let j = 0; j < laser.trailPoints.length; j++) {
+        positions[j * 3] = laser.trailPoints[j].x;
+        positions[j * 3 + 1] = laser.trailPoints[j].y;
+        positions[j * 3 + 2] = laser.trailPoints[j].z;
+      }
+      
+      laser.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      
+      // Check for bounces
+      let bounced = false;
+      const rayOrigin = laser.mesh.position.clone();
+      const rayDirection = laser.direction.clone();
+      
+      // Set up the ray for collision detection
+      tempRay.set(rayOrigin, rayDirection);
+      
+      // Check for collisions with obstacles
+      let closestDistance = Infinity;
+      let closestIntersection = null;
+      let closestObstacle = null;
+      
+      for (const obstacle of this.obstacles) {
+        // Skip if obstacle doesn't have geometry (shouldn't happen but just in case)
+        if (!obstacle.geometry) continue;
+        
+        // Get obstacle in world space
+        tempMatrix.copy(obstacle.matrixWorld);
+        
+        // Different collision handling based on geometry type
+        if (obstacle.geometry instanceof THREE.SphereGeometry) {
+          const radius = obstacle.geometry.parameters.radius;
+          const center = obstacle.position.clone();
+          
+          // Check for sphere intersection
+          const sphereIntersection = tempRay.intersectSphere(
+            new THREE.Sphere(center, radius),
+            tempVector
+          );
+          
+          if (sphereIntersection) {
+            const distance = rayOrigin.distanceTo(sphereIntersection);
+            if (distance < closestDistance && distance < laser.speed * 1.2) {
+              closestDistance = distance;
+              closestIntersection = sphereIntersection;
+              closestObstacle = obstacle;
+            }
+          }
+        } 
+        else if (obstacle.geometry instanceof THREE.CylinderGeometry) {
+          const radius = obstacle.geometry.parameters.radiusTop;
+          const center = obstacle.position.clone();
+          
+          // For simplicity, treat cylinder as a sphere for bounce calculation
+          const sphereIntersection = tempRay.intersectSphere(
+            new THREE.Sphere(center, radius),
+            tempVector
+          );
+          
+          if (sphereIntersection) {
+            const distance = rayOrigin.distanceTo(sphereIntersection);
+            if (distance < closestDistance && distance < laser.speed * 1.2) {
+              closestDistance = distance;
+              closestIntersection = sphereIntersection;
+              closestObstacle = obstacle;
+            }
+          }
+        }
+        // Add more geometry types as needed
+      }
+      
+      // If we found an intersection
+      if (closestIntersection && closestObstacle) {
+        // Position at the intersection point
+        laser.mesh.position.copy(closestIntersection);
+        
+        // Calculate normal for bounce (simplification - just use direction to center)
+        const normal = closestIntersection.clone().sub(closestObstacle.position).normalize();
+        
+        // Calculate reflection direction: r = d - 2(d·n)n
+        const dot = laser.direction.dot(normal);
+        const reflection = laser.direction.clone().sub(normal.multiplyScalar(2 * dot));
+        
+        // Update direction
+        laser.direction.copy(reflection);
+        
+        // Update rotation to match new direction
+        laser.mesh.lookAt(laser.mesh.position.clone().add(laser.direction));
+        
+        // Increment bounce count
+        laser.bounces++;
+        
+        // Create hit effect
+        this.createHitEffect(closestIntersection.clone());
+        
+        // Play bounce sound
+        this.playSound('bounce');
+        
+        // After first bounce, it can hit the player
+        laser.canHitPlayer = true;
+        
+        bounced = true;
+      } else if (laser.bounceTimeout > 0) {
+        // Reduce timeout for allowing player collision
+        laser.bounceTimeout--;
+        if (laser.bounceTimeout <= 0) {
+          laser.canHitPlayer = true;
+        }
+      }
+      
+      // If not bounced, just move
+      if (!bounced) {
+        laser.mesh.position.copy(newPosition);
+      }
+      
+      // Check for collision with player if it can hit player
+      if (laser.canHitPlayer) {
+        const playerPosition = this.playerShip.position.clone();
+        playerPosition.y = 0.5; // Match laser height
+        
+        if (laser.mesh.position.distanceTo(playerPosition) < 1) {
+          // Player hit by own laser
+          this.health -= 10; // Damage from own bouncing laser
+          if (this.health < 0) this.health = 0;
+          
+          // Update UI
+          this.ui.updateHealth(this.health, this.maxHealth);
+          
+          // Flash screen
+          this.flashCollisionWarning();
+          
+          // Remove laser
+          this.scene.remove(laser.mesh);
+          this.scene.remove(laser.trail);
+          this.bouncingLasers.splice(i, 1);
+          
+          continue;
+        }
+      }
+      
+      // Increment lifetime
+      laser.lifeTime++;
+      
+      // Remove old lasers or if max bounces reached
+      if (laser.lifeTime > laser.maxLifeTime || laser.bounces >= laser.maxBounces) {
+        this.scene.remove(laser.mesh);
+        this.scene.remove(laser.trail);
+        this.bouncingLasers.splice(i, 1);
+      }
     }
   }
 }
