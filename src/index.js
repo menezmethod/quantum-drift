@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import './styles/main.css';
 import { GameUI } from './components/GameUI';
+import { MiniMap } from './components/MiniMap';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -12,11 +13,18 @@ class SimpleGame {
     // Create sounds map
     this.sounds = new Map();
     
+    // Setup animation timing
+    this.clock = new THREE.Clock();
+    this.lastTime = Date.now();
+    
     // Setup basic Three.js scene
     this.setupScene();
     
     // Create game UI
     this.ui = new GameUI();
+    
+    // Game properties
+    this.boundarySize = 100; // Size of the playable area
     
     // Initialize player state
     this.health = 100;
@@ -31,6 +39,9 @@ class SimpleGame {
     
     // Setup controls
     this.setupControls();
+    
+    // Create mini-map (after scene setup)
+    this.miniMap = new MiniMap(this);
     
     // Handle window resize
     window.addEventListener('resize', () => this.handleResize());
@@ -57,9 +68,6 @@ class SimpleGame {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(this.renderer.domElement);
-    
-    // Create clock for timing
-    this.clock = new THREE.Clock();
     
     // Add lights
     const ambientLight = new THREE.AmbientLight(0x404040);
@@ -486,7 +494,8 @@ class SimpleGame {
       Digit1: 'selectLaser',
       Digit2: 'selectGrenade',
       Digit3: 'selectBounce',
-      KeyX: 'switchWeapon'
+      KeyX: 'switchWeapon',
+      KeyM: 'toggleMap'
     };
     
     // Available weapons
@@ -519,6 +528,8 @@ class SimpleGame {
         this.selectWeapon('bounce'); 
       } else if (action === 'switchWeapon') {
         this.cycleWeapon();
+      } else if (action === 'toggleMap') {
+        this.toggleMiniMap();
       } else {
         this.keys[action] = true;
       }
@@ -535,7 +546,7 @@ class SimpleGame {
       this.updateControlIndicators();
       
       // Prevent default browser behavior for these keys
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(event.code)) {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab', 'KeyM'].includes(event.code)) {
         event.preventDefault();
       }
     });
@@ -1227,38 +1238,49 @@ class SimpleGame {
   }
   
   animate() {
+    // Request next frame
     requestAnimationFrame(() => this.animate());
     
-    // Get delta time for consistent updates
-    const deltaTime = this.clock ? this.clock.getDelta() : 0.016;
+    // Calculate delta time
+    const now = Date.now();
+    const deltaTime = (now - this.lastTime) / 1000;
+    this.lastTime = now;
     
-    // Update player position and rotation
+    // Update player
     this.updatePlayer(deltaTime);
-    
-    // Recharge energy
-    this.updateEnergy(deltaTime);
-    
-    // Update lasers
-    this.updateLasers();
     
     // Update camera to follow player
     this.updateCamera();
+    
+    // Update energy
+    this.updateEnergy(deltaTime);
+    
+    // Update regular lasers
+    this.updateLasers();
+    
+    // Update bouncing lasers
+    this.updateBouncingLasers();
+    
+    // Update grenades
+    this.updateGrenades();
+    
+    // Update mini-map
+    if (this.miniMap) {
+      this.miniMap.update();
+    }
     
     // Update player highlight position
     if (this.playerHighlight) {
       this.playerHighlight.position.x = this.playerShip.position.x;
       this.playerHighlight.position.z = this.playerShip.position.z;
       
-      // Pulse the highlight opacity for a more dynamic effect
-      const pulseFactor = (Math.sin(Date.now() * 0.003) + 1) / 2; // 0 to 1
+      // Make it pulse
+      const pulseFactor = (Math.sin(Date.now() * 0.003) + 1) / 2;
       this.playerHighlight.material.opacity = 0.05 + pulseFactor * 0.1;
     }
     
-    // Update grenades
-    this.updateGrenades();
-    
-    // Update bouncing lasers
-    this.updateBouncingLasers();
+    // Update ship thruster effects
+    this.updateThrusterEffects();
     
     // Render scene
     this.renderer.render(this.scene, this.camera);
@@ -2335,6 +2357,15 @@ class SimpleGame {
           this.targetingIndicator.visible = false;
         }
       }, 2000);
+    }
+  }
+  
+  /**
+   * Toggle mini-map visibility
+   */
+  toggleMiniMap() {
+    if (this.miniMap) {
+      this.miniMap.toggle();
     }
   }
 }

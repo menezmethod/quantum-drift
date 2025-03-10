@@ -279,7 +279,7 @@ canvas {
 .game-ui {
   position: fixed;
   top: 20px;
-  right: 20px;
+  left: 20px;
   z-index: 10;
   display: flex;
   flex-direction: column;
@@ -306,6 +306,10 @@ canvas {
   gap: 10px;
 }
 
+.bar-container {
+  flex-direction: row;
+}
+
 .bar-label {
   width: 20px;
   display: flex;
@@ -314,6 +318,7 @@ canvas {
   font-size: 14px;
   color: #fff;
   font-weight: bold;
+  order: 1;
 }
 
 .bar-outer {
@@ -325,6 +330,7 @@ canvas {
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
+  order: 2;
 }
 
 .bar-inner {
@@ -426,7 +432,7 @@ canvas {
 @media (max-width: 768px) {
   .game-ui {
     top: 10px;
-    right: 10px;
+    left: 10px;
     width: 180px;
     padding: 10px;
   }
@@ -441,12 +447,12 @@ canvas {
 }
 
 .bar-percentage {
-  font-size: 12px;
+  margin-left: 5px;
   color: #fff;
+  font-size: 12px;
   min-width: 40px;
   text-align: right;
-  font-weight: bold;
-  font-family: 'Rajdhani', sans-serif;
+  order: 3;
 }
 
 /* Position indicators in the grid */
@@ -499,17 +505,362 @@ canvas {
   position: fixed;
   bottom: 20px;
   left: 20px;
-  z-index: 100;
+  right: 20px;
+  z-index: 90;
   display: none; /* Hidden by default, shown on touch devices */
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+  height: 120px;
 }
 
 /* Media query for touch devices */
 @media (pointer: coarse) {
   .touch-controls {
-    display: block;
+    display: flex;
   }
   
   .controls-info {
     display: none; /* Hide keyboard controls info on touch devices */
+  }
+}
+
+/* Controls toggle button for touch devices */
+.controls-toggle-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 101;
+  background: rgba(0, 0, 0, 0.6);
+  color: #00ffff;
+  border: 1px solid rgba(0, 255, 255, 0.4);
+  border-radius: 10px;
+  padding: 10px 15px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+  transition: all 0.3s ease;
+  display: none; /* Hidden by default, shown on touch devices */
+}
+
+.controls-toggle-button:hover,
+.controls-toggle-button:active {
+  background: rgba(0, 50, 70, 0.8);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+}
+
+/* Responsive designs for different devices */
+
+/* Base styles (desktop) */
+.control-indicators {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  transition: opacity 0.5s ease, transform 0.3s ease;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 10px;
+  padding: 15px;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+  border: 1px solid rgba(0, 255, 255, 0.4);
+  backdrop-filter: blur(5px);
+}
+
+.key-indicator {
+  width: 50px;
+  height: 50px;
+}
+
+.key-indicator .key {
+  font-size: 12px;
+}
+
+.key-indicator .label {
+  font-size: 18px;
+}
+
+/* Large tablet and desktop (landscape) */
+@media (min-width: 1024px) {
+  .control-indicators {
+    bottom: 30px;
+    left: 30px;
+    padding: 20px;
+  }
+  
+  .key-indicator {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .key-indicator .key {
+    font-size: 14px;
+  }
+  
+  .key-indicator .label {
+    font-size: 22px;
+  }
+  
+  .game-ui {
+    top: 30px;
+    left: 30px;
+    width: 250px;
+  }
+}
+
+/* iPad and smaller tablets */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .control-indicators {
+    bottom: 20px;
+    left: 20px;
+    padding: 15px;
+  }
+  
+  .key-indicator {
+    width: 55px;
+    height: 55px;
+  }
+  
+  .game-ui {
+    width: 220px;
+  }
+}
+
+/* Mobile phones (portrait) */
+@media (max-width: 767px) {
+  .control-indicators {
+    bottom: 10px;
+    left: 10px;
+    padding: 10px;
+    gap: 8px;
+  }
+  
+  .key-indicator {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .key-indicator .key {
+    font-size: 10px;
+  }
+  
+  .key-indicator .label {
+    font-size: 14px;
+  }
+  
+  .game-ui {
+    top: 10px;
+    left: 10px;
+    width: 180px;
+    padding: 10px;
+  }
+  
+  .bar-label, .weapon-label {
+    font-size: 12px;
+  }
+  
+  .weapon-name {
+    font-size: 14px;
+  }
+  
+  .controls-toggle-button {
+    display: block;
+    font-size: 14px;
+    padding: 8px 12px;
+  }
+}
+
+/* Very small screens and iPhones in portrait */
+@media (max-width: 375px) {
+  .control-indicators {
+    bottom: 5px;
+    left: 5px;
+    padding: 8px;
+    gap: 5px;
+  }
+  
+  .key-indicator {
+    width: 35px;
+    height: 35px;
+  }
+  
+  .key-indicator .key {
+    font-size: 8px;
+  }
+  
+  .key-indicator .label {
+    font-size: 12px;
+  }
+  
+  .game-ui {
+    width: 150px;
+  }
+}
+
+/* Touch device specific styles */
+@media (pointer: coarse) {
+  .controls-toggle-button {
+    display: block;
+  }
+  
+  /* Make touch targets larger */
+  .key-indicator {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* iPhone-specific fixes - ensure proper viewport */
+@media only screen and (max-device-width: 812px) and (-webkit-min-device-pixel-ratio: 2) {
+  .touch-controls {
+    bottom: env(safe-area-inset-bottom, 20px);
+    padding-bottom: 10px;
+  }
+  
+  .controls-toggle-button {
+    bottom: env(safe-area-inset-bottom, 20px);
+    right: env(safe-area-inset-right, 20px);
+  }
+}
+
+/* Fix for notched phones */
+@supports (padding: max(0px)) {
+  .touch-controls {
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+}
+
+.joystick-container {
+  width: 150px;
+  height: 150px;
+  margin-left: 10px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.joystick {
+  width: 100px;
+  height: 100px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  border: 2px solid rgba(0, 200, 255, 0.3);
+  box-shadow: 0 0 10px rgba(0, 200, 255, 0.2);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.joystick-knob {
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 200, 255, 0.7);
+  border-radius: 50%;
+  box-shadow: 0 0 15px rgba(0, 200, 255, 0.7);
+  position: absolute;
+  transition: transform 0.1s ease;
+}
+
+.touch-button {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 10px rgba(0, 200, 255, 0.3);
+  border: 2px solid rgba(0, 200, 255, 0.3);
+  pointer-events: auto;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fire-button {
+  margin-right: 10px;
+  background: rgba(50, 0, 0, 0.5);
+  border-color: rgba(255, 100, 100, 0.4);
+  box-shadow: 0 0 10px rgba(255, 100, 100, 0.3);
+}
+
+.weapon-button {
+  margin-right: 90px;
+  background: rgba(0, 30, 50, 0.5);
+}
+
+/* Mini-Map */
+.mini-map-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 95;
+  width: 180px;
+  height: 180px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  padding: 5px;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  backdrop-filter: blur(3px);
+  transition: all 0.3s ease;
+  transform-origin: bottom right;
+  overflow: hidden;
+}
+
+.mini-map-container.hidden {
+  transform: scale(0);
+  opacity: 0;
+}
+
+.mini-map {
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 20, 40, 0.4);
+  border-radius: 5px;
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+.mini-map canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* Subtle M key hint */
+.mini-map-hint {
+  position: absolute;
+  bottom: 7px;
+  right: 7px;
+  font-size: 10px;
+  color: rgba(0, 255, 255, 0.5);
+  font-family: 'Rajdhani', sans-serif;
+  opacity: 0.7;
+  text-shadow: 0 0 2px rgba(0, 255, 255, 0.5);
+  pointer-events: none;
+}
+
+/* Responsive adjustments for mini-map */
+@media (max-width: 768px) {
+  .mini-map-container {
+    width: 150px;
+    height: 150px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mini-map-container {
+    bottom: 150px; /* Position above touch controls on mobile */
+    width: 120px;
+    height: 120px;
   }
 } 
