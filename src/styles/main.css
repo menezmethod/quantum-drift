@@ -166,18 +166,31 @@ canvas {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  display: grid;
-  grid-template-areas:
-    ". forward ."
-    "left backward right"
-    ". . ."
-    "strafeLeft fire strafeRight";
-  grid-gap: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   z-index: 100;
   background-color: rgba(0, 0, 0, 0.5);
   padding: 10px;
   border-radius: 5px;
   border: 1px solid var(--neon-border-color);
+}
+
+.control-group {
+  display: grid;
+  gap: 5px;
+}
+
+.movement-controls {
+  grid-template-areas:
+    ". forward ."
+    "left backward right"
+    "strafeLeft fire strafeRight";
+}
+
+.weapon-controls {
+  grid-template-columns: repeat(4, 1fr);
+  margin-top: 5px;
 }
 
 .key-indicator {
@@ -207,7 +220,15 @@ canvas {
 }
 
 .key-indicator .label {
-  font-size: 1rem;
+  font-size: 0.85rem;
+}
+
+.weapon-key {
+  width: auto;
+}
+
+.weapon-key .label {
+  font-size: 0.6rem;
 }
 
 /* Position indicators in the grid */
@@ -272,5 +293,146 @@ canvas {
   
   .controls-info {
     display: none; /* Hide keyboard controls info on touch devices */
+  }
+}
+
+/* Game UI Styles */
+.game-ui {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 100;
+  pointer-events: none;
+  width: 20vw;
+  min-width: 200px;
+  max-width: 300px;
+}
+
+.status-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 10px;
+  border-radius: 5px;
+  border: 1px solid var(--neon-border-color);
+  box-shadow: 0 0 10px rgba(0, 128, 255, 0.5);
+}
+
+.bar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bar-label {
+  color: var(--neon-text-color);
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+  text-shadow: 0 0 5px var(--neon-text-color);
+}
+
+.bar-outer {
+  width: 100%;
+  height: 10px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--neon-border-color);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.bar-inner {
+  height: 100%;
+  width: 100%;
+  transition: width 0.3s ease-out, background-color 0.3s ease-out;
+}
+
+.health-bar {
+  background-color: #00ff88;
+  box-shadow: 0 0 5px #00ff88;
+}
+
+.health-bar.warning {
+  background-color: #ffaa00;
+  box-shadow: 0 0 5px #ffaa00;
+}
+
+.health-bar.critical {
+  background-color: #ff3300;
+  box-shadow: 0 0 5px #ff3300;
+  animation: pulse-critical 1s infinite alternate;
+}
+
+.energy-bar {
+  background-color: #00ffff;
+  box-shadow: 0 0 5px #00ffff;
+}
+
+.energy-bar.warning {
+  background-color: #ffaa00;
+  box-shadow: 0 0 5px #ffaa00;
+}
+
+.energy-bar.critical {
+  background-color: #ff3300;
+  box-shadow: 0 0 5px #ff3300;
+}
+
+.weapon-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: 5px;
+}
+
+.weapon-label {
+  color: var(--neon-text-color);
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+  text-shadow: 0 0 5px var(--neon-text-color);
+}
+
+.weapon-name {
+  font-size: 1.2rem;
+  font-weight: bold;
+  letter-spacing: 2px;
+  margin-top: 5px;
+}
+
+.weapon-name.laser {
+  color: #00ffff;
+  text-shadow: 0 0 5px #00ffff;
+}
+
+.weapon-name.grenade {
+  color: #ff00ff;
+  text-shadow: 0 0 5px #ff00ff;
+}
+
+.weapon-name.bounce {
+  color: #ffaa00;
+  text-shadow: 0 0 5px #ffaa00;
+}
+
+@keyframes pulse-critical {
+  0% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+/* Mobile Adjustments */
+@media (max-width: 768px) {
+  .game-ui {
+    width: 40vw;
+    min-width: 150px;
+    top: 10px;
+    left: 10px;
+  }
+  
+  .bar-label, .weapon-label {
+    font-size: 0.7rem;
+  }
+  
+  .weapon-name {
+    font-size: 1rem;
   }
 } 
