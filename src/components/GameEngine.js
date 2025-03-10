@@ -5,6 +5,7 @@ import { EnemyManager } from './EnemyManager';
 import { GameRoom } from './GameRoom';
 import { SoundManager } from './SoundManager';
 import { RegularLaser } from './RegularLaser';
+import { GameUI } from './GameUI';
 
 export class GameEngine {
   constructor() {
@@ -22,6 +23,9 @@ export class GameEngine {
     this.gameMode = 'ffa'; // Default game mode: free-for-all
     this.roomTheme = 'space-station'; // Default room theme
     this.roomSize = { width: 60, height: 60 }; // Default room size
+    
+    // Initialize UI
+    this.ui = new GameUI();
     
     // Multiplayer properties
     this.players = {};  // Will store other players
@@ -607,7 +611,10 @@ export class GameEngine {
       this.spawnEnemyTimer = null;
     }
     
-    document.getElementById('game-ui').classList.add('hidden');
+    // Hide game UI and show game over screen
+    if (this.ui) {
+      this.ui.hide();
+    }
     document.getElementById('final-score').textContent = this.score;
     document.getElementById('game-over').classList.remove('hidden');
   }
@@ -1037,10 +1044,9 @@ export class GameEngine {
    * Show the game UI elements
    */
   showGameUI() {
-    // Show game UI container
-    const gameUI = document.getElementById('game-ui');
-    if (gameUI) {
-      gameUI.style.display = 'flex';
+    // Show game UI
+    if (this.ui) {
+      this.ui.show();
     }
     
     // Hide any splash screens or menus

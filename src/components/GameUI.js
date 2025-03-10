@@ -25,6 +25,7 @@ export class GameUI {
     // Create main UI container
     this.uiContainer = document.createElement('div');
     this.uiContainer.className = 'game-ui';
+    this.uiContainer.id = 'game-ui';
     document.body.appendChild(this.uiContainer);
     
     // Create status bars container
@@ -103,14 +104,22 @@ export class GameUI {
    * Show the UI
    */
   show() {
-    this.uiContainer.classList.remove('hidden');
+    if (this.uiContainer) {
+      this.uiContainer.classList.remove('hidden');
+      this.uiContainer.style.display = 'flex';
+      this.uiContainer.style.opacity = '1';
+    }
   }
   
   /**
    * Hide the UI
    */
   hide() {
-    this.uiContainer.classList.add('hidden');
+    if (this.uiContainer) {
+      this.uiContainer.classList.add('hidden');
+      this.uiContainer.style.display = 'none';
+      this.uiContainer.style.opacity = '0';
+    }
   }
   
   /**

@@ -294,6 +294,11 @@ canvas {
   transition: all 0.3s ease;
 }
 
+.game-ui.hidden {
+  display: none;
+  opacity: 0;
+}
+
 .status-bars {
   display: flex;
   flex-direction: column;

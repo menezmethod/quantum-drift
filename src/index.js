@@ -6,17 +6,45 @@ import { MiniMap } from './components/MiniMap';
 // Basic Three.js game with a ship
 class SimpleGame {
   constructor() {
+    // Initialize all properties first
+    // Sound management
+    this.audioListener = new THREE.AudioListener();
+    this.soundPools = new Map();
+    this.loadedSounds = new Map();
+    this.soundLoadPromises = new Map();
+
+    // Asset loading state
+    this.loadingState = {
+      started: false,
+      completed: false,
+      errors: [],
+      timeouts: new Map(),
+      retryCount: new Map(),
+      maxRetries: 3,
+      loadingPromises: new Map()
+    };
+    
     // Track assets loading
     this.assetsLoaded = false;
     this.shipModelLoaded = false;
-    
-    // Create sounds map
-    this.sounds = new Map();
     
     // Setup animation timing
     this.clock = new THREE.Clock();
     this.lastTime = Date.now();
     
+    // Event handling - bind methods
+    this.boundHandleResize = this.handleResize.bind(this);
+    this.boundHandleKeyDown = this.handleKeyDown.bind(this);
+    this.boundHandleKeyUp = this.handleKeyUp.bind(this);
+    this.boundHandleClick = this.handleClick.bind(this);
+    this.boundHandleMouseMove = this.handleMouseMove.bind(this);
+    
+    // Debounce timers
+    this.mouseMoveTimer = null;
+    this.resizeTimer = null;
+    this.weaponCooldowns = new Map();
+    this.lastWeaponSwitch = 0;
+
     // Setup basic Three.js scene
     this.setupScene();
     
@@ -44,7 +72,7 @@ class SimpleGame {
     this.miniMap = new MiniMap(this);
     
     // Handle window resize
-    window.addEventListener('resize', () => this.handleResize());
+    window.addEventListener('resize', this.boundHandleResize);
     
     console.log('Simple game initialized!');
   }
@@ -85,73 +113,165 @@ class SimpleGame {
   }
   
   loadAssets() {
+    if (this.loadingState.started) {
+      console.warn('🔍 Asset loading already in progress');
+      return;
+    }
+    
+    console.log('🔍 Starting asset loading process');
+    console.log('Current loading state:', JSON.stringify(this.loadingState, null, 2));
+    
+    this.loadingState.started = true;
+    this.loadingState.completed = false;
+    this.loadingState.errors = [];
+    
+    // Show loading message
+    this.updateLoadingUI('Loading game assets...');
+    
     // Create placeholder ship until model loads
     this.createDefaultShip();
     
-    // Load sounds
-    this.loadSounds();
-    
-    // Load the 3D ship model
-    this.loadShipModel();
-    
-    // Check loading progress
-    this.checkLoadingProgress();
-  }
-  
-  loadSounds() {
-    const audioListener = new THREE.AudioListener();
-    this.camera.add(audioListener);
-    
-    // Define sounds to load
-    const soundsToLoad = [
-      { name: 'laser', path: 'assets/sounds/laser.mp3' },
-      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3' },
-      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3' },
-      { name: 'bounce', path: 'assets/sounds/bounce.mp3' }
-    ];
-    
-    // Load each sound
-    const audioLoader = new THREE.AudioLoader();
-    
-    soundsToLoad.forEach(soundInfo => {
-      const sound = new THREE.Audio(audioListener);
-      
-      audioLoader.load(
-        soundInfo.path,
-        buffer => {
-          sound.setBuffer(buffer);
-          sound.setVolume(0.5);
-          this.sounds.set(soundInfo.name, sound);
-          console.log(`Loaded sound: ${soundInfo.name}`);
-        },
-        xhr => {
-          console.log(`${soundInfo.name} ${(xhr.loaded / xhr.total * 100)}% loaded`);
-        },
-        error => {
-          console.error(`Error loading sound ${soundInfo.name}:`, error);
-        }
-      );
+    // Load assets in parallel with proper error handling
+    Promise.all([
+      this.loadSounds().catch(error => {
+        console.error('🔍 Sound loading failed:', error);
+        this.handleLoadError('sounds', error);
+        return null;
+      }),
+      this.loadShipModel().catch(error => {
+        console.error('🔍 Ship model loading failed:', error);
+        this.handleLoadError('ship model', error);
+        return null;
+      })
+    ]).then(() => {
+      console.log('🔍 All asset loading promises completed');
+      // Check loading progress even if some assets failed
+      this.checkLoadingProgress();
+    }).catch(error => {
+      console.error('🔍 Critical error loading assets:', error);
+      this.handleLoadError('critical', error);
     });
   }
   
+  loadSounds() {
+    // AudioListener should already be initialized in constructor
+    if (!this.camera) {
+      console.error('Camera not initialized when trying to load sounds');
+      return Promise.reject(new Error('Camera not initialized'));
+    }
+
+    // Add listener to camera if not already added
+    if (!this.camera.children.includes(this.audioListener)) {
+      this.camera.add(this.audioListener);
+    }
+    
+    // Define sounds to load
+    const soundsToLoad = [
+      { name: 'laser', path: 'assets/sounds/laser.mp3', poolSize: 5 },
+      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3', poolSize: 3 },
+      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3', poolSize: 2 },
+      { name: 'bounce', path: 'assets/sounds/bounce.mp3', poolSize: 3 }
+    ];
+    
+    // Create a pool of sounds for frequently played effects
+    const audioLoader = new THREE.AudioLoader();
+    
+    // Load each sound only if not already loaded
+    soundsToLoad.forEach(soundInfo => {
+      if (!this.loadedSounds.has(soundInfo.name)) {
+        const loadPromise = new Promise((resolve, reject) => {
+          // Set a timeout for loading
+          const timeoutId = setTimeout(() => {
+            reject(new Error(`Sound loading timeout: ${soundInfo.name}`));
+          }, 10000); // 10 second timeout
+          
+          audioLoader.load(
+            soundInfo.path,
+            buffer => {
+              clearTimeout(timeoutId);
+              
+              // Create sound pool
+              const pool = [];
+              for (let i = 0; i < soundInfo.poolSize; i++) {
+                const sound = new THREE.Audio(this.audioListener);
+                sound.setBuffer(buffer);
+                sound.setVolume(0.5);
+                pool.push({ sound, inUse: false, lastUsed: 0 });
+              }
+              
+              this.soundPools.set(soundInfo.name, pool);
+              this.loadedSounds.set(soundInfo.name, buffer);
+              console.log(`Loaded sound: ${soundInfo.name} (${soundInfo.poolSize} instances)`);
+              resolve();
+            },
+            xhr => {
+              console.log(`${soundInfo.name} ${(xhr.loaded / xhr.total * 100)}% loaded`);
+            },
+            error => {
+              clearTimeout(timeoutId);
+              console.error(`Error loading sound ${soundInfo.name}:`, error);
+              reject(error);
+            }
+          );
+        });
+        
+        this.soundLoadPromises.set(soundInfo.name, loadPromise);
+      }
+    });
+    
+    // Return a promise that resolves when all sounds are loaded
+    return Promise.all(Array.from(this.soundLoadPromises.values()))
+      .then(() => {
+        console.log('All sounds loaded successfully');
+      })
+      .catch(error => {
+        console.error('Error loading sounds:', error);
+        // Continue without sounds rather than breaking the game
+      });
+  }
+  
   playSound(name) {
-    const sound = this.sounds.get(name);
-    if (!sound) {
+    const pool = this.soundPools.get(name);
+    if (!pool || pool.length === 0) {
       console.warn(`Sound "${name}" not found or not loaded yet.`);
       return;
     }
     
     try {
-      // Always stop the sound first if it's playing
-      if (sound.isPlaying) {
-        sound.stop();
+      const now = Date.now();
+      
+      // Find available sound that hasn't been used recently
+      let soundWrapper = pool.find(wrapper => 
+        !wrapper.inUse && (now - wrapper.lastUsed > 50) // 50ms minimum delay between same sound
+      );
+      
+      // If no sound available, find the oldest one
+      if (!soundWrapper) {
+        soundWrapper = pool.reduce((oldest, current) => 
+          (!oldest || current.lastUsed < oldest.lastUsed) ? current : oldest
+        );
+        
+        // If the oldest sound was used too recently, skip playing
+        if (now - soundWrapper.lastUsed < 50) {
+          return;
+        }
+        
+        soundWrapper.sound.stop(); // Stop it if it's playing
       }
       
-      // Then play it from the beginning
-      sound.play();
+      // Mark as in use and update timestamp
+      soundWrapper.inUse = true;
+      soundWrapper.lastUsed = now;
+      
+      // Play the sound
+      soundWrapper.sound.play();
+      
+      // Set up callback to release back to the pool
+      soundWrapper.sound.onEnded = () => {
+        soundWrapper.inUse = false;
+      };
     } catch (error) {
       console.warn(`Error playing sound "${name}":`, error);
-      // Continue game without sound rather than crashing
     }
   }
   
@@ -183,129 +303,285 @@ class SimpleGame {
   }
   
   loadShipModel() {
-    // Show loading message
-    console.log('🟢🟢🟢 INDEX.JS: Loading ship model...');
-    
-    // Dynamically import the GLTFLoader
-    import('three/examples/jsm/loaders/GLTFLoader.js').then(({ GLTFLoader }) => {
-      // Create GLTFLoader
-      const loader = new GLTFLoader();
+    return new Promise((resolve, reject) => {
+      // Skip if already loading
+      if (this.loadingState.loadingPromises.has('shipModel')) {
+        return this.loadingState.loadingPromises.get('shipModel');
+      }
       
-      // Load the model
-      loader.load(
-        'assets/models/ships/avrocar_vz-9-av_experimental_aircraft.glb',
-        (gltf) => {
-          console.log('🟢🟢🟢 INDEX.JS: Ship model loaded successfully!');
+      console.log('🟢🟢🟢 INDEX.JS: Loading ship model...');
+      
+      const loadPromise = import('@three/examples/loaders/GLTFLoader')
+        .then(({ GLTFLoader }) => {
+          const loader = new GLTFLoader();
           
-          // Store the model
-          this.shipModel = gltf.scene;
+          // Set loading timeout
+          const timeoutId = setTimeout(() => {
+            reject(new Error('Ship model loading timeout'));
+          }, 15000); // 15 second timeout
           
-          // Scale and position the model
-          this.shipModel.scale.set(1.125, 1.125, 1.125); // Increase scale from 0.9 to 1.125 (1.25x larger)
-          console.log('🟢🟢🟢 INDEX.JS: Applied scale 0.9 to shipModel (3x larger)');
-          this.shipModel.rotation.y = Math.PI; // Rotate to face forward
+          this.loadingState.timeouts.set('shipModel', timeoutId);
           
-          // Apply materials
-          this.shipModel.traverse((child) => {
-            if (child.isMesh) {
-              // Add emissive glow to the ship
-              if (child.material) {
-                child.material.emissive = new THREE.Color(0x006666);
-                child.material.emissiveIntensity = 0.5;
-                child.material.needsUpdate = true;
+          return new Promise((resolveLoad, rejectLoad) => {
+            loader.load(
+              'assets/models/ships/avrocar_vz-9-av_experimental_aircraft.glb',
+              (gltf) => {
+                clearTimeout(timeoutId);
+                this.loadingState.timeouts.delete('shipModel');
+                
+                console.log('🟢🟢🟢 INDEX.JS: Ship model loaded successfully!');
+                
+                try {
+                  // Store the model
+                  this.shipModel = gltf.scene;
+                  
+                  // Scale and position the model
+                  this.shipModel.scale.set(0.9, 0.9, 0.9);
+                  console.log('🟢🟢🟢 INDEX.JS: Applied scale 0.9 to shipModel');
+                  this.shipModel.rotation.y = Math.PI;
+                  
+                  // Apply materials
+                  this.shipModel.traverse((child) => {
+                    if (child.isMesh) {
+                      console.log('🟢🟢🟢 INDEX.JS: Found mesh in avrocar model:', child.name);
+                      
+                      // Add emissive glow to the ship
+                      child.material.emissive = new THREE.Color(0x00ffff);
+                      child.material.emissiveIntensity = 0.5;
+                      child.material.needsUpdate = true;
+                    }
+                  });
+                  
+                  // Add the model to the playerShip group
+                  this.scene.remove(this.playerShip);
+                  this.playerShip = new THREE.Group();
+                  this.playerShip.add(this.shipModel);
+                  this.playerShip.position.set(0, 0.5, 0);
+                  this.scene.add(this.playerShip);
+                  
+                  // Add effects
+                  this.addThrusterGlow();
+                  
+                  // Update state
+                  this.shipModelLoaded = true;
+                  
+                  resolveLoad();
+                } catch (error) {
+                  rejectLoad(new Error(`Error processing ship model: ${error.message}`));
+                }
+              },
+              (xhr) => {
+                const percentComplete = (xhr.loaded / xhr.total) * 100;
+                this.updateLoadingUI(`Loading ship model: ${Math.round(percentComplete)}%`);
+              },
+              (error) => {
+                clearTimeout(timeoutId);
+                this.loadingState.timeouts.delete('shipModel');
+                rejectLoad(new Error(`Error loading ship model: ${error.message}`));
               }
-            }
+            );
           });
+        });
+      
+      // Store the loading promise
+      this.loadingState.loadingPromises.set('shipModel', loadPromise);
+      
+      // Handle the promise
+      loadPromise
+        .then(resolve)
+        .catch(error => {
+          // Attempt retry if under max retries
+          const retryCount = (this.loadingState.retryCount.get('shipModel') || 0) + 1;
+          this.loadingState.retryCount.set('shipModel', retryCount);
           
-          // Add thruster glow
-          this.addThrusterGlow();
+          if (retryCount <= this.loadingState.maxRetries) {
+            console.warn(`Retrying ship model load (attempt ${retryCount}/${this.loadingState.maxRetries})`);
+            this.loadingState.loadingPromises.delete('shipModel');
+            return this.loadShipModel();
+          }
           
-          // Add the model to the playerShip group
-          this.scene.remove(this.playerShip);
-          this.playerShip = new THREE.Group();
-          this.playerShip.add(this.shipModel);
-          this.playerShip.position.set(0, 0.5, 0);
-          this.scene.add(this.playerShip);
-          
-          // Add a point light to the ship to make it glow
-          const light = new THREE.PointLight(0x00ffff, 1, 2);
-          light.position.set(0, 0, 0);
-          this.playerShip.add(light);
-          
-          // Mark ship as loaded
-          this.shipModelLoaded = true;
-        },
-        (xhr) => {
-          // Loading progress
-          const progress = (xhr.loaded / xhr.total) * 100;
-          console.log(`Loading ship model: ${Math.round(progress)}%`);
-        },
-        (error) => {
-          // Error loading model
-          console.error('Error loading ship model:', error);
-          // Keep using the default ship
-        }
-      );
-    }).catch(error => {
-      console.error('Error importing GLTFLoader:', error);
+          reject(error);
+        });
     });
   }
   
+  handleLoadError(assetType, error) {
+    console.error(`Error loading ${assetType}:`, error);
+    this.loadingState.errors.push({ type: assetType, error: error.message });
+    
+    // Update UI with error
+    this.updateLoadingUI(`Error loading ${assetType}. ${this.loadingState.errors.length} errors total.`);
+    
+    // If critical error, show error screen
+    if (assetType === 'critical') {
+      this.showErrorScreen('Failed to load game assets. Please refresh the page.');
+    }
+  }
+  
+  updateLoadingUI(message) {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+      const messageElement = loadingScreen.querySelector('.loading-message');
+      if (messageElement) {
+        messageElement.textContent = message;
+      }
+    }
+  }
+  
+  showErrorScreen(message) {
+    // Create error screen if it doesn't exist
+    let errorScreen = document.getElementById('error-screen');
+    if (!errorScreen) {
+      errorScreen = document.createElement('div');
+      errorScreen.id = 'error-screen';
+      errorScreen.className = 'error-screen';
+      
+      const errorMessage = document.createElement('div');
+      errorMessage.className = 'error-message';
+      errorScreen.appendChild(errorMessage);
+      
+      const retryButton = document.createElement('button');
+      retryButton.textContent = 'Retry';
+      retryButton.onclick = () => {
+        errorScreen.remove();
+        this.loadingState = {
+          started: false,
+          completed: false,
+          errors: [],
+          timeouts: new Map(),
+          retryCount: new Map(),
+          maxRetries: 3,
+          loadingPromises: new Map()
+        };
+        this.loadAssets();
+      };
+      errorScreen.appendChild(retryButton);
+      
+      document.body.appendChild(errorScreen);
+    }
+    
+    // Update error message
+    const messageElement = errorScreen.querySelector('.error-message');
+    if (messageElement) {
+      messageElement.textContent = message;
+    }
+  }
+  
+  checkLoadingProgress() {
+    console.log('🔍 Checking loading progress...');
+    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
+    console.log('Sound pools size:', this.soundPools.size);
+    console.log('Ship model loaded:', this.shipModelLoaded);
+    
+    // Define what constitutes a fully loaded game
+    const requiredAssets = {
+      shipModel: this.shipModelLoaded,
+      sounds: this.soundPools.size > 0
+    };
+    
+    // Check if all required assets are loaded
+    const allAssetsLoaded = Object.entries(requiredAssets).every(([name, loaded]) => {
+      if (!loaded) {
+        console.log(`🔍 Asset "${name}" not loaded yet`);
+      }
+      return loaded;
+    });
+    
+    if (allAssetsLoaded) {
+      console.log('✅ All required assets loaded successfully!');
+      this.loadingState.completed = true;
+      
+      // Clear any remaining timeouts
+      this.loadingState.timeouts.forEach(timeoutId => {
+        clearTimeout(timeoutId);
+      });
+      this.loadingState.timeouts.clear();
+      
+      // Show start screen
+      this.showStartScreen();
+    } else {
+      // Show which assets are still loading
+      const pendingAssets = Object.entries(requiredAssets)
+        .filter(([name, loaded]) => !loaded)
+        .map(([name]) => name);
+      
+      console.log(`🔍 Still loading: ${pendingAssets.join(', ')}`);
+      this.updateLoadingUI(`Loading: ${pendingAssets.join(', ')}...`);
+      
+      // Check again in 1 second if not all assets are loaded
+      setTimeout(() => this.checkLoadingProgress(), 1000);
+    }
+  }
+  
+  showStartScreen() {
+    console.log('🔍 Attempting to show start screen');
+    
+    // Timeout to ensure UI has time to update
+    setTimeout(() => {
+      // Hide loading screen and show start screen
+      const loadingScreen = document.getElementById('loading-screen');
+      const startScreen = document.getElementById('start-screen');
+      
+      console.log('🔍 Loading screen element:', loadingScreen);
+      console.log('🔍 Start screen element:', startScreen);
+      
+      if (loadingScreen) {
+        console.log('🔍 Adding fade-out class to loading screen');
+        loadingScreen.classList.add('fade-out');
+        setTimeout(() => {
+          loadingScreen.classList.add('hidden');
+          loadingScreen.classList.remove('fade-out');
+          console.log('🔍 Loading screen hidden');
+        }, 500);
+      } else {
+        console.error('🔍 Loading screen element not found!');
+      }
+      
+      if (startScreen) {
+        console.log('🔍 Showing start screen');
+        startScreen.classList.remove('hidden');
+        startScreen.classList.add('fade-in');
+      } else {
+        console.error('🔍 Start screen element not found!');
+      }
+      
+      console.log('🔍 Game ready to start!');
+    }, 500);
+  }
+  
   addThrusterGlow() {
+    // Create a single, efficient thruster glow effect
+    // Use instanced mesh for better performance if you have multiple thrusters
+    
     // Create a glow for the thruster
-    const thrusterGeometry = new THREE.CylinderGeometry(0.1, 0.2, 0.5, 12);
+    const thrusterGeometry = new THREE.CylinderGeometry(0.2, 0.3, 0.5, 12);
     const thrusterMaterial = new THREE.MeshBasicMaterial({
       color: 0x00ffff,
       transparent: true,
-      opacity: 0.7
+      opacity: 0.7,
+      blending: THREE.AdditiveBlending // Use additive blending for better glow effect
     });
     
     const thruster = new THREE.Mesh(thrusterGeometry, thrusterMaterial);
     thruster.position.set(0, 0, -0.7); // Position at the back of the ship
     thruster.rotation.x = Math.PI / 2;
+    thruster.name = 'thruster'; // Name it for easier reference later
     
     // Add point light for the thruster
-    const thrusterLight = new THREE.PointLight(0x00ffff, 1, 2);
+    const thrusterLight = new THREE.PointLight(0x00ffff, 1, 3);
     thrusterLight.position.copy(thruster.position);
+    thrusterLight.name = 'thrusterLight';
+    
+    // Store references for animation
+    this.thruster = thruster;
+    this.thrusterLight = thrusterLight;
     
     // Add to ship model
     this.shipModel.add(thruster);
     this.shipModel.add(thrusterLight);
-  }
-  
-  checkLoadingProgress() {
-    // Check if assets are loaded
-    if (this.shipModelLoaded) {
-      this.assetsLoaded = true;
-      
-      // Hide loading screen and show start screen
-      document.getElementById('loading-screen').classList.add('hidden');
-      document.getElementById('start-screen').classList.remove('hidden');
-    } else {
-      // Check again in 1 second
-      setTimeout(() => this.checkLoadingProgress(), 1000);
-    }
-  }
-  
-  startGame() {
-    // Hide start screen
-    document.getElementById('start-screen').classList.add('hidden');
     
-    // Show game UI
-    this.ui.show();
-    
-    // Update UI with initial values
-    this.ui.updateHealth(this.health, this.maxHealth);
-    this.ui.updateEnergy(this.energy, this.maxEnergy);
-    this.ui.updateWeapon(this.currentWeapon);
-    
-    // Show control indicators
-    if (this.controlsContainer) {
-      this.controlsContainer.classList.remove('hidden');
-    }
-    
-    // Start animation loop
-    this.animate();
+    // Create a subtle, animated glow effect
+    this.thrusterPulse = { value: 0 };
   }
   
   createFloor() {
@@ -604,246 +880,153 @@ class SimpleGame {
         this.grenadeTargetIndicator = null;
       }
     });
+    
+    // Add event listeners with bound methods
+    window.addEventListener('resize', this.boundHandleResize);
+    document.addEventListener('keydown', this.boundHandleKeyDown);
+    document.addEventListener('keyup', this.boundHandleKeyUp);
+    document.addEventListener('click', this.boundHandleClick);
+    document.addEventListener('mousemove', this.boundHandleMouseMove);
   }
   
-  handleDirectionalFiring(event) {
-    // Get the mouse position in normalized device coordinates
-    const mouse = new THREE.Vector2(
-      (event.clientX / window.innerWidth) * 2 - 1,
-      -(event.clientY / window.innerHeight) * 2 + 1
-    );
+  handleResize(event) {
+    // Debounce resize events
+    if (this.resizeTimer) {
+      clearTimeout(this.resizeTimer);
+    }
     
-    // Use raycasting to determine the point in 3D space
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, this.camera);
+    this.resizeTimer = setTimeout(() => {
+      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.resizeTimer = null;
+    }, 100);
+  }
+  
+  handleKeyDown(event) {
+    // Get control action from key mapping
+    const action = this.keyMap[event.code];
     
-    // Check for intersection with the floor
-    const intersects = raycaster.intersectObject(this.floor);
+    // Skip if key isn't mapped or event is repeated
+    if (!action || event.repeat) return;
     
-    if (intersects.length > 0) {
-      const targetPoint = intersects[0].point;
+    // Handle weapon selection with cooldown
+    if (action.startsWith('select') || action === 'switchWeapon') {
+      const now = Date.now();
+      if (now - this.lastWeaponSwitch < 200) { // 200ms cooldown
+        return;
+      }
+      this.lastWeaponSwitch = now;
+    }
+    
+    // Set key state to active
+    if (action === 'selectLaser') {
+      this.selectWeapon('laser');
+    } else if (action === 'selectGrenade') {
+      this.selectWeapon('grenade');
+    } else if (action === 'selectBounce') {
+      this.selectWeapon('bounce'); 
+    } else if (action === 'switchWeapon') {
+      this.cycleWeapon();
+    } else if (action === 'toggleMap') {
+      this.toggleMiniMap();
+    } else {
+      this.keys[action] = true;
+    }
+    
+    // Store active key for visual feedback
+    this.activeKeys.add(event.code);
+    
+    // Handle fire action with rate limiting
+    if (action === 'fire') {
+      this.handleFireAction();
+    }
+    
+    // Update control indicators
+    this.updateControlIndicators();
+    
+    // Prevent default browser behavior for game controls
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab', 'KeyM'].includes(event.code)) {
+      event.preventDefault();
+    }
+  }
+  
+  handleKeyUp(event) {
+    const action = this.keyMap[event.code];
+    if (!action) return;
+    
+    // Skip weapon selection keys on keyup
+    if (action === 'selectLaser' || action === 'selectGrenade' || 
+        action === 'selectBounce' || action === 'switchWeapon') {
+      return;
+    }
+    
+    // Set key state to inactive
+    this.keys[action] = false;
+    
+    // Remove from active keys
+    this.activeKeys.delete(event.code);
+    
+    // Update control indicators
+    this.updateControlIndicators();
+  }
+  
+  handleClick(event) {
+    // Prevent rapid-fire clicking
+    const now = Date.now();
+    const weaponCooldown = this.weaponCooldowns.get(this.currentWeapon) || 0;
+    
+    if (now < weaponCooldown) {
+      return;
+    }
+    
+    // Set next allowed fire time based on weapon type
+    const cooldownTime = this.currentWeapon === 'GRENADE' ? 1000 : // 1 second for grenades
+                        this.currentWeapon === 'BOUNCE' ? 500 :    // 0.5 seconds for bounce
+                        200;                                       // 0.2 seconds for regular laser
+    
+    this.weaponCooldowns.set(this.currentWeapon, now + cooldownTime);
+    
+    // Handle weapon firing based on type
+    if (this.currentWeapon === 'GRENADE') {
+      this.handleGrenadeTargeting(event);
+    } else {
+      this.handleDirectionalFiring(event);
+    }
+  }
+  
+  handleMouseMove(event) {
+    // Debounce mouse move events
+    if (this.mouseMoveTimer) {
+      clearTimeout(this.mouseMoveTimer);
+    }
+    
+    this.mouseMoveTimer = setTimeout(() => {
+      this.updateTargetingIndicator(event);
       
-      // Calculate the direction from the player to the target point
-      const shipPosition = this.playerShip.position.clone();
-      const direction = targetPoint.clone().sub(shipPosition).normalize();
-      
-      // Only care about horizontal direction (ignore y component)
-      direction.y = 0;
-      direction.normalize();
-      
-      // Store the original rotation
-      const originalRotation = this.playerShip.rotation.clone();
-      
-      // Temporarily rotate the ship to face the target
-      this.playerShip.lookAt(shipPosition.clone().add(direction));
-      
-      // Fire the weapon in that direction
-      if (this.currentWeapon === 'LASER') {
-        this.fireLaser(direction);
-      } else if (this.currentWeapon === 'BOUNCE') {
-        this.fireBouncingLaser(direction);
+      if (this.currentWeapon === 'GRENADE') {
+        this.updateGrenadeTargetingIndicator(event);
       }
       
-      // Restore the original rotation so the player can still control movement direction
-      this.playerShip.rotation.copy(originalRotation);
-    }
+      this.mouseMoveTimer = null;
+    }, 16); // ~60fps
   }
   
-  // Update fireLaser to accept a direction parameter
-  fireLaser(customDirection = null) {
-    // Energy cost for laser - increased from 5 to 15
-    const energyCost = 15;
+  handleFireAction() {
+    const now = Date.now();
+    const weaponCooldown = this.weaponCooldowns.get(this.currentWeapon) || 0;
     
-    // Check if we have enough energy
-    if (this.energy < energyCost) return;
-    
-    // Consume energy
-    this.energy -= energyCost;
-    this.ui.updateEnergy(this.energy, this.maxEnergy);
-    
-    // Create a simple laser geometry
-    const geometry = new THREE.CylinderGeometry(0.05, 0.05, 1, 8);
-    geometry.rotateX(Math.PI / 2);
-    
-    // Create glowing material
-    const material = new THREE.MeshBasicMaterial({
-      color: 0x00ffff,
-      transparent: true,
-      opacity: 0.8
-    });
-    
-    // Create laser mesh
-    const laser = new THREE.Mesh(geometry, material);
-    
-    // Position in front of the ship
-    laser.position.copy(this.playerShip.position);
-    
-    // Use custom direction if provided, otherwise use ship's facing direction
-    let direction;
-    if (customDirection) {
-      direction = customDirection.clone();
-      // Set rotation to match direction
-      laser.lookAt(laser.position.clone().add(direction));
-    } else {
-      laser.rotation.copy(this.playerShip.rotation);
-      direction = new THREE.Vector3(0, 0, 1);
-      direction.applyQuaternion(this.playerShip.quaternion);
+    if (now < weaponCooldown) {
+      return;
     }
     
-    // Move the laser in front of the ship
-    laser.position.add(direction);
+    // Set cooldown based on weapon type
+    const cooldownTime = this.currentWeapon === 'GRENADE' ? 1000 :
+                        this.currentWeapon === 'BOUNCE' ? 500 :
+                        200;
     
-    // Add to scene
-    this.scene.add(laser);
-    
-    // Add a point light to make it glow
-    const light = new THREE.PointLight(0x00ffff, 1, 2);
-    laser.add(light);
-    
-    // Store laser data for animation
-    if (!this.lasers) {
-      this.lasers = [];
-    }
-    
-    this.lasers.push({
-      mesh: laser,
-      direction: direction,
-      speed: 0.5,
-      lifeTime: 0,
-      maxLifeTime: 100
-    });
-    
-    // Play laser sound
-    this.playSound('laser');
-  }
-  
-  // Update fireBouncingLaser to accept a direction parameter
-  fireBouncingLaser(customDirection = null) {
-    // Energy cost for bouncing laser - increased from 1/3 to 1/2 of max energy
-    const energyCost = this.maxEnergy / 2;
-    
-    // Check if we have enough energy
-    if (this.energy < energyCost) return;
-    
-    // Consume energy
-    this.energy -= energyCost;
-    this.ui.updateEnergy(this.energy, this.maxEnergy);
-    
-    // Create bouncing laser geometry - thicker than regular laser
-    const geometry = new THREE.CylinderGeometry(0.15, 0.15, 1.5, 12);
-    geometry.rotateX(Math.PI / 2);
-    
-    // Create pulsing glowing material with animation
-    const material = new THREE.MeshBasicMaterial({
-      color: 0x00ffcc,
-      transparent: true,
-      opacity: 0.9
-    });
-    
-    // Create laser mesh
-    const laser = new THREE.Mesh(geometry, material);
-    
-    // Position in front of the ship
-    laser.position.copy(this.playerShip.position);
-    
-    // Use custom direction if provided, otherwise use ship's facing direction
-    let direction;
-    if (customDirection) {
-      direction = customDirection.clone();
-      // Set rotation to match direction
-      laser.lookAt(laser.position.clone().add(direction));
-    } else {
-      laser.rotation.copy(this.playerShip.rotation);
-      direction = new THREE.Vector3(0, 0, 1);
-      direction.applyQuaternion(this.playerShip.quaternion);
-    }
-    
-    // Move the laser in front of the ship
-    laser.position.add(direction);
-    
-    // Add to scene
-    this.scene.add(laser);
-    
-    // Add stronger glow effect - brighter and larger than regular laser
-    const light = new THREE.PointLight(0x00ffcc, 2, 5);
-    laser.add(light);
-    
-    // Add a secondary smaller light for extra glow
-    const secondaryLight = new THREE.PointLight(0xffffff, 0.5, 3);
-    laser.add(secondaryLight);
-    
-    // Create halo effect around laser
-    const haloGeometry = new THREE.RingGeometry(0.2, 0.4, 24);
-    const haloMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ffcc,
-      transparent: true,
-      opacity: 0.5,
-      side: THREE.DoubleSide
-    });
-    
-    const halo = new THREE.Mesh(haloGeometry, haloMaterial);
-    halo.rotation.x = Math.PI / 2;
-    laser.add(halo);
-    
-    // Add a more sophisticated trail effect
-    const trailGeometry = new THREE.BufferGeometry();
-    const trailMaterial = new THREE.PointsMaterial({
-      color: 0x00ffcc,
-      size: 0.1,
-      transparent: true,
-      opacity: 0.6,
-      blending: THREE.AdditiveBlending
-    });
-    
-    const trail = new THREE.Points(trailGeometry, trailMaterial);
-    this.scene.add(trail);
-    
-    // Store bouncing laser data
-    if (!this.bouncingLasers) {
-      this.bouncingLasers = [];
-    }
-    
-    // Create a unique ID for animation tracking
-    const laserId = Date.now() + Math.random();
-    
-    this.bouncingLasers.push({
-      id: laserId,
-      mesh: laser,
-      halo: halo,
-      trail: trail,
-      direction: direction,
-      speed: 0.35, // Slower than regular lasers
-      bounces: 0,
-      maxBounces: 5,
-      lifeTime: 0,
-      maxLifeTime: 150,
-      trailPoints: [],
-      lastPosition: laser.position.clone(),
-      canHitPlayer: false, // Initially can't hit player
-      bounceTimeout: 10, // Wait frames before allowing player collision
-      pulsePhase: 0 // For pulsing animation
-    });
-    
-    // Play bounce laser sound
-    this.playSound('laser-bounce');
-  }
-  
-  // Update the fireCurrentWeapon method to handle directional firing
-  fireCurrentWeapon(customDirection = null) {
-    switch (this.currentWeapon) {
-      case 'LASER':
-        this.fireLaser(customDirection);
-        break;
-      case 'GRENADE':
-        // For grenades, we use the targeting system instead of direction
-        if (!customDirection) {
-          this.fireGrenade();
-        }
-        break;
-      case 'BOUNCE':
-        this.fireBouncingLaser(customDirection);
-        break;
-    }
+    this.weaponCooldowns.set(this.currentWeapon, now + cooldownTime);
+    this.fireCurrentWeapon();
   }
   
   setupTouchControls() {
@@ -1366,12 +1549,37 @@ class SimpleGame {
       // Move laser
       laser.mesh.position.add(laser.direction.clone().multiplyScalar(laser.speed));
       
+      // Update trail effect
+      laser.trailPoints.push(laser.mesh.position.clone());
+      if (laser.trailPoints.length > 8) { // Reduced trail length for better performance
+        laser.trailPoints.shift();
+      }
+      
+      // Update trail geometry
+      const positions = new Float32Array(laser.trailPoints.length * 3);
+      for (let j = 0; j < laser.trailPoints.length; j++) {
+        positions[j * 3] = laser.trailPoints[j].x;
+        positions[j * 3 + 1] = laser.trailPoints[j].y;
+        positions[j * 3 + 2] = laser.trailPoints[j].z;
+      }
+      laser.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      
+      // Pulse effect
+      laser.pulsePhase += 0.3;
+      const pulse = Math.sin(laser.pulsePhase) * 0.2 + 0.8;
+      laser.mesh.material.opacity = pulse;
+      const light = laser.mesh.children[0];
+      if (light) {
+        light.intensity = pulse * 2;
+      }
+      
       // Increment lifetime
       laser.lifeTime++;
       
       // Remove old lasers
       if (laser.lifeTime > laser.maxLifeTime) {
         this.scene.remove(laser.mesh);
+        this.scene.remove(laser.trail);
         this.lasers.splice(i, 1);
         continue;
       }
@@ -1382,57 +1590,118 @@ class SimpleGame {
         
         // Simple distance check
         if (laser.mesh.position.distanceTo(obstacle.position) < 1.5) {
-          // Create hit effect
-          this.createHitEffect(laser.mesh.position);
+          // Create enhanced hit effect
+          this.createEnhancedHitEffect(laser.mesh.position.clone(), laser.direction.clone());
           
           // Remove laser
           this.scene.remove(laser.mesh);
+          this.scene.remove(laser.trail);
           this.lasers.splice(i, 1);
           break;
         }
       }
     }
   }
-  
-  createHitEffect(position) {
-    // Create a sphere for the hit effect
-    const geometry = new THREE.SphereGeometry(0.3, 8, 8);
-    const material = new THREE.MeshBasicMaterial({
+
+  createEnhancedHitEffect(position, direction) {
+    // Create a burst of particles
+    const particleCount = 15;
+    const particles = [];
+    
+    // Create particle material
+    const particleMaterial = new THREE.MeshBasicMaterial({
       color: 0x00ffff,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    });
+
+    for (let i = 0; i < particleCount; i++) {
+      // Create small particle geometry
+      const particleGeometry = new THREE.PlaneGeometry(0.1, 0.1);
+      const particle = new THREE.Mesh(particleGeometry, particleMaterial.clone());
+      
+      // Position at hit point
+      particle.position.copy(position);
+      
+      // Random velocity based on impact direction
+      const spread = Math.PI / 2; // 90 degree spread
+      const angle = Math.random() * spread - spread/2;
+      const speed = 0.2 + Math.random() * 0.3;
+      
+      // Calculate velocity
+      const velocity = direction.clone()
+        .applyAxisAngle(new THREE.Vector3(0, 1, 0), angle)
+        .multiplyScalar(speed);
+      
+      particle.userData.velocity = velocity;
+      particle.userData.life = 1.0; // Full life
+      
+      this.scene.add(particle);
+      particles.push(particle);
+    }
+
+    // Add impact flash
+    const flashGeometry = new THREE.CircleGeometry(0.3, 16);
+    const flashMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
     });
     
-    const hitEffect = new THREE.Mesh(geometry, material);
-    hitEffect.position.copy(position);
-    this.scene.add(hitEffect);
-    
+    const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+    flash.position.copy(position);
+    flash.lookAt(position.clone().add(direction));
+    this.scene.add(flash);
+
     // Add point light
-    const light = new THREE.PointLight(0x00ffff, 2, 3);
+    const light = new THREE.PointLight(0x00ffff, 2, 4);
     light.position.copy(position);
     this.scene.add(light);
-    
-    // Animate hit effect
-    let scale = 1.0;
-    const expandSpeed = 0.1;
-    
+
+    // Animate particles
+    let frame = 0;
     const animate = () => {
-      scale += expandSpeed;
-      hitEffect.scale.set(scale, scale, scale);
+      frame++;
       
-      // Fade out
-      material.opacity -= 0.05;
-      light.intensity -= 0.1;
-      
-      if (material.opacity > 0) {
+      // Update particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const particle = particles[i];
+        
+        // Move particle
+        particle.position.add(particle.userData.velocity);
+        
+        // Reduce life
+        particle.userData.life -= 0.05;
+        
+        // Update opacity
+        particle.material.opacity = particle.userData.life;
+        
+        // Remove dead particles
+        if (particle.userData.life <= 0) {
+          this.scene.remove(particle);
+          particles.splice(i, 1);
+        }
+      }
+
+      // Update flash
+      flash.scale.addScalar(0.2);
+      flashMaterial.opacity *= 0.8;
+
+      // Update light
+      light.intensity *= 0.8;
+
+      // Continue animation if particles remain
+      if (particles.length > 0 && frame < 20) {
         requestAnimationFrame(animate);
       } else {
-        // Remove hit effect
-        this.scene.remove(hitEffect);
+        // Clean up
+        this.scene.remove(flash);
         this.scene.remove(light);
       }
     };
-    
+
     // Start animation
     animate();
   }
@@ -1554,59 +1823,61 @@ class SimpleGame {
     this.camera.lookAt(this.cameraTargetLookAt);
   }
   
-  handleResize() {
-    // Update camera aspect ratio
-    this.camera.aspect = window.innerWidth / window.innerHeight;
-    this.camera.updateProjectionMatrix();
-    
-    // Update renderer size
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-  }
-  
   updateThrusterEffects() {
     // Skip if ship model isn't loaded
-    if (!this.shipModel) return;
+    if (!this.shipModel || !this.thruster || !this.thrusterLight) return;
     
-    // Find the thruster (added in addThrusterGlow)
-    const thruster = this.shipModel.children.find(child => 
-      child.geometry && child.geometry.type === 'CylinderGeometry' && 
-      child.position.z < 0 // Positioned at the back of the ship
-    );
-    
-    // Skip if thruster isn't found
-    if (!thruster) return;
-    
-    // Find thruster light
-    const thrusterLight = this.shipModel.children.find(child => 
-      child.type === 'PointLight' && 
-      child.position.z < 0 // Positioned at the back of the ship
-    );
+    // Use stored references instead of finding children each time
+    const { thruster, thrusterLight } = this;
     
     // Base thruster scale and opacity on movement
     const isMovingForward = this.keys.forward;
     const isMovingBackward = this.keys.backward;
     
+    // Update thruster pulse for ambient animation
+    this.thrusterPulse.value = (this.thrusterPulse.value + 0.1) % (Math.PI * 2);
+    const pulseEffect = Math.sin(this.thrusterPulse.value) * 0.1;
+    
     if (isMovingForward) {
       // Full thruster when moving forward
-      thruster.scale.set(1, 1, 1 + Math.random() * 0.2); // Slight random variation
+      const randomScale = 1 + Math.random() * 0.2 + pulseEffect;
+      thruster.scale.set(1, 1, randomScale);
       thruster.material.opacity = 0.7 + Math.random() * 0.3;
-      if (thrusterLight) {
-        thrusterLight.intensity = 1.2 + Math.random() * 0.3;
-      }
+      thrusterLight.intensity = 1.2 + Math.random() * 0.3 + pulseEffect;
+      
+      // Add color variation for a more dynamic effect
+      const hue = (Date.now() % 1000) / 1000; // Cycle through colors over time
+      thruster.material.color.setHSL(hue, 1, 0.5);
+      thrusterLight.color.setHSL(hue, 1, 0.5);
     } else if (isMovingBackward) {
       // Reduced thruster when moving backward
-      thruster.scale.set(0.5, 0.5, 0.3 + Math.random() * 0.1);
-      thruster.material.opacity = 0.3 + Math.random() * 0.2;
-      if (thrusterLight) {
-        thrusterLight.intensity = 0.5 + Math.random() * 0.2;
-      }
+      const randomScale = 0.3 + Math.random() * 0.1 + pulseEffect * 0.5;
+      thruster.scale.set(0.5, 0.5, randomScale);
+      thruster.material.opacity = 0.4 + Math.random() * 0.2;
+      thrusterLight.intensity = 0.6 + Math.random() * 0.2 + pulseEffect * 0.5;
+      
+      // Cooler color for reverse thrust
+      thruster.material.color.setHSL(0.6, 1, 0.5); // Blue-ish
+      thrusterLight.color.setHSL(0.6, 1, 0.5);
     } else {
-      // Idle thruster when not moving
-      thruster.scale.set(0.7, 0.7, 0.2 + Math.random() * 0.1);
-      thruster.material.opacity = 0.2 + Math.random() * 0.1;
-      if (thrusterLight) {
-        thrusterLight.intensity = 0.3 + Math.random() * 0.1;
-      }
+      // Idle state with subtle pulsing
+      const idleScale = 0.3 + pulseEffect;
+      thruster.scale.set(0.3, 0.3, idleScale);
+      thruster.material.opacity = 0.3 + pulseEffect;
+      thrusterLight.intensity = 0.4 + pulseEffect;
+      
+      // Neutral color for idle
+      thruster.material.color.setHSL(0.5, 0.7, 0.5); // Cyan-ish
+      thrusterLight.color.setHSL(0.5, 0.7, 0.5);
+    }
+    
+    // Performance optimization: only update material if it's visible
+    if (thruster.material.opacity < 0.01) {
+      thruster.visible = false;
+      thrusterLight.visible = false;
+    } else {
+      thruster.visible = true;
+      thrusterLight.visible = true;
     }
   }
   
@@ -1763,49 +2034,36 @@ class SimpleGame {
     if (!this.bouncingLasers || this.bouncingLasers.length === 0) return;
     
     const tempRay = new THREE.Ray();
-    const tempMatrix = new THREE.Matrix4();
     const tempVector = new THREE.Vector3();
     
     for (let i = this.bouncingLasers.length - 1; i >= 0; i--) {
       const laser = this.bouncingLasers[i];
       
       // Animate the laser's pulse effect
-      laser.pulsePhase += 0.1;
-      const pulseValue = Math.sin(laser.pulsePhase) * 0.5 + 0.5; // 0 to 1 range
+      laser.pulsePhase += 0.2;
+      const pulseValue = Math.sin(laser.pulsePhase) * 0.5 + 0.5;
       
-      // Pulse the material
-      laser.mesh.material.opacity = 0.7 + pulseValue * 0.3;
-      
-      // Pulse the light intensity
+      // Pulse the material and light
+      laser.mesh.material.opacity = 0.6 + pulseValue * 0.4;
       const mainLight = laser.mesh.children[0];
       if (mainLight && mainLight.isPointLight) {
-        mainLight.intensity = 1.5 + pulseValue * 1;
+        mainLight.intensity = 1.5 + pulseValue;
       }
       
-      // Rotate the halo for extra effect
-      if (laser.halo) {
-        laser.halo.rotation.z += 0.05;
-      }
-      
-      // Move laser
-      const movement = laser.direction.clone().multiplyScalar(laser.speed);
-      const newPosition = laser.mesh.position.clone().add(movement);
+      // Calculate next position
+      const nextPosition = laser.mesh.position.clone().add(
+        laser.direction.clone().multiplyScalar(laser.speed)
+      );
       
       // Store current position for trail
       laser.trailPoints.push(laser.mesh.position.clone());
-      
-      // Keep more trail points for a longer trail
-      const maxTrailPoints = 25 + laser.bounces * 5; // Longer trail after bounces
-      if (laser.trailPoints.length > maxTrailPoints) {
+      if (laser.trailPoints.length > 12) {
         laser.trailPoints.shift();
       }
       
-      // Update trail geometry with fading points
+      // Update trail with fade effect
       const positions = new Float32Array(laser.trailPoints.length * 3);
       const colors = new Float32Array(laser.trailPoints.length * 3);
-      
-      // Base color in RGB components (0x00ffcc)
-      const r = 0, g = 1, b = 0.8;
       
       for (let j = 0; j < laser.trailPoints.length; j++) {
         positions[j * 3] = laser.trailPoints[j].x;
@@ -1814,166 +2072,145 @@ class SimpleGame {
         
         // Calculate fade based on position in trail
         const fade = j / laser.trailPoints.length;
-        
-        // Apply color with fade
-        colors[j * 3] = r * fade;
-        colors[j * 3 + 1] = g * fade;
-        colors[j * 3 + 2] = b * fade;
+        colors[j * 3] = 0; // R
+        colors[j * 3 + 1] = 1 * fade; // G
+        colors[j * 3 + 2] = 0.6 * fade; // B
       }
       
       laser.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       laser.trail.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       laser.trail.material.vertexColors = true;
       
-      // Check for bounces
+      // Check for collisions
       let bounced = false;
-      const rayOrigin = laser.mesh.position.clone();
-      const rayDirection = laser.direction.clone();
       
-      // Set up the ray for collision detection
-      tempRay.set(rayOrigin, rayDirection);
+      // Set up ray for collision detection
+      tempRay.origin.copy(laser.mesh.position);
+      tempRay.direction.copy(laser.direction);
       
-      // Check for collisions with obstacles
-      let closestDistance = Infinity;
-      let closestIntersection = null;
-      let closestObstacle = null;
+      // Check each obstacle
+      let closestDist = Infinity;
+      let closestPoint = null;
+      let closestNormal = null;
       
       for (const obstacle of this.obstacles) {
-        // Skip if obstacle doesn't have geometry
         if (!obstacle.geometry) continue;
         
-        // Get obstacle in world space
-        tempMatrix.copy(obstacle.matrixWorld);
+        let intersection = null;
+        let normal = null;
         
-        // Different collision handling based on geometry type
         if (obstacle.geometry instanceof THREE.SphereGeometry) {
           const radius = obstacle.geometry.parameters.radius;
-          const center = obstacle.position.clone();
-          
-          // Check for sphere intersection
-          const sphereIntersection = tempRay.intersectSphere(
-            new THREE.Sphere(center, radius),
+          intersection = tempRay.intersectSphere(
+            new THREE.Sphere(obstacle.position, radius),
             tempVector
           );
-          
-          if (sphereIntersection) {
-            const distance = rayOrigin.distanceTo(sphereIntersection);
-            if (distance < closestDistance && distance < laser.speed * 1.2) {
-              closestDistance = distance;
-              closestIntersection = sphereIntersection;
-              closestObstacle = obstacle;
-            }
+          if (intersection) {
+            normal = intersection.clone().sub(obstacle.position).normalize();
           }
-        } 
-        else if (obstacle.geometry instanceof THREE.CylinderGeometry) {
+        } else if (obstacle.geometry instanceof THREE.CylinderGeometry) {
           const radius = obstacle.geometry.parameters.radiusTop;
-          const center = obstacle.position.clone();
-          
-          // For cylinders, treat as a sphere for bounce calculation
-          const sphereIntersection = tempRay.intersectSphere(
-            new THREE.Sphere(center, radius),
+          intersection = tempRay.intersectSphere(
+            new THREE.Sphere(obstacle.position, radius),
             tempVector
           );
-          
-          if (sphereIntersection) {
-            const distance = rayOrigin.distanceTo(sphereIntersection);
-            if (distance < closestDistance && distance < laser.speed * 1.2) {
-              closestDistance = distance;
-              closestIntersection = sphereIntersection;
-              closestObstacle = obstacle;
-            }
+          if (intersection) {
+            normal = intersection.clone().sub(obstacle.position).normalize();
+          }
+        } else {
+          // For boxes, use bounding sphere as approximation
+          const boundingSphere = obstacle.geometry.boundingSphere;
+          if (!boundingSphere) {
+            obstacle.geometry.computeBoundingSphere();
+          }
+          const sphere = new THREE.Sphere(
+            obstacle.position,
+            obstacle.geometry.boundingSphere.radius
+          );
+          intersection = tempRay.intersectSphere(sphere, tempVector);
+          if (intersection) {
+            normal = intersection.clone().sub(obstacle.position).normalize();
+          }
+        }
+        
+        if (intersection) {
+          const dist = laser.mesh.position.distanceTo(intersection);
+          if (dist < closestDist && dist < laser.speed * 1.2) {
+            closestDist = dist;
+            closestPoint = intersection;
+            closestNormal = normal;
           }
         }
       }
       
-      // If we found an intersection
-      if (closestIntersection && closestObstacle) {
-        // Position at the intersection point
-        laser.mesh.position.copy(closestIntersection);
+      // Handle bounce if collision found
+      if (closestPoint && closestNormal) {
+        // Position at intersection point
+        laser.mesh.position.copy(closestPoint);
         
-        // Calculate normal for bounce
-        const normal = closestIntersection.clone().sub(closestObstacle.position).normalize();
+        // Calculate reflection direction
+        const dot = laser.direction.dot(closestNormal);
+        const reflection = laser.direction.clone()
+          .sub(closestNormal.multiplyScalar(2 * dot))
+          .normalize();
         
-        // Calculate reflection direction: r = d - 2(d·n)n
-        const dot = laser.direction.dot(normal);
-        const reflection = laser.direction.clone().sub(normal.multiplyScalar(2 * dot));
-        
-        // Update direction
+        // Update direction with some randomness for more interesting bounces
+        const randomAngle = (Math.random() - 0.5) * 0.2; // Small random angle
+        reflection.applyAxisAngle(new THREE.Vector3(0, 1, 0), randomAngle);
         laser.direction.copy(reflection);
-        
-        // Update rotation to match new direction
-        laser.mesh.lookAt(laser.mesh.position.clone().add(laser.direction));
         
         // Increment bounce count
         laser.bounces++;
         
-        // Create enhanced bounce effect
-        this.createBounceEffect(closestIntersection.clone(), normal.clone());
+        // Create bounce effect
+        this.createBounceEffect(closestPoint.clone(), closestNormal.clone());
         
         // Play bounce sound
         this.playSound('bounce');
         
-        // After first bounce, it can hit the player
+        // Enable player collision after first bounce
         laser.canHitPlayer = true;
         
-        // Slightly increase speed after each bounce
-        laser.speed *= 1.05;
-        
-        // Make laser more energetic after bounce
-        if (mainLight && mainLight.isPointLight) {
-          mainLight.intensity += 0.5;
-          mainLight.distance += 0.5;
-        }
-        
-        // Reset pulse for dramatic effect
-        laser.pulsePhase = 0;
+        // Increase speed slightly with each bounce
+        laser.speed *= 1.1;
         
         bounced = true;
-      } else if (laser.bounceTimeout > 0) {
-        // Reduce timeout for allowing player collision
-        laser.bounceTimeout--;
-        if (laser.bounceTimeout <= 0) {
-          laser.canHitPlayer = true;
-        }
       }
       
-      // If not bounced, just move
+      // If no bounce, move normally
       if (!bounced) {
-        laser.mesh.position.copy(newPosition);
+        laser.mesh.position.copy(nextPosition);
       }
       
-      // Check for collision with player if it can hit player
+      // Check for player collision
       if (laser.canHitPlayer) {
-        const playerPosition = this.playerShip.position.clone();
-        playerPosition.y = 0.5; // Match laser height
+        const playerPos = this.playerShip.position.clone();
+        playerPos.y = 0.5;
         
-        if (laser.mesh.position.distanceTo(playerPosition) < 1) {
-          // Player hit by own laser
-          this.health -= 10; // Damage from own bouncing laser
+        if (laser.mesh.position.distanceTo(playerPos) < 1) {
+          // Player hit
+          this.health -= 10;
           if (this.health < 0) this.health = 0;
           
           // Update UI
           this.ui.updateHealth(this.health, this.maxHealth);
           
-          // Flash the screen
+          // Visual feedback
           this.flashCollisionWarning();
-          
-          // Create impact effect on player
-          this.createBounceEffect(playerPosition, new THREE.Vector3(0, 1, 0));
+          this.createBounceEffect(playerPos, new THREE.Vector3(0, 1, 0));
           
           // Remove laser
           this.scene.remove(laser.mesh);
           this.scene.remove(laser.trail);
           this.bouncingLasers.splice(i, 1);
-          
           continue;
         }
       }
       
-      // Increment lifetime
+      // Update lifetime
       laser.lifeTime++;
       
-      // Remove old lasers or if max bounces reached
+      // Remove if too old or too many bounces
       if (laser.lifeTime > laser.maxLifeTime || laser.bounces >= laser.maxBounces) {
         this.scene.remove(laser.mesh);
         this.scene.remove(laser.trail);
@@ -2368,6 +2605,258 @@ class SimpleGame {
     if (this.miniMap) {
       this.miniMap.toggle();
     }
+  }
+  
+  // Add cleanup method
+  cleanup() {
+    // Stop and remove all sounds
+    this.soundPools.forEach(pool => {
+      pool.forEach(wrapper => {
+        if (wrapper.sound.isPlaying) {
+          wrapper.sound.stop();
+        }
+        wrapper.sound.buffer = null;
+      });
+    });
+    
+    // Clear sound pools and loaded sounds
+    this.soundPools.clear();
+    this.loadedSounds.clear();
+    this.soundLoadPromises.clear();
+    
+    // Remove audio listener from camera
+    if (this.audioListener) {
+      this.camera.remove(this.audioListener);
+      this.audioListener = null;
+    }
+    
+    // Remove event listeners
+    window.removeEventListener('resize', this.boundHandleResize);
+    document.removeEventListener('keydown', this.boundHandleKeyDown);
+    document.removeEventListener('keyup', this.boundHandleKeyUp);
+    document.removeEventListener('click', this.boundHandleClick);
+    document.removeEventListener('mousemove', this.boundHandleMouseMove);
+    
+    // Clear timers
+    if (this.resizeTimer) {
+      clearTimeout(this.resizeTimer);
+      this.resizeTimer = null;
+    }
+    
+    if (this.mouseMoveTimer) {
+      clearTimeout(this.mouseMoveTimer);
+      this.mouseMoveTimer = null;
+    }
+    
+    // Clear weapon cooldowns
+    this.weaponCooldowns.clear();
+    
+    // Clear key states
+    Object.keys(this.keys).forEach(key => {
+      this.keys[key] = false;
+    });
+    this.activeKeys.clear();
+  }
+
+  startGame() {
+    // Hide start screen
+    const startScreen = document.getElementById('start-screen');
+    if (startScreen) {
+      startScreen.classList.add('fade-out');
+      setTimeout(() => {
+        startScreen.classList.add('hidden');
+        startScreen.classList.remove('fade-out');
+      }, 500);
+    }
+
+    // Show game UI
+    this.ui.show();
+
+    // Start animation loop
+    this.animate();
+  }
+
+  handleDirectionalFiring(event) {
+    // Get mouse position in normalized device coordinates
+    const mouse = new THREE.Vector2(
+      (event.clientX / window.innerWidth) * 2 - 1,
+      -(event.clientY / window.innerHeight) * 2 + 1
+    );
+
+    // Use raycasting to determine the point in 3D space
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, this.camera);
+
+    // Check for intersection with the floor
+    const intersects = raycaster.intersectObject(this.floor);
+
+    if (intersects.length > 0) {
+      const targetPoint = intersects[0].point;
+
+      // Calculate direction from ship to target
+      const direction = targetPoint.clone().sub(this.playerShip.position).normalize();
+      direction.y = 0; // Keep shots parallel to ground
+
+      // Get firing position (slightly in front of ship)
+      const position = this.playerShip.position.clone().add(direction.multiplyScalar(1.5));
+      position.y = 0.5; // Set height
+
+      // Fire weapon in calculated direction
+      this.fireCurrentWeapon(direction);
+    }
+  }
+
+  fireCurrentWeapon(direction) {
+    // Check weapon cooldown
+    const now = Date.now();
+    const weaponCooldown = this.weaponCooldowns.get(this.currentWeapon) || 0;
+
+    if (now < weaponCooldown) {
+      return;
+    }
+
+    // Set cooldown based on weapon type
+    const cooldownTime = this.currentWeapon === 'GRENADE' ? 1000 :
+                        this.currentWeapon === 'BOUNCE' ? 500 :
+                        200;
+
+    this.weaponCooldowns.set(this.currentWeapon, now + cooldownTime);
+
+    // Get firing position (slightly in front of ship)
+    const shipDirection = direction || new THREE.Vector3(0, 0, -1).applyQuaternion(this.playerShip.quaternion);
+    const position = this.playerShip.position.clone().add(shipDirection.multiplyScalar(1.5));
+    position.y = 0.5; // Set height
+
+    // Create weapon effect based on type
+    switch (this.currentWeapon) {
+      case 'LASER':
+        this.fireLaser(position, shipDirection);
+        break;
+      case 'BOUNCE':
+        this.fireBouncingLaser(position, shipDirection);
+        break;
+      case 'GRENADE':
+        // Grenades are handled separately through handleGrenadeTargeting
+        break;
+    }
+
+    // Play appropriate sound
+    const soundMap = {
+      'LASER': 'laser',
+      'BOUNCE': 'laser-bounce',
+      'GRENADE': 'grenade-laser'
+    };
+
+    this.playSound(soundMap[this.currentWeapon]);
+  }
+
+  fireLaser(position, direction) {
+    // Create laser geometry - make it longer and thinner for better visual
+    const geometry = new THREE.CylinderGeometry(0.05, 0.05, 3, 8);
+    geometry.rotateX(Math.PI / 2);
+
+    // Create glowing material with better visual effects
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.8
+    });
+
+    const laser = new THREE.Mesh(geometry, material);
+    laser.position.copy(position);
+
+    // Orient laser along direction - using lookAt for more accurate direction
+    const targetPos = position.clone().add(direction.clone().multiplyScalar(1));
+    laser.lookAt(targetPos);
+
+    // Add to scene
+    this.scene.add(laser);
+
+    // Add point light for glow effect with better parameters
+    const light = new THREE.PointLight(0x00ffff, 2, 4);
+    light.position.set(0, 0, 0); // Center of the laser
+    laser.add(light);
+
+    // Add a trail effect
+    const trailGeometry = new THREE.BufferGeometry();
+    const trailMaterial = new THREE.LineBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending
+    });
+    const trail = new THREE.Line(trailGeometry, trailMaterial);
+    this.scene.add(trail);
+
+    // Initialize lasers array if it doesn't exist
+    if (!this.lasers) {
+      this.lasers = [];
+    }
+
+    // Store laser data with enhanced properties
+    this.lasers.push({
+      mesh: laser,
+      trail: trail,
+      direction: direction.clone(), // Clone the direction to prevent reference issues
+      speed: 1.2, // Slightly increased speed for better feel
+      lifeTime: 0,
+      maxLifeTime: 40,
+      trailPoints: [],
+      pulsePhase: 0
+    });
+  }
+
+  fireBouncingLaser(position, direction) {
+    // Create bouncing laser geometry - using a smaller sphere for better visuals
+    const geometry = new THREE.SphereGeometry(0.15, 16, 16);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x00ff99,
+      transparent: true,
+      opacity: 0.8
+    });
+
+    const laser = new THREE.Mesh(geometry, material);
+    laser.position.copy(position);
+
+    // Add point light for glow effect
+    const light = new THREE.PointLight(0x00ff99, 2, 3);
+    laser.add(light);
+
+    // Create enhanced trail effect
+    const trail = new THREE.Line(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({
+        color: 0x00ff99,
+        transparent: true,
+        opacity: 0.6,
+        blending: THREE.AdditiveBlending
+      })
+    );
+
+    // Add to scene
+    this.scene.add(laser);
+    this.scene.add(trail);
+
+    // Initialize bouncing lasers array if it doesn't exist
+    if (!this.bouncingLasers) {
+      this.bouncingLasers = [];
+    }
+
+    // Store bouncing laser data with improved parameters
+    this.bouncingLasers.push({
+      mesh: laser,
+      trail: trail,
+      direction: direction.clone(), // Clone the direction to prevent reference issues
+      speed: 0.8, // Increased speed for better feel
+      bounces: 0,
+      maxBounces: 3,
+      lifeTime: 0,
+      maxLifeTime: 120,
+      canHitPlayer: false,
+      bounceTimeout: 15, // Reduced timeout for better gameplay
+      trailPoints: [],
+      pulsePhase: 0
+    });
   }
 }
 
