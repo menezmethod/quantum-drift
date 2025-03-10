@@ -3,6 +3,8 @@ import './styles/main.css';
 import { GameUI } from './ui/GameUI';
 import { MiniMap } from './ui/MiniMap';
 import { KEY_MAPPINGS, CONTROL_SETTINGS, CONTROL_FEEDBACK, DEFAULT_CONTROL_STATE, ControlUtils } from './config/Controls';
+import { ShipSelectionUI } from './ui/ShipSelectionUI';
+import AssetLoader from './assets/AssetLoader';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -14,6 +16,12 @@ class SimpleGame {
     this.loadedSounds = new Map();
     this.soundLoadPromises = new Map();
 
+    // Create the asset loader
+    this.assetLoader = new AssetLoader().setCallbacks(
+      (message) => this.updateLoadingUI(message),
+      (type, error) => this.handleLoadError(type, error)
+    );
+    
     // Asset loading state
     this.loadingState = {
       started: false,
@@ -92,19 +100,25 @@ class SimpleGame {
     this.scene.background = new THREE.Color(0x000011);
     
     // Setup camera
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000); // Restored original FOV
-    this.camera.position.set(0, 15, -10); // Slightly adjusted for the larger ship
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    this.camera.position.set(0, 15, -10);
     this.camera.lookAt(0, 0, 0);
     
     // Camera smoothing properties
     this.cameraTargetPosition = new THREE.Vector3();
     this.cameraTargetLookAt = new THREE.Vector3();
-    this.cameraSmoothingFactor = 0.05; // Reduced for less aggressive smoothing
+    this.cameraSmoothingFactor = 0.05;
     
     // Setup renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(this.renderer.domElement);
+    const container = document.getElementById('game-container');
+    if (container) {
+      container.appendChild(this.renderer.domElement);
+    } else {
+      console.error('Game container not found!');
+      document.body.appendChild(this.renderer.domElement);
+    }
     
     // Add lights
     const ambientLight = new THREE.AmbientLight(0x404040);
@@ -147,9 +161,9 @@ class SimpleGame {
         this.handleLoadError('sounds', error);
         return null;
       }),
-      this.loadShipModel().catch(error => {
-        console.error('🔍 Ship model loading failed:', error);
-        this.handleLoadError('ship model', error);
+      this.loadAssetsWithLoader().catch(error => {
+        console.error('🔍 Asset loading failed:', error);
+        this.handleLoadError('assets', error);
         return null;
       })
     ]).then(() => {
@@ -160,6 +174,17 @@ class SimpleGame {
       console.error('🔍 Critical error loading assets:', error);
       this.handleLoadError('critical', error);
     });
+  }
+  
+  async loadAssetsWithLoader() {
+    console.log('🟢🟢🟢 Loading assets with AssetLoader...');
+    
+    // Use AssetLoader to load all assets including ship models
+    await this.assetLoader.loadAll();
+    this.shipModelLoaded = true;
+    console.log('✅ All assets loaded successfully via AssetLoader');
+    
+    return true;
   }
   
   loadSounds() {
@@ -179,7 +204,9 @@ class SimpleGame {
       { name: 'laser', path: 'assets/sounds/laser.mp3', poolSize: 5 },
       { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3', poolSize: 3 },
       { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3', poolSize: 2 },
-      { name: 'bounce', path: 'assets/sounds/bounce.mp3', poolSize: 3 }
+      { name: 'bounce', path: 'assets/sounds/bounce.mp3', poolSize: 3 },
+      { name: 'weapon-switch', path: 'assets/sounds/weapon-switch.mp3', poolSize: 2 },
+      { name: 'weapon-charging', path: 'assets/sounds/weapon-charging.mp3', poolSize: 1, volume: 0.2 }  // Lower volume for background effect
     ];
     
     // Create a pool of sounds for frequently played effects
@@ -204,7 +231,7 @@ class SimpleGame {
               for (let i = 0; i < soundInfo.poolSize; i++) {
                 const sound = new THREE.Audio(this.audioListener);
                 sound.setBuffer(buffer);
-                sound.setVolume(0.5);
+                sound.setVolume(soundInfo.volume || 0.5); // Use specified volume or default to 0.5
                 pool.push({ sound, inUse: false, lastUsed: 0 });
               }
               
@@ -311,107 +338,84 @@ class SimpleGame {
     this.rotationSpeed = 0.05;
   }
   
-  loadShipModel() {
-    return new Promise((resolve, reject) => {
-      // Skip if already loading
-      if (this.loadingState.loadingPromises.has('shipModel')) {
-        return this.loadingState.loadingPromises.get('shipModel');
-      }
-      
-      console.log('🟢🟢🟢 INDEX.JS: Loading ship model...');
-      
-      const loadPromise = import('@three/examples/loaders/GLTFLoader')
-        .then(({ GLTFLoader }) => {
-          const loader = new GLTFLoader();
-          
-          // Set loading timeout
-          const timeoutId = setTimeout(() => {
-            reject(new Error('Ship model loading timeout'));
-          }, 15000); // 15 second timeout
-          
-          this.loadingState.timeouts.set('shipModel', timeoutId);
-          
-          return new Promise((resolveLoad, rejectLoad) => {
-            loader.load(
-              'assets/models/ships/avrocar_vz-9-av_experimental_aircraft.glb',
-              (gltf) => {
-                clearTimeout(timeoutId);
-                this.loadingState.timeouts.delete('shipModel');
-                
-                console.log('🟢🟢🟢 INDEX.JS: Ship model loaded successfully!');
-                
-                try {
-                  // Store the model
-                  this.shipModel = gltf.scene;
-                  
-                  // Scale and position the model
-                  this.shipModel.scale.set(0.9, 0.9, 0.9);
-                  console.log('🟢🟢🟢 INDEX.JS: Applied scale 0.9 to shipModel');
-                  this.shipModel.rotation.y = Math.PI;
-                  
-                  // Apply materials
-                  this.shipModel.traverse((child) => {
-                    if (child.isMesh) {
-                      console.log('🟢🟢🟢 INDEX.JS: Found mesh in avrocar model:', child.name);
-                      
-                      // Add emissive glow to the ship
-                      child.material.emissive = new THREE.Color(0x00ffff);
-                      child.material.emissiveIntensity = 0.5;
-                      child.material.needsUpdate = true;
-                    }
-                  });
-                  
-                  // Add the model to the playerShip group
-                  this.scene.remove(this.playerShip);
-                  this.playerShip = new THREE.Group();
-                  this.playerShip.add(this.shipModel);
-                  this.playerShip.position.set(0, 0.5, 0);
-                  this.scene.add(this.playerShip);
-                  
-                  // Add effects
-                  this.addThrusterGlow();
-                  
-                  // Update state
-                  this.shipModelLoaded = true;
-                  
-                  resolveLoad();
-                } catch (error) {
-                  rejectLoad(new Error(`Error processing ship model: ${error.message}`));
-                }
-              },
-              (xhr) => {
-                const percentComplete = (xhr.loaded / xhr.total) * 100;
-                this.updateLoadingUI(`Loading ship model: ${Math.round(percentComplete)}%`);
-              },
-              (error) => {
-                clearTimeout(timeoutId);
-                this.loadingState.timeouts.delete('shipModel');
-                rejectLoad(new Error(`Error loading ship model: ${error.message}`));
-              }
-            );
-          });
-        });
-      
-      // Store the loading promise
-      this.loadingState.loadingPromises.set('shipModel', loadPromise);
-      
-      // Handle the promise
-      loadPromise
-        .then(resolve)
-        .catch(error => {
-          // Attempt retry if under max retries
-          const retryCount = (this.loadingState.retryCount.get('shipModel') || 0) + 1;
-          this.loadingState.retryCount.set('shipModel', retryCount);
-          
-          if (retryCount <= this.loadingState.maxRetries) {
-            console.warn(`Retrying ship model load (attempt ${retryCount}/${this.loadingState.maxRetries})`);
-            this.loadingState.loadingPromises.delete('shipModel');
-            return this.loadShipModel();
-          }
-          
-          reject(error);
-        });
+  setShipModel(type) {
+    console.log('🔍 Setting ship model:', {
+        type,
+        hasAssetLoader: !!this.assetLoader
     });
+
+    // Safety check for AssetLoader
+    if (!this.assetLoader) {
+        console.error(`❌ AssetLoader not initialized!`);
+        return;
+    }
+    
+    // Wait for loading to complete if needed
+    if (!this.assetLoader.isLoaded()) {
+        console.warn(`⚠️ AssetLoader not fully loaded yet. Using default ship.`);
+        return;
+    }
+
+    // Remove existing ship
+    if (this.playerShip) {
+        console.log('🔍 Removing existing ship');
+        this.scene.remove(this.playerShip);
+    }
+
+    // Create new ship group
+    this.playerShip = new THREE.Group();
+    
+    // Get the model from AssetLoader
+    let model = this.assetLoader.getShipModel(type);
+    
+    // If model not found, try to get a fallback model
+    if (!model) {
+        console.warn(`⚠️ Ship model type ${type} not found! Trying fallback models...`);
+        
+        // Try other model types as fallbacks
+        const fallbackTypes = ['FIGHTER', 'INTERCEPTOR', 'SCOUT', 'EXPERIMENTAL'];
+        for (const fallbackType of fallbackTypes) {
+            if (fallbackType !== type) {
+                model = this.assetLoader.getShipModel(fallbackType);
+                if (model) {
+                    console.log(`✅ Using fallback ship model: ${fallbackType}`);
+                    break;
+                }
+            }
+        }
+        
+        // If still no model, create a default geometric shape
+        if (!model) {
+            console.error(`❌ No ship models available! Creating default geometry.`);
+            const geometry = new THREE.BoxGeometry(1, 0.5, 2);
+            const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+            model = new THREE.Mesh(geometry, material);
+        }
+    }
+    
+    console.log('🔍 Using ship model:', {
+        children: model.children?.length || 0,
+        position: model.position,
+        rotation: model.rotation,
+        scale: model.scale
+    });
+
+    // Store the model reference for thruster effects
+    this.shipModel = model;
+
+    // Add the model to the player ship group
+    this.playerShip.add(model);
+    
+    // Position the ship - use original position
+    this.playerShip.position.set(0, 0.5, 0);
+    
+    // Add to scene
+    this.scene.add(this.playerShip);
+    
+    // Add thruster effects
+    this.addThrusterGlow();
+    
+    console.log('✅ Ship model set successfully');
   }
   
   handleLoadError(assetType, error) {
@@ -585,12 +589,17 @@ class SimpleGame {
     this.thruster = thruster;
     this.thrusterLight = thrusterLight;
     
-    // Add to ship model
-    this.shipModel.add(thruster);
-    this.shipModel.add(thrusterLight);
+    // Create a subtle, animated glow effect with proper initialization
+    this.thrusterPulse = { 
+      value: 0,
+      phase: 0 
+    };
     
-    // Create a subtle, animated glow effect
-    this.thrusterPulse = { value: 0 };
+    // Add to ship model
+    if (this.shipModel) {
+      this.shipModel.add(thruster);
+      this.shipModel.add(thrusterLight);
+    }
   }
   
   createFloor() {
@@ -782,6 +791,7 @@ class SimpleGame {
     if (!this.controlsContainer) {
         this.controlsContainer = document.createElement('div');
         this.controlsContainer.id = 'controls';
+        this.controlsContainer.className = 'control-indicators';
         document.body.appendChild(this.controlsContainer);
         console.log('Control container created');
     }
@@ -789,49 +799,100 @@ class SimpleGame {
     // Clear existing indicators
     this.controlsContainer.innerHTML = '';
     
-    // Create sections for different control types
-    const sections = ['MOVEMENT', 'WEAPONS', 'ACTIONS'];
-    sections.forEach(section => {
-        console.log('Creating section:', section);
-        const controls = CONTROL_FEEDBACK[section] || [];
-        if (controls.length > 0) {
-            const sectionContainer = document.createElement('div');
-            sectionContainer.className = `control-section ${section.toLowerCase()}`;
-            
-            controls.forEach(control => {
-                const indicator = document.createElement('div');
-                indicator.className = 'control-indicator';
-                indicator.id = `control-${control.id}`;
-                indicator.innerHTML = `
-                    <span class="key">${control.key}</span>
-                    <span class="label">${control.label}</span>
-                    <span class="tooltip">${control.tooltip}</span>
-                `;
-                sectionContainer.appendChild(indicator);
-            });
-            
-            this.controlsContainer.appendChild(sectionContainer);
-        }
+    // Create the movement controls grid
+    const movementControls = document.createElement('div');
+    movementControls.className = 'movement-controls control-group';
+    
+    // Create the weapon controls section
+    const weaponControls = document.createElement('div');
+    weaponControls.className = 'weapon-controls control-group';
+    
+    // Define the key indicators for movement
+    const movementKeys = [
+        { id: 'forward', key: 'W', label: '⬆️', tooltip: 'Forward', gridArea: 'forward' },
+        { id: 'backward', key: 'S', label: '⬇️', tooltip: 'Backward', gridArea: 'backward' },
+        { id: 'left', key: 'A', label: '⬅️', tooltip: 'Turn Left', gridArea: 'left' },
+        { id: 'right', key: 'D', label: '➡️', tooltip: 'Turn Right', gridArea: 'right' },
+        { id: 'strafeLeft', key: 'Q', label: '↩️', tooltip: 'Strafe Left', gridArea: 'strafeLeft' },
+        { id: 'strafeRight', key: 'E', label: '↪️', tooltip: 'Strafe Right', gridArea: 'strafeRight' },
+        { id: 'fire', key: 'CLICK', label: '🔥', tooltip: 'Fire Weapon', gridArea: 'fire' }
+    ];
+    
+    // Define the key indicators for weapons
+    const weaponKeys = [
+        { id: 'selectLaser', key: '1', label: '🔫', tooltip: 'Laser', className: 'weapon-key' },
+        { id: 'selectGrenade', key: '2', label: '💣', tooltip: 'Grenade', className: 'weapon-key' },
+        { id: 'selectBounce', key: '3', label: '↗️↘️', tooltip: 'Bounce Laser', className: 'weapon-key' },
+        { id: 'switchWeapon', key: 'X', label: '🔄', tooltip: 'Switch Weapon', className: 'weapon-key' }
+    ];
+    
+    // Create movement indicators
+    movementKeys.forEach(keyInfo => {
+        const indicator = document.createElement('div');
+        indicator.id = `indicator-${keyInfo.id}`;
+        indicator.className = `key-indicator ${keyInfo.className || ''}`;
+        indicator.innerHTML = `
+            <span class="key">${keyInfo.key}</span>
+            <span class="label">${keyInfo.label}</span>
+        `;
+        indicator.title = keyInfo.tooltip;
+        movementControls.appendChild(indicator);
     });
     
-    console.log('Control indicators created');
+    // Create weapon indicators
+    weaponKeys.forEach(keyInfo => {
+        const indicator = document.createElement('div');
+        indicator.id = `indicator-${keyInfo.id}`;
+        indicator.className = `key-indicator ${keyInfo.className || ''}`;
+        indicator.innerHTML = `
+            <span class="key">${keyInfo.key}</span>
+            <span class="label">${keyInfo.label}</span>
+        `;
+        indicator.title = keyInfo.tooltip;
+        weaponControls.appendChild(indicator);
+    });
+    
+    // Add a controls hint
+    const hint = document.createElement('div');
+    hint.className = 'controls-hint';
+    hint.textContent = 'Press C to toggle controls visibility';
+    
+    // Add all elements to controls container
+    this.controlsContainer.appendChild(movementControls);
+    this.controlsContainer.appendChild(weaponControls);
+    this.controlsContainer.appendChild(hint);
+    
+    console.log('Control indicators created with updated structure');
   }
   
   updateControlIndicators() {
     // Skip if control indicators aren't created yet
     if (!this.controlsContainer) return;
     
-    // Update each indicator based on key state and active keys
-    for (const category of Object.values(KEY_MAPPINGS)) {
-      for (const [action, keys] of Object.entries(category)) {
-        const indicator = document.getElementById(`indicator-${action.toLowerCase()}`);
-        if (indicator) {
-          if (keys.some(key => this.activeKeys.has(key))) {
-            indicator.classList.add('active');
-          } else {
-            indicator.classList.remove('active');
-          }
-        }
+    // Update movement keys
+    this.updateIndicatorState('forward', this.keys.forward);
+    this.updateIndicatorState('backward', this.keys.backward);
+    this.updateIndicatorState('left', this.keys.left);
+    this.updateIndicatorState('right', this.keys.right);
+    this.updateIndicatorState('strafeLeft', this.keys.strafeLeft);
+    this.updateIndicatorState('strafeRight', this.keys.strafeRight);
+    
+    // Update fire state
+    this.updateIndicatorState('fire', this.keys.fire);
+    
+    // Update weapon selection
+    this.updateIndicatorState('selectLaser', this.currentWeapon === 'LASER');
+    this.updateIndicatorState('selectGrenade', this.currentWeapon === 'GRENADE');
+    this.updateIndicatorState('selectBounce', this.currentWeapon === 'BOUNCE');
+  }
+  
+  updateIndicatorState(id, isActive) {
+    const indicator = this.controlsContainer?.querySelector(`#indicator-${id}`);
+    if (indicator) {
+      if (isActive) {
+        indicator.classList.add('active');
+      } else {
+        indicator.classList.remove('active');
       }
     }
   }
@@ -851,6 +912,25 @@ class SimpleGame {
   }
   
   handleKeyDown(event) {
+    // Handle escape key for exiting to main menu
+    if (event.code === 'Escape' && this.isRunning) {
+        this.exitToMainMenu();
+        return;
+    }
+    
+    // Handle 'C' key to toggle controls visibility
+    if (event.code === 'KeyC') {
+        console.log('C key pressed - toggling controls');
+        this.toggleControls();
+        return;
+    }
+    
+    // Handle 'M' key to toggle mini-map
+    if (event.code === 'KeyM') {
+        this.toggleMiniMap();
+        return;
+    }
+
     // Get control action from key mapping
     const action = ControlUtils.getActionForKey(event.code);
     
@@ -1233,37 +1313,90 @@ class SimpleGame {
     // Clear any existing timeout
     if (this.controlsTimeout) {
       clearTimeout(this.controlsTimeout);
+      this.controlsTimeout = null;
+    }
+    
+    // Also clear any auto-fade timeout
+    if (this.controlsFadeTimeout) {
+      clearTimeout(this.controlsFadeTimeout);
+      this.controlsFadeTimeout = null;
+    }
+    
+    if (!this.controlsContainer) {
+      this.createControlIndicators();
     }
     
     if (this.controlsContainer.classList.contains('visible')) {
       this.fadeOutControls();
     } else {
       this.fadeInControls();
-      
-      // Don't auto-hide after initial display
-      // Only hide when user presses C again
     }
   }
   
   fadeInControls() {
     console.log('Fading in controls');
+    
+    // Clear any existing fade timeout
+    if (this.controlsFadeTimeout) {
+      clearTimeout(this.controlsFadeTimeout);
+      this.controlsFadeTimeout = null;
+    }
+    
     if (this.controlsContainer) {
-        this.controlsContainer.style.opacity = '1';
-        this.controlsContainer.style.display = 'flex';
+        // Remove any classes that might hide the controls
+        this.controlsContainer.classList.remove('hidden', 'fading');
+        // Add the visible class
+        this.controlsContainer.classList.add('visible');
+        console.log('Controls should now be visible with class: visible');
+        
+        // Set a timeout to automatically fade out the controls after 5 seconds
+        // (but only if we're in the game and not in a menu)
+        if (this.isRunning) {
+            this.controlsFadeTimeout = setTimeout(() => {
+              console.log('Auto-hiding controls after timeout');
+              this.fadeOutControls();
+            }, 5000);
+        }
     } else {
         console.warn('Control container not found during fade in');
+        // Try to create controls if they don't exist
+        this.createControlIndicators();
+        // And then try to show them
+        if (this.controlsContainer) {
+            this.controlsContainer.classList.add('visible');
+            
+            // Also set the auto-fade timeout for the newly created controls
+            // (but only if we're in the game and not in a menu)
+            if (this.isRunning) {
+                this.controlsFadeTimeout = setTimeout(() => {
+                  console.log('Auto-hiding newly created controls after timeout');
+                  this.fadeOutControls();
+                }, 5000);
+            }
+        }
     }
   }
   
   fadeOutControls() {
     console.log('Fading out controls');
+    
+    // Clear any existing fade timeout
+    if (this.controlsFadeTimeout) {
+      clearTimeout(this.controlsFadeTimeout);
+      this.controlsFadeTimeout = null;
+    }
+    
     if (this.controlsContainer) {
-        this.controlsContainer.style.opacity = '0';
+        // First add the fading class for the transition
+        this.controlsContainer.classList.add('fading');
+        this.controlsContainer.classList.remove('visible');
+        
+        // After the transition completes, add the hidden class
         setTimeout(() => {
-            if (this.controlsContainer.style.opacity === '0') {
-                this.controlsContainer.style.display = 'none';
+            if (this.controlsContainer) {
+                this.controlsContainer.classList.add('hidden');
             }
-        }, 500);
+        }, 500); // Match the transition time from CSS
     } else {
         console.warn('Control container not found during fade out');
     }
@@ -1321,6 +1454,9 @@ selectWeapon(weaponType) {
     
     // Update UI to reflect weapon change
     this.updateWeaponUI();
+    
+    // Play weapon switch sound
+    this.playSound('weapon-switch');
 }
   
   fireGrenade() {
@@ -1328,6 +1464,9 @@ selectWeapon(weaponType) {
   }
   
   animate() {
+    // Skip if game is not running
+    if (!this.isRunning) return;
+    
     // Request next frame
     requestAnimationFrame(() => this.animate());
     
@@ -1354,6 +1493,9 @@ selectWeapon(weaponType) {
     // Update grenades
     this.updateGrenades();
     
+    // Update control indicators (keyboard/touch displays)
+    this.updateControlIndicators();
+    
     // Update mini-map
     if (this.miniMap) {
       this.miniMap.update();
@@ -1369,82 +1511,67 @@ selectWeapon(weaponType) {
       this.playerHighlight.material.opacity = 0.05 + pulseFactor * 0.1;
     }
     
-    // Update ship thruster effects
-    this.updateThrusterEffects();
+    // Update ship thruster effects - with safety check
+    if (this.thruster && this.thrusterLight && this.thrusterPulse) {
+      this.updateThrusterEffects();
+    }
     
     // Render scene
     this.renderer.render(this.scene, this.camera);
   }
   
   updatePlayer(deltaTime) {
-    // Apply rotation when left/right keys are pressed
-    if (this.keys.left) {
-      this.playerShip.rotation.y += this.rotationSpeed;
-    }
-    if (this.keys.right) {
-      this.playerShip.rotation.y -= this.rotationSpeed;
-    }
+    if (!this.playerShip) return;
     
-    // Initialize movement direction vector
-    let moveDirection = new THREE.Vector3(0, 0, 0);
+    // ORIGINAL SHIP MOVEMENT PHYSICS
+    const moveSpeed = 10; // Base movement speed
+    const rotateSpeed = 2.5; // Base rotation speed
     
-    // Get forward direction of the ship
-    const forwardDir = new THREE.Vector3(0, 0, 1);
-    forwardDir.applyQuaternion(this.playerShip.quaternion);
-    
-    // Get right direction for strafing
-    const rightDir = new THREE.Vector3();
-    rightDir.crossVectors(forwardDir, new THREE.Vector3(0, 1, 0)).normalize();
-    
-    // Apply forward/backward movement
+    // Handle forward/backward movement
     if (this.keys.forward) {
-      moveDirection.add(forwardDir);
+        // Move forward
+        const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(this.playerShip.quaternion);
+        this.playerShip.position.addScaledVector(forwardDir, moveSpeed * deltaTime);
     }
-    if (this.keys.backward) {
-      moveDirection.sub(forwardDir);
+    else if (this.keys.backward) {
+        // Move backward
+        const backwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.playerShip.quaternion);
+        this.playerShip.position.addScaledVector(backwardDir, moveSpeed * deltaTime);
     }
-    
-    // Apply strafe movement
-    if (this.keys.strafeRight) {
-      moveDirection.add(rightDir);
+
+    // Handle left/right rotation
+    if (this.keys.left) {
+        // Rotate left
+        this.playerShip.rotation.y += rotateSpeed * deltaTime;
     }
+    else if (this.keys.right) {
+        // Rotate right
+        this.playerShip.rotation.y -= rotateSpeed * deltaTime;
+    }
+
+    // Handle strafing (if enabled)
     if (this.keys.strafeLeft) {
-      moveDirection.sub(rightDir);
+        // Strafe left
+        const leftDir = new THREE.Vector3(-1, 0, 0).applyQuaternion(this.playerShip.quaternion);
+        this.playerShip.position.addScaledVector(leftDir, moveSpeed * 0.7 * deltaTime);
+    }
+    else if (this.keys.strafeRight) {
+        // Strafe right
+        const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(this.playerShip.quaternion);
+        this.playerShip.position.addScaledVector(rightDir, moveSpeed * 0.7 * deltaTime);
     }
     
-    // If we have movement to apply
-    if (moveDirection.lengthSq() > 0) {
-      // Normalize so diagonal movement isn't faster
-      moveDirection.normalize();
-      
-      // Apply movement speed
-      moveDirection.multiplyScalar(this.shipSpeed);
-      
-      // Save current position for collision detection
-      const oldPosition = this.playerShip.position.clone();
-      
-      // Update position
-      this.playerShip.position.add(moveDirection);
-      
-      // Check for collisions with obstacles
-      if (this.checkObstacleCollisions()) {
-        // If collision detected, revert to old position
-        this.playerShip.position.copy(oldPosition);
-        
-        // Provide visual feedback for collision
-        this.flashCollisionWarning();
-      }
-      
-      // Keep within boundaries
-      this.constrainToBounds();
-    }
+    // Check for obstacle collisions
+    this.checkObstacleCollisions();
+
+    // Keep the player within bounds
+    this.constrainToBounds();
     
     // Update thruster effects based on movement
-    this.updateThrusterEffects();
-    
-    // Update visual indicators for active controls
-    this.updateControlIndicators();
-  }
+    if (typeof this.updateThrusterEffects === 'function') {
+        this.updateThrusterEffects();
+    }
+}
   
   updateLasers() {
     if (!this.lasers) return;
@@ -1613,93 +1740,99 @@ selectWeapon(weaponType) {
   }
   
   checkObstacleCollisions() {
-    if (!this.obstacles) return false;
+    if (!this.playerShip || !this.obstacles) return;
     
-    const playerPosition = this.playerShip.position.clone();
-    playerPosition.y = 0; // Project to ground plane for collision detection
-    const playerRadius = 0.8; // Slightly larger collision radius
+    // Player's bounding sphere (rough approximation)
+    const playerRadius = 1.0;  // Assuming a 1 unit radius for the player ship
+    const playerPos = this.playerShip.position.clone();
     
+    // Check each obstacle
     for (const obstacle of this.obstacles) {
-      const obstaclePosition = obstacle.position.clone();
-      
-      // For sphere collisions, we can do a simple distance check
-      if (obstacle.geometry instanceof THREE.SphereGeometry) {
-        const radius = obstacle.geometry.parameters.radius;
-        // Project obstacle to ground plane for collision detection
-        obstaclePosition.y = 0;
+        if (!obstacle.mesh) continue;
         
-        const distance = playerPosition.distanceTo(obstaclePosition);
-        if (distance < (playerRadius + radius)) {
-          return true;
+        const obstaclePos = obstacle.mesh.position.clone();
+        let collision = false;
+        
+        // Different collision detection based on obstacle shape
+        if (obstacle.type === 'sphere') {
+            // Sphere-sphere collision
+            const distance = playerPos.distanceTo(obstaclePos);
+            const minDistance = playerRadius + obstacle.size;
+            collision = distance < minDistance;
         }
-      }
-      // For cylinders, use radius for distance check
-      else if (obstacle.geometry instanceof THREE.CylinderGeometry) {
-        const radius = obstacle.geometry.parameters.radiusTop;
-        // Project obstacle to ground plane for collision detection
-        obstaclePosition.y = 0;
-        
-        const distance = playerPosition.distanceTo(obstaclePosition);
-        if (distance < (playerRadius + radius)) {
-          return true;
+        else if (obstacle.type === 'box') {
+            // Simplified box collision (treating player as sphere)
+            // Get box dimensions
+            const halfWidth = obstacle.size / 2;
+            const halfHeight = obstacle.size / 2;
+            const halfDepth = obstacle.size / 2;
+            
+            // Check if player sphere intersects with box
+            const dx = Math.max(obstaclePos.x - halfWidth - playerPos.x, 0, playerPos.x - (obstaclePos.x + halfWidth));
+            const dy = Math.max(obstaclePos.y - halfHeight - playerPos.y, 0, playerPos.y - (obstaclePos.y + halfHeight));
+            const dz = Math.max(obstaclePos.z - halfDepth - playerPos.z, 0, playerPos.z - (obstaclePos.z + halfDepth));
+            
+            collision = (dx * dx + dy * dy + dz * dz) < (playerRadius * playerRadius);
         }
-      }
-      // For boxes, use a more complex check
-      else {
-        // Project obstacle to ground plane for collision detection
-        obstaclePosition.y = 0;
-        
-        // Get obstacle's bounding box if not already computed
-        if (!obstacle.geometry.boundingBox) {
-          obstacle.geometry.computeBoundingBox();
+        else if (obstacle.type === 'cylinder') {
+            // Simplified cylinder collision (horizontal cylinder)
+            // Get cylinder dimensions
+            const radius = obstacle.size / 2;
+            const height = obstacle.size;
+            
+            // Project player position onto cylinder axis
+            const cylinderDir = new THREE.Vector3(0, 1, 0); // Assume y-axis cylinder
+            const toPlayer = new THREE.Vector3().subVectors(playerPos, obstaclePos);
+            const axisProj = cylinderDir.clone().multiplyScalar(toPlayer.dot(cylinderDir));
+            
+            // Check height bounds
+            const heightDist = axisProj.length();
+            if (heightDist < height / 2) {
+                // Within height bounds, check radial distance
+                const radialVec = toPlayer.clone().sub(axisProj);
+                const radialDist = radialVec.length();
+                collision = radialDist < (radius + playerRadius);
+            }
         }
         
-        // Get obstacle's dimensions
-        const box = obstacle.geometry.boundingBox.clone();
-        
-        // Transform bounding box to world space
-        box.applyMatrix4(obstacle.matrixWorld);
-        
-        // Calculate half-widths of the box on the XZ plane
-        const halfWidth = (box.max.x - box.min.x) / 2;
-        const halfDepth = (box.max.z - box.min.z) / 2;
-        
-        // Calculate closest point on the rectangle to the player
-        const closestX = Math.max(obstaclePosition.x - halfWidth, 
-                           Math.min(playerPosition.x, obstaclePosition.x + halfWidth));
-        const closestZ = Math.max(obstaclePosition.z - halfDepth, 
-                           Math.min(playerPosition.z, obstaclePosition.z + halfDepth));
-        
-        // Calculate distance from closest point to player center
-        const distanceX = playerPosition.x - closestX;
-        const distanceZ = playerPosition.z - closestZ;
-        const distanceSquared = distanceX * distanceX + distanceZ * distanceZ;
-        
-        // Collision detected if distance is less than player radius
-        if (distanceSquared < (playerRadius * playerRadius)) {
-          return true;
+        // Handle collision
+        if (collision) {
+            // Push player away from obstacle
+            const pushDir = new THREE.Vector3().subVectors(playerPos, obstaclePos).normalize();
+            this.playerShip.position.addScaledVector(pushDir, 0.5); // Push back a bit
+            
+            // Flash collision warning
+            this.flashCollisionWarning();
+            
+            // Apply damage
+            if (typeof this.applyDamage === 'function') {
+                this.applyDamage(5);
+            }
+            
+            break; // Only handle one collision at a time
         }
-      }
     }
-    
-    return false;
-  }
+}
   
   constrainToBounds() {
-    const boundarySize = 25;
+    if (!this.playerShip) return;
     
-    if (this.playerShip.position.x > boundarySize) {
-      this.playerShip.position.x = boundarySize;
-    } else if (this.playerShip.position.x < -boundarySize) {
-      this.playerShip.position.x = -boundarySize;
-    }
+    const boundarySize = 45; // Half width of the allowed area
     
-    if (this.playerShip.position.z > boundarySize) {
-      this.playerShip.position.z = boundarySize;
-    } else if (this.playerShip.position.z < -boundarySize) {
-      this.playerShip.position.z = -boundarySize;
-    }
-  }
+    // Get current position
+    const pos = this.playerShip.position;
+    
+    // Keep X position within bounds
+    if (pos.x < -boundarySize) pos.x = -boundarySize;
+    if (pos.x > boundarySize) pos.x = boundarySize;
+    
+    // Keep Z position within bounds
+    if (pos.z < -boundarySize) pos.z = -boundarySize;
+    if (pos.z > boundarySize) pos.z = boundarySize;
+    
+    // Keep Y position above ground
+    if (pos.y < 0.5) pos.y = 0.5;
+}
   
   updateCamera() {
     // Define the camera offset from the player
@@ -1824,6 +1957,11 @@ selectWeapon(weaponType) {
     if (this.energy !== oldEnergy) {
         if (this.ui && typeof this.ui.updateEnergy === 'function') {
             this.ui.updateEnergy(this.energy, this.maxEnergy);
+        }
+
+        // Play charging sound when energy is low (under 10%)
+        if (this.energy < (this.maxEnergy * 0.1)) {
+            this.playSound('weapon-charging');
         }
 
         // Log significant energy changes (more than 1 unit) for debugging
@@ -1965,9 +2103,6 @@ selectWeapon(weaponType) {
       this.flashCollisionWarning();
       this.createHitEffect(playerPosition);
     }
-    
-    // Play explosion sound
-    this.playSound('grenade-laser');
   }
   
   updateBouncingLasers() {
@@ -2428,11 +2563,8 @@ selectWeapon(weaponType) {
         
         // Create and launch the grenade
         this.launchGrenade(targetPoint);
-        
-        // Play grenade sound
-        this.playSound('grenade-laser');
     }
-  }
+}
   
   launchGrenade(targetPoint) {
     // Create grenade mesh
@@ -2489,6 +2621,9 @@ selectWeapon(weaponType) {
       explosionRadius: 4,
       trailPoints: []
     });
+
+    // Play grenade launch sound
+    this.playSound('grenade-laser');
   }
   
   // Add a method to show targeting indicator for all weapons
@@ -2660,32 +2795,253 @@ selectWeapon(weaponType) {
   }
 
   startGame() {
-    // Hide start screen
+    // Hide start screen with fade out
     const startScreen = document.getElementById('start-screen');
     if (startScreen) {
         startScreen.classList.add('fade-out');
         setTimeout(() => {
             startScreen.classList.add('hidden');
             startScreen.classList.remove('fade-out');
+            // Show ship selection after start screen fades out
+            this.showShipSelection();
         }, 500);
     }
+  }
 
-    // Show game UI
-    this.ui.show();
-
-    // Show mini-map
-    if (this.miniMap) {
-        this.miniMap.show();
+  showShipSelection() {
+    // Make sure we have a container
+    const container = document.getElementById('game-container');
+    if (!container) {
+      console.error('Game container not found');
+      return;
     }
 
+    // Initialize ship selection if not already done
+    if (!this.shipSelection) {
+      this.shipSelection = new ShipSelectionUI(container, {
+        isPremium: false,
+        onShipSelect: (selection) => {
+          this.shipSelection.hide();
+          this.startGameplay(selection);
+        }
+      });
+    }
+    this.shipSelection.show();
+  }
+
+  startGameplay(shipSelection) {
+    console.log('🔍 Starting gameplay with ship selection:', shipSelection);
+    
+    // First apply the ship selection
+    this.applyShipSelection(shipSelection);
+    
+    // Set game as running (if this property exists)
+    this.isRunning = true;
+    
+    // Show game UI (using either method)
+    if (typeof this.ui !== 'undefined' && typeof this.ui.show === 'function') {
+        this.ui.show();
+    } else {
+        // Show game UI directly
+        const gameUI = document.querySelector('.game-ui');
+        if (gameUI) {
+            gameUI.classList.remove('hidden');
+        }
+    }
+    
+    // Show mini-map if it exists
+    if (this.miniMap && typeof this.miniMap.show === 'function') {
+        this.miniMap.show();
+    }
+    
     // Create and show controls if not already created
-    if (!this.controlsContainer) {
+    if (!this.controlsContainer && typeof this.createControlIndicators === 'function') {
         this.createControlIndicators();
     }
     this.fadeInControls();
 
     // Start animation loop
     this.animate();
+    
+    console.log('✅ Game started successfully!');
+}
+
+applyShipSelection(selection) {
+    console.log('🔍 Applying ship selection:', selection);
+    
+    // Set ship model based on selection
+    const type = selection.type.toUpperCase(); // Make sure it's uppercase for consistency
+    this.setShipModel(type);
+    
+    // Apply ship color if specified
+    if (selection.color && this.playerShip) {
+        const color = new THREE.Color(selection.color);
+        
+        // Apply color to all meshes in the ship model
+        this.playerShip.traverse(child => {
+            if (child.isMesh && child.material) {
+                try {
+                    // Clone the material to avoid affecting other instances
+                    if (!child.material._isCloned) {
+                        child.material = child.material.clone();
+                        child.material._isCloned = true;
+                    }
+                    
+                    // Update material color properties with safety checks
+                    if (child.material.color) {
+                        child.material.color.set(color);
+                    }
+                    
+                    if (child.material.emissive) {
+                        child.material.emissive.set(color);
+                        child.material.emissiveIntensity = 0.3;
+                    }
+                    
+                    // Update the material
+                    child.material.needsUpdate = true;
+                } catch (error) {
+                    console.warn('Error setting material properties:', error);
+                }
+            }
+        });
+    }
+    
+    // No need to set scale here since it's now handled by the AssetLoader
+    
+    console.log('✅ Ship configuration applied successfully');
+}
+
+exitToMainMenu() {
+    // Stop animation loop
+    this.isRunning = false;
+
+    // Hide game UI
+    this.ui.hide();
+    if (this.miniMap) {
+      this.miniMap.hide();
+    }
+    this.fadeOutControls();
+
+    // Clean up ship selection if it exists
+    if (this.shipSelection) {
+      this.shipSelection.hide();
+    }
+
+    // Show start screen
+    const startScreen = document.getElementById('start-screen');
+    if (startScreen) {
+      startScreen.classList.remove('hidden');
+      startScreen.classList.add('fade-in');
+    }
+
+    // Reset game state
+    this.resetGameState();
+  }
+
+  resetGameState() {
+    console.log('🔄 Resetting game state...');
+    
+    // Reset player position
+    if (this.playerShip) {
+        this.playerShip.position.set(0, 0.5, 0);
+        this.playerShip.rotation.set(0, 0, 0);
+    }
+    
+    // Reset camera to original position
+    if (this.camera) {
+        this.camera.position.set(0, 15, -10);
+        this.camera.lookAt(0, 0, 0);
+    }
+    
+    // Reset player stats
+    this.health = this.maxHealth || 100;
+    this.energy = this.maxEnergy || 100;
+    
+    // Update UI - use existing methods if available
+    if (typeof this.updateUI === 'function') {
+        this.updateUI();
+    } else {
+        // Update health bar
+        const healthBar = document.querySelector('.health-bar .bar-inner');
+        if (healthBar) {
+            healthBar.style.width = '100%';
+        }
+        
+        // Update energy bar
+        const energyBar = document.querySelector('.energy-bar .bar-inner');
+        if (energyBar) {
+            energyBar.style.width = '100%';
+        }
+    }
+    
+    // Original way of clearing lasers
+    if (this.lasers) {
+        for (let i = this.lasers.length - 1; i >= 0; i--) {
+            const laser = this.lasers[i];
+            if (laser.mesh && laser.mesh.parent) {
+                laser.mesh.parent.remove(laser.mesh);
+            }
+        }
+        this.lasers = [];
+    }
+    
+    // Clear bouncing lasers
+    if (this.bouncingLasers) {
+        for (let i = this.bouncingLasers.length - 1; i >= 0; i--) {
+            const laser = this.bouncingLasers[i];
+            if (laser.mesh && laser.mesh.parent) {
+                laser.mesh.parent.remove(laser.mesh);
+            }
+        }
+        this.bouncingLasers = [];
+    }
+    
+    // Clear grenades
+    if (this.grenades) {
+        for (let i = this.grenades.length - 1; i >= 0; i--) {
+            const grenade = this.grenades[i];
+            if (grenade.mesh && grenade.mesh.parent) {
+                grenade.mesh.parent.remove(grenade.mesh);
+            }
+        }
+        this.grenades = [];
+    }
+    
+    // Reset movement keys
+    this.keys = {
+        forward: false,
+        backward: false,
+        left: false,
+        right: false,
+        strafeLeft: false,
+        strafeRight: false
+    };
+    
+    // Reset weapon state to original
+    this.currentWeapon = 'laser';
+    this.weaponCooldown = 0;
+    this.grenadeTargeting = false;
+    
+    // Make sure the player exists
+    if (!this.playerShip) {
+        this.createDefaultShip();
+    }
+    
+    // Reset player velocity (original behavior)
+    this.playerVelocity = new THREE.Vector3();
+    this.playerRotation = new THREE.Vector3();
+    
+    // Update weapon UI - use existing method if available
+    if (typeof this.updateWeaponUI === 'function') {
+        this.updateWeaponUI();
+    }
+    
+    // Update control indicators - use existing method if available
+    if (typeof this.updateControlIndicators === 'function') {
+        this.updateControlIndicators();
+    }
+    
+    console.log('✅ Game state reset complete');
   }
 
   handleDirectionalFiring(event) {
@@ -2771,23 +3127,16 @@ fireCurrentWeapon(direction) {
     switch (this.currentWeapon) {
         case 'LASER':
             this.fireLaser(position, shipDirection.normalize());
+            this.playSound('laser');
             break;
         case 'BOUNCE':
             this.fireBouncingLaser(position, shipDirection.normalize());
+            this.playSound('laser-bounce');
             break;
         case 'GRENADE':
             // Grenades are handled separately through handleGrenadeTargeting
             break;
     }
-
-    // Play appropriate sound
-    const soundMap = {
-        'LASER': 'laser',
-        'BOUNCE': 'laser-bounce',
-        'GRENADE': 'grenade-laser'
-    };
-
-    this.playSound(soundMap[this.currentWeapon]);
 
     // Visual feedback for firing
     this.createMuzzleFlash(position, shipDirection);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from '@three/examples/loaders/GLTFLoader';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader';
 
 // Manager to handle and cache all loaded models
 export class ModelLoader {

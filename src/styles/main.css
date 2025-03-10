@@ -145,18 +145,50 @@ canvas {
 
 /* Controls info */
 .controls-info {
-  position: fixed;
-  bottom: 20px;
-  left: 20px;
-  color: var(--secondary-color);
-  font-size: 0.8rem;
-  z-index: 100;
-  background-color: rgba(0, 0, 0, 0.7);
-  padding: 10px;
-  border: 1px solid var(--neon-border-color);
-  border-radius: 5px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid #00ffff;
+  border-radius: 10px;
+  padding: 20px;
+  color: #fff;
+  text-align: center;
+  z-index: 1000;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+  animation: fadeIn 0.5s ease-in-out;
 }
 
+.controls-info h3 {
+  color: #00ffff;
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 24px;
+}
+
+.controls-info p {
+  margin: 8px 0;
+  font-size: 16px;
+  color: #eee;
+}
+
+.controls-info.fade-out {
+  animation: fadeOut 0.5s ease-in-out forwards;
+}
+
+/* Ensure these keyframes are defined */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Fix hidden class */
 .hidden {
   display: none !important;
 }
@@ -868,4 +900,341 @@ canvas {
     width: 120px;
     height: 120px;
   }
+}
+
+/* Game container */
+#game-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+}
+
+#game-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Error screen */
+#error-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 1100;
+  color: #ff0000;
+}
+
+/* Animations */
+.fade-in {
+  animation: fadeIn 0.5s ease-in forwards;
+}
+
+.fade-out {
+  animation: fadeOut 0.5s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Controls display */
+#controls {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  padding: 15px;
+  border-radius: 10px;
+  z-index: 700;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+}
+
+#controls.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.control-section {
+  margin: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.control-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 12px;
+  border-radius: 5px;
+  background: rgba(0, 20, 40, 0.6);
+  border: 1px solid rgba(0, 255, 255, 0.1);
+  transition: all 0.2s ease;
+}
+
+.control-indicator.active {
+  background: rgba(0, 100, 150, 0.4);
+  border-color: rgba(0, 255, 255, 0.5);
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+}
+
+/* Touch controls */
+.touch-controls {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 600;
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .touch-controls {
+    display: block;
+  }
+}
+
+.joystick-container {
+  width: 120px;
+  height: 120px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  position: relative;
+}
+
+.joystick {
+  width: 60px;
+  height: 60px;
+  background: rgba(0, 255, 255, 0.3);
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.touch-button {
+  width: 60px;
+  height: 60px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 10px;
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+}
+
+.ship-selection {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 50%;
+    max-width: 600px;
+    background: rgba(0, 0, 0, 0.9);
+    border: 2px solid #00ffff;
+    border-radius: 10px;
+    padding: 12px;
+    color: #fff;
+    z-index: 1000;
+    box-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+    display: flex;
+    flex-direction: column;
+}
+
+.ship-selection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+}
+
+.ship-selection-header h2 {
+    color: #00ffff;
+    margin: 0;
+    font-size: 18px;
+}
+
+.ships-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.ship-option {
+    background: rgba(0, 20, 40, 0.5);
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 13px;
+}
+
+.ship-option h3 {
+    color: #00ffff;
+    margin: 0 0 2px 0;
+    font-size: 15px;
+}
+
+.ship-option p {
+    margin: 0 0 5px 0;
+    font-size: 11px;
+}
+
+.stat {
+    margin: 3px 0;
+    display: flex;
+    align-items: center;
+}
+
+.stat label {
+    display: inline-block;
+    width: 80px;
+    color: #888;
+    font-size: 11px;
+}
+
+.preview-section {
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.preview-section h3 {
+    color: #00ffff;
+    margin-bottom: 5px;
+    font-size: 15px;
+}
+
+#ship-preview {
+    width: 100%;
+    height: 150px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #333;
+}
+
+.ship-details {
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 6px;
+    margin-bottom: 10px;
+    border: 1px solid #333;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-gap: 10px;
+}
+
+.ship-details-left {
+    grid-column: 1;
+}
+
+.ship-details-right {
+    grid-column: 2;
+}
+
+.ship-name {
+    color: #00ffff;
+    margin: 0 0 2px 0;
+    font-size: 15px;
+    grid-column: 1 / -1;
+}
+
+.ship-description {
+    color: #aaa;
+    margin-bottom: 5px;
+    font-size: 11px;
+    grid-column: 1 / -1;
+}
+
+.special-abilities {
+    margin-top: 5px;
+}
+
+.special-abilities h4 {
+    color: #00ffff;
+    margin: 0 0 5px 0;
+    font-size: 13px;
+}
+
+.ability {
+    display: inline-block;
+    margin: 2px;
+    padding: 3px 6px;
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid #00ffff;
+    border-radius: 4px;
+    color: #00ffff;
+    font-size: 11px;
+}
+
+.launch-button {
+    display: block;
+    width: 150px;
+    margin: 0 auto;
+    padding: 8px 15px;
+    background: #00ff00;
+    border: none;
+    border-radius: 5px;
+    color: #000;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    align-self: center;
+}
+
+.stat-bar {
+    display: inline-block;
+    flex: 1;
+    height: 8px;
+    background: #333;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0 5px;
+}
+
+.stat-bar > div {
+    height: 100%;
+    background: #00ffff;
+    transition: width 0.3s ease;
+}
+
+.stat-value {
+    width: 40px;
+    text-align: right;
+    color: #00ffff;
+    font-size: 11px;
+}
+
+.visible {
+    display: flex;
+    flex-direction: column;
 } 

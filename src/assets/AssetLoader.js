@@ -57,7 +57,11 @@ class AssetLoader {
     async loadModels() {
         const loader = new GLTFLoader();
         const modelPaths = {
-            'ship': 'assets/models/ships/avrocar_vz-9-av_experimental_aircraft.glb'
+            'FIGHTER': 'assets/models/ships/FIGHTER.glb',
+            'INTERCEPTOR': 'assets/models/ships/INTERCEPTOR.glb',
+            // Add aliases for backward compatibility
+            'SCOUT': 'assets/models/ships/FIGHTER.glb',
+            'EXPERIMENTAL': 'assets/models/ships/INTERCEPTOR.glb'
         };
 
         const loadPromises = Object.entries(modelPaths).map(([key, path]) => {
@@ -65,6 +69,9 @@ class AssetLoader {
         });
 
         await Promise.all(loadPromises);
+        
+        // Apply consistent sizing to all ship models
+        this.normalizeShipSizes();
     }
 
     async loadModel(loader, key, path) {
@@ -77,6 +84,7 @@ class AssetLoader {
                 path,
                 (gltf) => {
                     clearTimeout(timeoutId);
+                    // Store the original model without scaling
                     this.assets.models.set(key, gltf.scene);
                     this.onProgress?.(`Loaded model: ${key}`);
                     resolve();
@@ -251,6 +259,65 @@ class AssetLoader {
             maxRetries: 3,
             loadingPromises: new Map()
         };
+    }
+
+    // New method to ensure all ship models have consistent sizing
+    normalizeShipSizes() {
+        const STANDARD_SCALE = 0.75;
+        const shipKeys = ['FIGHTER', 'INTERCEPTOR', 'SCOUT', 'EXPERIMENTAL'];
+        
+        // Skip if no models are loaded
+        if (this.assets.models.size === 0) {
+            console.warn('No models loaded yet, skipping normalization');
+            return;
+        }
+        
+        console.log('Normalizing ship sizes to consistent scale...');
+        
+        // Apply standard scale to all ship models
+        shipKeys.forEach(key => {
+            try {
+                const model = this.assets.models.get(key);
+                if (model) {
+                    // Reset scale to 1 first to ensure consistent starting point
+                    model.scale.set(1, 1, 1);
+                    // Then apply the standard scale
+                    model.scale.set(STANDARD_SCALE, STANDARD_SCALE, STANDARD_SCALE);
+                    console.log(`✅ Normalized scale for ship model: ${key}`);
+                }
+            } catch (error) {
+                console.error(`Error normalizing scale for ship model ${key}:`, error);
+            }
+        });
+        
+        console.log('✅ All ship models normalized to consistent size');
+    }
+    
+    // Method to get a cloned ship model with proper scaling already applied
+    getShipModel(key) {
+        try {
+            const model = this.assets.models.get(key);
+            if (!model) {
+                console.warn(`Ship model with key "${key}" not found!`);
+                // Try to find alternative models if aliases didn't work
+                if (key === 'FIGHTER' || key === 'SCOUT') {
+                    // Try alternatives for fighter
+                    const altModel = this.assets.models.get('FIGHTER') || this.assets.models.get('SCOUT');
+                    if (altModel) return altModel.clone();
+                } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL') {
+                    // Try alternatives for interceptor
+                    const altModel = this.assets.models.get('INTERCEPTOR') || this.assets.models.get('EXPERIMENTAL');
+                    if (altModel) return altModel.clone();
+                }
+                return null;
+            }
+            
+            // Return a properly cloned model
+            return model.clone();
+        } catch (error) {
+            console.error(`Error cloning ship model ${key}:`, error);
+            return null;
+        }
     }
 }
 

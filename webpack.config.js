@@ -14,7 +14,8 @@ module.exports = {
   },
   resolve: {
     alias: {
-      '@three/examples': path.resolve(__dirname, 'node_modules/three/examples/jsm')
+      '@three/examples': path.resolve(__dirname, 'node_modules/three/examples/jsm'),
+      'three/addons': path.resolve(__dirname, 'node_modules/three/examples/jsm')
     }
   },
   module: {
