@@ -68,8 +68,9 @@ class SimpleGame {
     // Setup controls
     this.setupControls();
     
-    // Create mini-map (after scene setup)
+    // Create mini-map (after scene setup) but keep it hidden initially
     this.miniMap = new MiniMap(this);
+    this.miniMap.hide(); // Make sure it starts hidden
     
     // Handle window resize
     window.addEventListener('resize', this.boundHandleResize);
@@ -1293,11 +1294,6 @@ class SimpleGame {
     // Initially show the controls for first-time users
     this.controlsContainer.classList.remove('hidden');
     this.controlsContainer.classList.add('visible');
-    
-    // Set up auto-hide timer for controls - increased to 10 seconds
-    this.controlsTimeout = setTimeout(() => {
-      this.fadeOutControls();
-    }, 10000); // Hide after 10 seconds
     
     // Add C key listener to toggle controls display
     document.addEventListener('keydown', (event) => {
@@ -2672,6 +2668,19 @@ class SimpleGame {
     // Show game UI
     this.ui.show();
 
+    // Show mini-map
+    if (this.miniMap) {
+      this.miniMap.show();
+    }
+
+    // Set timer to hide controls after 5 seconds
+    if (this.controlsTimeout) {
+      clearTimeout(this.controlsTimeout);
+    }
+    this.controlsTimeout = setTimeout(() => {
+      this.fadeOutControls();
+    }, 5000);
+
     // Start animation loop
     this.animate();
   }
@@ -2723,7 +2732,7 @@ class SimpleGame {
     this.weaponCooldowns.set(this.currentWeapon, now + cooldownTime);
 
     // Get firing position (slightly in front of ship)
-    const shipDirection = direction || new THREE.Vector3(0, 0, -1).applyQuaternion(this.playerShip.quaternion);
+    const shipDirection = direction || new THREE.Vector3(0, 0, 1).applyQuaternion(this.playerShip.quaternion);
     const position = this.playerShip.position.clone().add(shipDirection.multiplyScalar(1.5));
     position.y = 0.5; // Set height
 
@@ -2753,7 +2762,7 @@ class SimpleGame {
   fireLaser(position, direction) {
     // Create laser geometry - make it longer and thinner for better visual
     const geometry = new THREE.CylinderGeometry(0.05, 0.05, 3, 8);
-    geometry.rotateX(Math.PI / 2);
+    geometry.rotateX(-Math.PI / 2); // Changed rotation to negative to flip direction
 
     // Create glowing material with better visual effects
     const material = new THREE.MeshBasicMaterial({
@@ -2766,7 +2775,7 @@ class SimpleGame {
     laser.position.copy(position);
 
     // Orient laser along direction - using lookAt for more accurate direction
-    const targetPos = position.clone().add(direction.clone().multiplyScalar(1));
+    const targetPos = position.clone().add(direction.clone().multiplyScalar(10));
     laser.lookAt(targetPos);
 
     // Add to scene
