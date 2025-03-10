@@ -55,8 +55,8 @@ class SimpleGame {
     this.scene.background = new THREE.Color(0x000011);
     
     // Setup camera
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.camera.position.set(0, 15, -8); // Higher position for more top-down view
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000); // Restored original FOV
+    this.camera.position.set(0, 15, -10); // Slightly adjusted for the larger ship
     this.camera.lookAt(0, 0, 0);
     
     // Camera smoothing properties
@@ -184,7 +184,7 @@ class SimpleGame {
   
   loadShipModel() {
     // Show loading message
-    console.log('Loading ship model...');
+    console.log('🟢🟢🟢 INDEX.JS: Loading ship model...');
     
     // Dynamically import the GLTFLoader
     import('three/examples/jsm/loaders/GLTFLoader.js').then(({ GLTFLoader }) => {
@@ -195,13 +195,14 @@ class SimpleGame {
       loader.load(
         'assets/models/ships/avrocar_vz-9-av_experimental_aircraft.glb',
         (gltf) => {
-          console.log('Ship model loaded successfully!');
+          console.log('🟢🟢🟢 INDEX.JS: Ship model loaded successfully!');
           
           // Store the model
           this.shipModel = gltf.scene;
           
           // Scale and position the model
-          this.shipModel.scale.set(0.3, 0.3, 0.3);
+          this.shipModel.scale.set(1.125, 1.125, 1.125); // Increase scale from 0.9 to 1.125 (1.25x larger)
+          console.log('🟢🟢🟢 INDEX.JS: Applied scale 0.9 to shipModel (3x larger)');
           this.shipModel.rotation.y = Math.PI; // Rotate to face forward
           
           // Apply materials
@@ -1527,8 +1528,8 @@ class SimpleGame {
   
   updateCamera() {
     // Define the camera offset from the player
-    const offsetY = 15; // Height above the player
-    const offsetZ = -8; // Distance behind the player
+    const offsetY = 18; // Height above the player
+    const offsetZ = -16; // Distance behind the player (adjusted for larger ship)
     
     // Get the player's forward direction vector (simplified)
     const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(this.playerShip.quaternion);
@@ -1546,7 +1547,7 @@ class SimpleGame {
     
     // Simply look directly at the player with a slight forward offset
     this.cameraTargetLookAt.copy(this.playerShip.position);
-    const lookAheadOffset = forwardDir.clone().multiplyScalar(2);
+    const lookAheadOffset = forwardDir.clone().multiplyScalar(4); // Look ahead offset for larger ship
     this.cameraTargetLookAt.add(lookAheadOffset);
     
     // Directly look at the target (no smoothing on look target to prevent jitter)

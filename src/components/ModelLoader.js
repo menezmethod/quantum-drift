@@ -64,9 +64,13 @@ export class ModelLoader {
    * @param {THREE.Group} model - The loaded model
    */
   processModel(model) {
+    console.log('Processing model in ModelLoader, initial scale:', model.scale.x, model.scale.y, model.scale.z);
+    
     // Traverse the model and optimize materials, geometries, etc.
     model.traverse((node) => {
       if (node.isMesh) {
+        console.log(`ModelLoader found mesh: ${node.name}, Scale:`, node.scale);
+        
         // Enable shadows
         node.castShadow = true;
         node.receiveShadow = true;
@@ -81,6 +85,8 @@ export class ModelLoader {
     
     // Center the model if needed
     this.centerModel(model);
+    
+    console.log('Model after processing, final scale:', model.scale.x, model.scale.y, model.scale.z);
   }
   
   /**

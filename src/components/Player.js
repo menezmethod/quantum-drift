@@ -3,6 +3,7 @@ import { ModelLoader } from './ModelLoader';
 
 export class Player {
   constructor(scene, camera, soundManager) {
+    console.log('🔴🔴🔴 PLAYER CLASS: Constructor called');
     this.scene = scene;
     this.camera = camera;
     this.soundManager = soundManager;
@@ -15,7 +16,7 @@ export class Player {
     this.energy = 100;
     this.maxEnergy = 100;
     this.score = 0;
-    this.collisionRadius = 0.8;
+    this.collisionRadius = 6.0;
     this.isAlive = true;
     this.isInvulnerable = false;
     this.isFlashing = false;
@@ -42,7 +43,7 @@ export class Player {
     
     // Create ship mesh
     this.mesh = new THREE.Group();
-    this.createDefaultShipMesh();
+    this.createDefaultShip();
     
     // Set initial position
     this.mesh.position.set(0, 1, 0);
@@ -50,6 +51,9 @@ export class Player {
     
     // Camera offset for third-person view
     this.cameraOffset = new THREE.Vector3(0, 5, -10);
+    
+    // Initialize the ModelLoader
+    this.modelLoader = new ModelLoader();
     
     // Load the ship model
     this.shipModel = null;
@@ -117,14 +121,31 @@ export class Player {
   }
   
   loadShipModel() {
-    // Path to the model - use the provided aircraft model
-    const modelPath = 'models/ships/avrocar_vz-9-av_experimental_aircraft.glb';
+    console.log('🔴🔴🔴 PLAYER CLASS: loadShipModel called but disabled to avoid conflicts');
+    // Ship model loading is disabled to avoid conflicts with the model loaded in SimpleGame
     
-    console.log('Loading ship model:', modelPath);
+    /* Original code commented out to avoid conflicts
+    const modelPath = 'assets/models/ships/avrocar_vz-9-av_experimental_aircraft.glb';
+    
+    console.log('🔴🔴🔴 PLAYER CLASS: Loading ship model:', modelPath);
     
     this.modelLoader.loadModel(modelPath)
       .then(model => {
-        console.log('Ship model loaded successfully');
+        console.log('🔴🔴🔴 PLAYER CLASS: Ship model loaded successfully');
+        
+        // Debug log: Log the full model structure before scaling
+        console.log('Model before scaling:', model);
+        console.log('Model scale before:', model.scale.x, model.scale.y, model.scale.z);
+        
+        // Count meshes to verify model content
+        let meshCount = 0;
+        model.traverse(node => {
+          if (node.isMesh) {
+            meshCount++;
+            console.log(`Found mesh before scaling: ${node.name}, Current scale:`, node.scale);
+          }
+        });
+        console.log(`Total meshes in model: ${meshCount}`);
         
         // Remove default ship
         this.mesh.remove(this.shipMesh);
@@ -132,8 +153,9 @@ export class Player {
         // Add loaded model
         this.shipModel = model;
         
-        // Scale and position the model as needed (adjusted for the specific model)
-        this.shipModel.scale.set(0.3, 0.3, 0.3); // Adjust scale as needed
+        // Scale and position the model as needed (adjusted for the avrocar model)
+        this.shipModel.scale.set(1.2, 1.2, 1.2); // Scale adjusted for avrocar model (4x the original 0.3)
+        console.log('Applied scale to avrocar model:', this.shipModel.scale.x, this.shipModel.scale.y, this.shipModel.scale.z);
         
         // Ensure model is properly oriented - may need adjustment based on model
         this.shipModel.rotation.y = Math.PI; 
@@ -151,42 +173,83 @@ export class Player {
         console.error('Failed to load ship model:', error);
         // Keep using default ship if model fails to load
       });
+    */
+  }
+  
+  // Helper method to dump model structure for debugging
+  dumpModelStructure(object, indent = 0) {
+    let structure = '';
+    const indentStr = ' '.repeat(indent * 2);
+    
+    structure += `${indentStr}${object.name || 'unnamed'} (type: ${object.type || 'unknown'})`;
+    
+    if (object.isMesh) {
+      structure += ` - MESH, Scale: [${object.scale.x}, ${object.scale.y}, ${object.scale.z}]`;
+    }
+    
+    if (object.children && object.children.length > 0) {
+      structure += ` - Children: ${object.children.length}\n`;
+      object.children.forEach(child => {
+        structure += this.dumpModelStructure(child, indent + 1) + '\n';
+      });
+    } else {
+      structure += ' - No children';
+    }
+    
+    return structure;
   }
   
   addThrusterToModel() {
+    // Skip if we don't have a model (model is loaded by SimpleGame, not Player)
+    if (!this.shipModel) {
+      console.log('🔴🔴🔴 PLAYER CLASS: addThrusterToModel skipped (no model)');
+      return;
+    }
+    
     // Create thruster
-    const thrusterGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+    const thrusterGeometry = new THREE.SphereGeometry(1.8, 24, 24); // Much larger thruster
     const thrusterMaterial = new THREE.MeshBasicMaterial({
       color: 0x0088ff,
       transparent: true,
-      opacity: 0.7
+      opacity: 0.8
     });
+    
+    this.thrusterLight = new THREE.PointLight(0x0088ff, 2, 10);
+    this.thrusterLight.position.set(0, 0, 4);
+    this.shipModel.add(this.thrusterLight);
+    
     this.thruster = new THREE.Mesh(thrusterGeometry, thrusterMaterial);
-    
-    // Position thruster at rear of ship (may need adjustment based on model)
-    this.thruster.position.set(0, 0, 0.8);
-    
-    // Add to model
+    this.thruster.position.set(0, 0, 3);
     this.shipModel.add(this.thruster);
   }
   
   applyShipColors() {
-    // Apply custom neon colors to the ship model
-    if (this.shipModel) {
-      this.shipModel.traverse(node => {
-        if (node.isMesh && node.material) {
-          // Store original material for resetting
-          if (!node.userData.originalMaterial) {
-            node.userData.originalMaterial = node.material.clone();
-          }
-          
-          // Apply neon effect
-          node.material.emissive = new THREE.Color(this.normalColor);
-          node.material.emissiveIntensity = 0.5;
-          node.material.needsUpdate = true;
-        }
-      });
+    // Skip if we don't have a model (model is loaded by SimpleGame, not Player)
+    if (!this.shipModel) {
+      console.log('🔴🔴🔴 PLAYER CLASS: applyShipColors skipped (no model)');
+      return;
     }
+    
+    // Define ship color scheme
+    this.normalColor = 0x00ffff; // Cyan
+    this.flashColor = 0xff0000;  // Red
+    
+    // Apply materials to the ship model
+    this.shipModel.traverse(node => {
+      if (node.isMesh) {
+        // Create a new standard material with emissive properties
+        const newMaterial = new THREE.MeshStandardMaterial({
+          color: this.normalColor,
+          emissive: this.normalColor,
+          emissiveIntensity: 0.5,
+          metalness: 0.8,
+          roughness: 0.2
+        });
+        
+        // Apply the new material
+        node.material = newMaterial;
+      }
+    });
   }
   
   setupInputHandlers() {
@@ -250,6 +313,34 @@ export class Player {
   }
   
   update(deltaTime) {
+    // Skip scale logging since we're not managing the model in this class anymore
+    /*
+    // Log scale during update cycle if model is loaded
+    if (this.shipModel && this.frameCount % 60 === 0) { // Log once per second assuming 60fps
+      console.log('Model scale during update:', this.shipModel.scale);
+      
+      // Check all child meshes
+      let childScalesUnchanged = true;
+      this.shipModel.traverse(node => {
+        if (node.isMesh) {
+          if (node.scale.x !== 1.2 || node.scale.y !== 1.2 || node.scale.z !== 1.2) {
+            childScalesUnchanged = false;
+            console.log('Child mesh with different scale found:', node.name, 'Scale:', node.scale);
+          }
+        }
+      });
+      
+      if (childScalesUnchanged) {
+        console.log('All child meshes have expected scale');
+      }
+    }
+    */
+    
+    if (!this.frameCount) {
+      this.frameCount = 0;
+    }
+    this.frameCount++;
+    
     // Update flashing effect if active
     if (this.isFlashing) {
       const currentTime = Date.now();
