@@ -499,6 +499,9 @@ class SimpleGame {
     // Add visual indicators for controls
     this.createControlIndicators();
     
+    // Detect if we're on a touch device
+    this.isTouchDevice = 'ontouchstart' in window;
+    
     // Keyboard controls
     document.addEventListener('keydown', (event) => {
       // Get control action from key mapping
@@ -524,7 +527,7 @@ class SimpleGame {
       this.activeKeys.add(event.code);
       
       // Handle fire action immediately (not just in update loop)
-      if (action === 'fire' && this.currentWeapon !== 'GRENADE') {
+      if (action === 'fire') {
         this.fireCurrentWeapon();
       }
       
@@ -559,25 +562,456 @@ class SimpleGame {
       this.updateControlIndicators();
     });
     
-    // Setup grenade targeting with mouse click
+    // Setup touch controls for mobile devices
+    if (this.isTouchDevice) {
+      this.setupTouchControls();
+    }
+    
+    // Setup universal click handling for all weapons
     document.addEventListener('click', (event) => {
-      // Only handle clicks for grenades when that weapon is selected
       if (this.currentWeapon === 'GRENADE') {
+        // Grenade has special targeting because it creates an arc
         this.handleGrenadeTargeting(event);
+      } else {
+        // Handle directional firing for laser and bounce weapons
+        this.handleDirectionalFiring(event);
       }
     });
     
-    // Setup mouse move for grenade targeting preview
+    // Setup mouse move for weapon targeting preview
     document.addEventListener('mousemove', (event) => {
-      // Only show targeting indicator when grenade is selected
+      // Update targeting indicator for all weapons
+      this.updateTargetingIndicator(event);
+      
+      // Only show grenade-specific targeting indicator when grenade is selected
       if (this.currentWeapon === 'GRENADE') {
         this.updateGrenadeTargetingIndicator(event);
       } else if (this.grenadeTargetIndicator && this.grenadeTargetIndicator.parent) {
-        // Remove the targeting indicator if weapon changed
+        // Remove the grenade-specific targeting indicator if weapon changed
         this.scene.remove(this.grenadeTargetIndicator);
         this.grenadeTargetIndicator = null;
       }
     });
+  }
+  
+  handleDirectionalFiring(event) {
+    // Get the mouse position in normalized device coordinates
+    const mouse = new THREE.Vector2(
+      (event.clientX / window.innerWidth) * 2 - 1,
+      -(event.clientY / window.innerHeight) * 2 + 1
+    );
+    
+    // Use raycasting to determine the point in 3D space
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, this.camera);
+    
+    // Check for intersection with the floor
+    const intersects = raycaster.intersectObject(this.floor);
+    
+    if (intersects.length > 0) {
+      const targetPoint = intersects[0].point;
+      
+      // Calculate the direction from the player to the target point
+      const shipPosition = this.playerShip.position.clone();
+      const direction = targetPoint.clone().sub(shipPosition).normalize();
+      
+      // Only care about horizontal direction (ignore y component)
+      direction.y = 0;
+      direction.normalize();
+      
+      // Store the original rotation
+      const originalRotation = this.playerShip.rotation.clone();
+      
+      // Temporarily rotate the ship to face the target
+      this.playerShip.lookAt(shipPosition.clone().add(direction));
+      
+      // Fire the weapon in that direction
+      if (this.currentWeapon === 'LASER') {
+        this.fireLaser(direction);
+      } else if (this.currentWeapon === 'BOUNCE') {
+        this.fireBouncingLaser(direction);
+      }
+      
+      // Restore the original rotation so the player can still control movement direction
+      this.playerShip.rotation.copy(originalRotation);
+    }
+  }
+  
+  // Update fireLaser to accept a direction parameter
+  fireLaser(customDirection = null) {
+    // Energy cost for laser - increased from 5 to 15
+    const energyCost = 15;
+    
+    // Check if we have enough energy
+    if (this.energy < energyCost) return;
+    
+    // Consume energy
+    this.energy -= energyCost;
+    this.ui.updateEnergy(this.energy, this.maxEnergy);
+    
+    // Create a simple laser geometry
+    const geometry = new THREE.CylinderGeometry(0.05, 0.05, 1, 8);
+    geometry.rotateX(Math.PI / 2);
+    
+    // Create glowing material
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.8
+    });
+    
+    // Create laser mesh
+    const laser = new THREE.Mesh(geometry, material);
+    
+    // Position in front of the ship
+    laser.position.copy(this.playerShip.position);
+    
+    // Use custom direction if provided, otherwise use ship's facing direction
+    let direction;
+    if (customDirection) {
+      direction = customDirection.clone();
+      // Set rotation to match direction
+      laser.lookAt(laser.position.clone().add(direction));
+    } else {
+      laser.rotation.copy(this.playerShip.rotation);
+      direction = new THREE.Vector3(0, 0, 1);
+      direction.applyQuaternion(this.playerShip.quaternion);
+    }
+    
+    // Move the laser in front of the ship
+    laser.position.add(direction);
+    
+    // Add to scene
+    this.scene.add(laser);
+    
+    // Add a point light to make it glow
+    const light = new THREE.PointLight(0x00ffff, 1, 2);
+    laser.add(light);
+    
+    // Store laser data for animation
+    if (!this.lasers) {
+      this.lasers = [];
+    }
+    
+    this.lasers.push({
+      mesh: laser,
+      direction: direction,
+      speed: 0.5,
+      lifeTime: 0,
+      maxLifeTime: 100
+    });
+    
+    // Play laser sound
+    this.playSound('laser');
+  }
+  
+  // Update fireBouncingLaser to accept a direction parameter
+  fireBouncingLaser(customDirection = null) {
+    // Energy cost for bouncing laser - increased from 1/3 to 1/2 of max energy
+    const energyCost = this.maxEnergy / 2;
+    
+    // Check if we have enough energy
+    if (this.energy < energyCost) return;
+    
+    // Consume energy
+    this.energy -= energyCost;
+    this.ui.updateEnergy(this.energy, this.maxEnergy);
+    
+    // Create bouncing laser geometry - thicker than regular laser
+    const geometry = new THREE.CylinderGeometry(0.15, 0.15, 1.5, 12);
+    geometry.rotateX(Math.PI / 2);
+    
+    // Create pulsing glowing material with animation
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x00ffcc,
+      transparent: true,
+      opacity: 0.9
+    });
+    
+    // Create laser mesh
+    const laser = new THREE.Mesh(geometry, material);
+    
+    // Position in front of the ship
+    laser.position.copy(this.playerShip.position);
+    
+    // Use custom direction if provided, otherwise use ship's facing direction
+    let direction;
+    if (customDirection) {
+      direction = customDirection.clone();
+      // Set rotation to match direction
+      laser.lookAt(laser.position.clone().add(direction));
+    } else {
+      laser.rotation.copy(this.playerShip.rotation);
+      direction = new THREE.Vector3(0, 0, 1);
+      direction.applyQuaternion(this.playerShip.quaternion);
+    }
+    
+    // Move the laser in front of the ship
+    laser.position.add(direction);
+    
+    // Add to scene
+    this.scene.add(laser);
+    
+    // Add stronger glow effect - brighter and larger than regular laser
+    const light = new THREE.PointLight(0x00ffcc, 2, 5);
+    laser.add(light);
+    
+    // Add a secondary smaller light for extra glow
+    const secondaryLight = new THREE.PointLight(0xffffff, 0.5, 3);
+    laser.add(secondaryLight);
+    
+    // Create halo effect around laser
+    const haloGeometry = new THREE.RingGeometry(0.2, 0.4, 24);
+    const haloMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffcc,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide
+    });
+    
+    const halo = new THREE.Mesh(haloGeometry, haloMaterial);
+    halo.rotation.x = Math.PI / 2;
+    laser.add(halo);
+    
+    // Add a more sophisticated trail effect
+    const trailGeometry = new THREE.BufferGeometry();
+    const trailMaterial = new THREE.PointsMaterial({
+      color: 0x00ffcc,
+      size: 0.1,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
+    });
+    
+    const trail = new THREE.Points(trailGeometry, trailMaterial);
+    this.scene.add(trail);
+    
+    // Store bouncing laser data
+    if (!this.bouncingLasers) {
+      this.bouncingLasers = [];
+    }
+    
+    // Create a unique ID for animation tracking
+    const laserId = Date.now() + Math.random();
+    
+    this.bouncingLasers.push({
+      id: laserId,
+      mesh: laser,
+      halo: halo,
+      trail: trail,
+      direction: direction,
+      speed: 0.35, // Slower than regular lasers
+      bounces: 0,
+      maxBounces: 5,
+      lifeTime: 0,
+      maxLifeTime: 150,
+      trailPoints: [],
+      lastPosition: laser.position.clone(),
+      canHitPlayer: false, // Initially can't hit player
+      bounceTimeout: 10, // Wait frames before allowing player collision
+      pulsePhase: 0 // For pulsing animation
+    });
+    
+    // Play bounce laser sound
+    this.playSound('laser-bounce');
+  }
+  
+  // Update the fireCurrentWeapon method to handle directional firing
+  fireCurrentWeapon(customDirection = null) {
+    switch (this.currentWeapon) {
+      case 'LASER':
+        this.fireLaser(customDirection);
+        break;
+      case 'GRENADE':
+        // For grenades, we use the targeting system instead of direction
+        if (!customDirection) {
+          this.fireGrenade();
+        }
+        break;
+      case 'BOUNCE':
+        this.fireBouncingLaser(customDirection);
+        break;
+    }
+  }
+  
+  setupTouchControls() {
+    // Create touch control container
+    const touchControls = document.createElement('div');
+    touchControls.className = 'touch-controls';
+    document.body.appendChild(touchControls);
+    
+    // Create virtual joystick for movement
+    const joystickContainer = document.createElement('div');
+    joystickContainer.className = 'joystick-container';
+    touchControls.appendChild(joystickContainer);
+    
+    const joystick = document.createElement('div');
+    joystick.className = 'joystick';
+    joystickContainer.appendChild(joystick);
+    
+    const joystickKnob = document.createElement('div');
+    joystickKnob.className = 'joystick-knob';
+    joystick.appendChild(joystickKnob);
+    
+    // Create fire button
+    const fireButton = document.createElement('div');
+    fireButton.className = 'touch-button fire-button';
+    fireButton.innerHTML = '🔥';
+    touchControls.appendChild(fireButton);
+    
+    // Create weapon switch button
+    const weaponButton = document.createElement('div');
+    weaponButton.className = 'touch-button weapon-button';
+    weaponButton.innerHTML = '🔄';
+    touchControls.appendChild(weaponButton);
+    
+    // Joystick handling
+    let joystickActive = false;
+    let joystickOrigin = { x: 0, y: 0 };
+    
+    joystick.addEventListener('touchstart', (e) => {
+      joystickActive = true;
+      const touch = e.touches[0];
+      const rect = joystick.getBoundingClientRect();
+      joystickOrigin.x = rect.left + rect.width / 2;
+      joystickOrigin.y = rect.top + rect.height / 2;
+      handleJoystickMove(touch);
+      e.preventDefault();
+    });
+    
+    document.addEventListener('touchmove', (e) => {
+      if (joystickActive) {
+        const touch = e.touches[0];
+        handleJoystickMove(touch);
+        e.preventDefault();
+      }
+    });
+    
+    document.addEventListener('touchend', (e) => {
+      if (joystickActive) {
+        joystickActive = false;
+        joystickKnob.style.transform = 'translate(0, 0)';
+        
+        // Reset movement keys
+        this.keys.forward = false;
+        this.keys.backward = false;
+        this.keys.left = false;
+        this.keys.right = false;
+        this.updateControlIndicators();
+      }
+    });
+    
+    const handleJoystickMove = (touch) => {
+      const maxDistance = 40; // Maximum joystick movement distance
+      
+      // Calculate distance from center
+      const dx = touch.clientX - joystickOrigin.x;
+      const dy = touch.clientY - joystickOrigin.y;
+      
+      // Limit distance to maxDistance
+      const distance = Math.min(Math.sqrt(dx * dx + dy * dy), maxDistance);
+      const angle = Math.atan2(dy, dx);
+      
+      // Move joystick knob
+      const knobX = distance * Math.cos(angle);
+      const knobY = distance * Math.sin(angle);
+      joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+      
+      // Convert joystick position to key presses
+      this.keys.forward = dy < -10;
+      this.keys.backward = dy > 10;
+      this.keys.left = dx < -10;
+      this.keys.right = dx > 10;
+      
+      this.updateControlIndicators();
+    };
+    
+    // Fire button handling
+    fireButton.addEventListener('touchstart', (e) => {
+      this.keys.fire = true;
+      this.fireCurrentWeapon();
+      this.updateControlIndicators();
+      e.preventDefault();
+    });
+    
+    fireButton.addEventListener('touchend', (e) => {
+      this.keys.fire = false;
+      this.updateControlIndicators();
+      e.preventDefault();
+    });
+    
+    // Weapon switch button handling
+    weaponButton.addEventListener('touchstart', (e) => {
+      this.cycleWeapon();
+      e.preventDefault();
+    });
+    
+    // Enable directional fire on game area tap
+    const gameArea = document.querySelector('canvas');
+    if (gameArea) {
+      gameArea.addEventListener('touchstart', (e) => {
+        // Ignore if touch is in control areas
+        const touch = e.touches[0];
+        const isInControlArea = 
+          touchControls.contains(document.elementFromPoint(touch.clientX, touch.clientY));
+          
+        if (!isInControlArea && this.playerShip) {
+          // Similar to handling mouse click but for touch
+          const touchX = touch.clientX;
+          const touchY = touch.clientY;
+          
+          // Handle directional firing similarly to mouse
+          const touchPoint = new THREE.Vector2(
+            (touchX / window.innerWidth) * 2 - 1,
+            -(touchY / window.innerHeight) * 2 + 1
+          );
+          
+          // Use raycasting to determine the point in 3D space
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(touchPoint, this.camera);
+          
+          // Check for intersection with the floor
+          const intersects = raycaster.intersectObject(this.floor);
+          
+          if (intersects.length > 0) {
+            const targetPoint = intersects[0].point;
+            
+            // Calculate the direction from the player to the target point
+            const shipPosition = this.playerShip.position.clone();
+            const direction = targetPoint.clone().sub(shipPosition).normalize();
+            
+            // Only care about horizontal direction (ignore y component)
+            direction.y = 0;
+            direction.normalize();
+            
+            // Store the original rotation
+            const originalRotation = this.playerShip.rotation.clone();
+            
+            // Temporarily rotate the ship to face the target
+            this.playerShip.lookAt(shipPosition.clone().add(direction));
+            
+            // Fire the weapon in that direction
+            if (this.currentWeapon === 'GRENADE') {
+              // For grenades, we simulate a tap at the target location
+              const targetEvent = {
+                clientX: touchX,
+                clientY: touchY,
+                preventDefault: () => {}
+              };
+              this.handleGrenadeTargeting(targetEvent);
+            } else {
+              // For lasers and bounce, fire in the direction
+              this.fireCurrentWeapon(direction);
+            }
+            
+            // Restore the original rotation
+            this.playerShip.rotation.copy(originalRotation);
+          }
+          
+          e.preventDefault();
+        }
+      });
+    }
   }
   
   createControlIndicators() {
@@ -665,10 +1099,10 @@ class SimpleGame {
     this.controlsContainer.classList.remove('hidden');
     this.controlsContainer.classList.add('visible');
     
-    // Set up auto-hide timer for controls
+    // Set up auto-hide timer for controls - increased to 10 seconds
     this.controlsTimeout = setTimeout(() => {
       this.fadeOutControls();
-    }, 5000); // Hide after 5 seconds
+    }, 10000); // Hide after 10 seconds
     
     // Add C key listener to toggle controls display
     document.addEventListener('keydown', (event) => {
@@ -678,13 +1112,20 @@ class SimpleGame {
       }
     });
     
-    // Add F1 key listener as an alternative to toggle controls
-    document.addEventListener('keydown', (event) => {
-      if (event.code === 'F1') {
+    // Remove F1 alternative as we only want C to show controls
+    // But keep it for touch devices
+    if ('ontouchstart' in window) {
+      // Add a touch-friendly button to toggle controls
+      const controlsToggleButton = document.createElement('button');
+      controlsToggleButton.className = 'controls-toggle-button';
+      controlsToggleButton.textContent = 'Controls';
+      document.body.appendChild(controlsToggleButton);
+      
+      controlsToggleButton.addEventListener('touchstart', (event) => {
         this.toggleControls();
         event.preventDefault();
-      }
-    });
+      });
+    }
   }
   
   toggleControls() {
@@ -698,10 +1139,8 @@ class SimpleGame {
     } else {
       this.fadeInControls();
       
-      // Auto-hide after 5 seconds
-      this.controlsTimeout = setTimeout(() => {
-        this.fadeOutControls();
-      }, 5000);
+      // Don't auto-hide after initial display
+      // Only hide when user presses C again
     }
   }
   
@@ -783,181 +1222,8 @@ class SimpleGame {
     }
   }
   
-  fireCurrentWeapon() {
-    switch (this.currentWeapon) {
-      case 'LASER':
-        this.fireLaser();
-        break;
-      case 'GRENADE':
-        this.fireGrenade();
-        break;
-      case 'BOUNCE':
-        this.fireBouncingLaser();
-        break;
-    }
-  }
-  
   fireGrenade() {
     console.log("Grenade weapon selected - click to target");
-  }
-  
-  fireBouncingLaser() {
-    // Energy cost for bouncing laser
-    const energyCost = this.maxEnergy / 3; // One third of max energy
-    
-    // Check if we have enough energy
-    if (this.energy < energyCost) return;
-    
-    // Consume energy
-    this.energy -= energyCost;
-    this.ui.updateEnergy(this.energy, this.maxEnergy);
-    
-    // Create bouncing laser geometry - thicker than regular laser
-    const geometry = new THREE.CylinderGeometry(0.15, 0.15, 1.5, 12);
-    geometry.rotateX(Math.PI / 2);
-    
-    // Create pulsing glowing material with animation
-    const material = new THREE.MeshBasicMaterial({
-      color: 0x00ffcc,
-      transparent: true,
-      opacity: 0.9
-    });
-    
-    // Create laser mesh
-    const laser = new THREE.Mesh(geometry, material);
-    
-    // Position in front of the ship
-    laser.position.copy(this.playerShip.position);
-    laser.rotation.copy(this.playerShip.rotation);
-    
-    // Move the laser in front of the ship
-    const direction = new THREE.Vector3(0, 0, 1);
-    direction.applyQuaternion(this.playerShip.quaternion);
-    laser.position.add(direction);
-    
-    // Add to scene
-    this.scene.add(laser);
-    
-    // Add stronger glow effect - brighter and larger than regular laser
-    const light = new THREE.PointLight(0x00ffcc, 2, 5);
-    laser.add(light);
-    
-    // Add a secondary smaller light for extra glow
-    const secondaryLight = new THREE.PointLight(0xffffff, 0.5, 3);
-    laser.add(secondaryLight);
-    
-    // Create halo effect around laser
-    const haloGeometry = new THREE.RingGeometry(0.2, 0.4, 24);
-    const haloMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ffcc,
-      transparent: true,
-      opacity: 0.5,
-      side: THREE.DoubleSide
-    });
-    
-    const halo = new THREE.Mesh(haloGeometry, haloMaterial);
-    halo.rotation.x = Math.PI / 2;
-    laser.add(halo);
-    
-    // Add a more sophisticated trail effect
-    const trailGeometry = new THREE.BufferGeometry();
-    const trailMaterial = new THREE.PointsMaterial({
-      color: 0x00ffcc,
-      size: 0.1,
-      transparent: true,
-      opacity: 0.6,
-      blending: THREE.AdditiveBlending
-    });
-    
-    const trail = new THREE.Points(trailGeometry, trailMaterial);
-    this.scene.add(trail);
-    
-    // Store bouncing laser data
-    if (!this.bouncingLasers) {
-      this.bouncingLasers = [];
-    }
-    
-    // Create a unique ID for animation tracking
-    const laserId = Date.now() + Math.random();
-    
-    this.bouncingLasers.push({
-      id: laserId,
-      mesh: laser,
-      halo: halo,
-      trail: trail,
-      direction: direction,
-      speed: 0.35, // Slower than regular lasers
-      bounces: 0,
-      maxBounces: 5,
-      lifeTime: 0,
-      maxLifeTime: 150,
-      trailPoints: [],
-      lastPosition: laser.position.clone(),
-      canHitPlayer: false, // Initially can't hit player
-      bounceTimeout: 10, // Wait frames before allowing player collision
-      pulsePhase: 0 // For pulsing animation
-    });
-    
-    // Play bounce laser sound
-    this.playSound('laser-bounce');
-  }
-  
-  fireLaser() {
-    // Energy cost for laser
-    const energyCost = 5;
-    
-    // Check if we have enough energy
-    if (this.energy < energyCost) return;
-    
-    // Consume energy
-    this.energy -= energyCost;
-    this.ui.updateEnergy(this.energy, this.maxEnergy);
-    
-    // Create a simple laser geometry
-    const geometry = new THREE.CylinderGeometry(0.05, 0.05, 1, 8);
-    geometry.rotateX(Math.PI / 2);
-    
-    // Create glowing material
-    const material = new THREE.MeshBasicMaterial({
-      color: 0x00ffff,
-      transparent: true,
-      opacity: 0.8
-    });
-    
-    // Create laser mesh
-    const laser = new THREE.Mesh(geometry, material);
-    
-    // Position in front of the ship
-    laser.position.copy(this.playerShip.position);
-    laser.rotation.copy(this.playerShip.rotation);
-    
-    // Move the laser in front of the ship
-    const direction = new THREE.Vector3(0, 0, 1);
-    direction.applyQuaternion(this.playerShip.quaternion);
-    laser.position.add(direction);
-    
-    // Add to scene
-    this.scene.add(laser);
-    
-    // Add a point light to make it glow
-    const light = new THREE.PointLight(0x00ffff, 1, 2);
-    laser.add(light);
-    
-    // Store laser data for animation
-    if (!this.lasers) {
-      this.lasers = [];
-    }
-    
-    this.lasers.push({
-      mesh: laser,
-      direction: direction,
-      speed: 0.5,
-      lifeTime: 0,
-      maxLifeTime: 100
-    });
-    
-    // Play laser sound
-    this.playSound('laser');
   }
   
   animate() {
@@ -1895,8 +2161,8 @@ class SimpleGame {
   handleGrenadeTargeting(event) {
     event.preventDefault();
     
-    // Check if we have enough energy
-    if (this.energy < this.maxEnergy / 2) {
+    // Check if we have enough energy - now requires FULL energy
+    if (this.energy < this.maxEnergy) {
       console.log("Not enough energy for grenade");
       return;
     }
@@ -1932,8 +2198,8 @@ class SimpleGame {
         targetPoint.copy(shipPosition).add(toTarget);
       }
       
-      // Consume energy
-      this.energy -= this.maxEnergy / 2;
+      // Consume full energy
+      this.energy = 0;
       this.ui.updateEnergy(this.energy, this.maxEnergy);
       
       // Create and launch the grenade
@@ -1999,6 +2265,77 @@ class SimpleGame {
       explosionRadius: 4,
       trailPoints: []
     });
+  }
+  
+  // Add a method to show targeting indicator for all weapons
+  updateTargetingIndicator(event) {
+    // Get the mouse position in normalized device coordinates
+    const mouse = new THREE.Vector2(
+      (event.clientX / window.innerWidth) * 2 - 1,
+      -(event.clientY / window.innerHeight) * 2 + 1
+    );
+    
+    // Use raycasting to determine the point in 3D space
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, this.camera);
+    
+    // Check for intersection with the floor
+    const intersects = raycaster.intersectObject(this.floor);
+    
+    if (intersects.length > 0) {
+      const targetPoint = intersects[0].point;
+      
+      // Create or update targeting indicator
+      if (!this.targetingIndicator) {
+        // Create a simple indicator
+        const geometry = new THREE.RingGeometry(0.2, 0.3, 32);
+        const material = new THREE.MeshBasicMaterial({
+          color: 0x00ff00,
+          transparent: true,
+          opacity: 0.5,
+          side: THREE.DoubleSide
+        });
+        this.targetingIndicator = new THREE.Mesh(geometry, material);
+        this.targetingIndicator.rotation.x = Math.PI / 2; // Make it horizontal
+        this.scene.add(this.targetingIndicator);
+      }
+      
+      // Position indicator at the target point
+      this.targetingIndicator.position.copy(targetPoint);
+      this.targetingIndicator.position.y = 0.05; // Slightly above floor
+      
+      // Set color based on weapon type
+      switch(this.currentWeapon) {
+        case 'LASER':
+          this.targetingIndicator.material.color.set(0x00ffff);
+          break;
+        case 'GRENADE':
+          this.targetingIndicator.material.color.set(0xff4500);
+          break;
+        case 'BOUNCE':
+          this.targetingIndicator.material.color.set(0x00ff99);
+          break;
+      }
+      
+      // Add subtle pulse animation
+      if (!this.targetingIndicator.pulse) {
+        this.targetingIndicator.pulse = 0;
+      }
+      this.targetingIndicator.pulse += 0.1;
+      const scale = 1 + 0.1 * Math.sin(this.targetingIndicator.pulse);
+      this.targetingIndicator.scale.set(scale, scale, scale);
+      
+      // Show indicator
+      this.targetingIndicator.visible = true;
+      
+      // Hide it after 2 seconds of inactivity
+      clearTimeout(this.targetingTimeout);
+      this.targetingTimeout = setTimeout(() => {
+        if (this.targetingIndicator) {
+          this.targetingIndicator.visible = false;
+        }
+      }, 2000);
+    }
   }
 }
 
