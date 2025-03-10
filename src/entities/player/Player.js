@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { ModelLoader } from './ModelLoader';
+import { ModelLoader } from '../../assets/ModelLoader';
+import { KEY_MAPPINGS, CONTROL_SETTINGS, DEFAULT_CONTROL_STATE, ControlUtils } from '../../config/Controls';
 
 export class Player {
   constructor(scene, camera, soundManager) {
@@ -24,22 +25,12 @@ export class Player {
     // Movement properties
     this.acceleration = new THREE.Vector3(0, 0, 0);
     this.velocity = new THREE.Vector3(0, 0, 0);
-    this.maxSpeed = 30;
-    this.friction = 0.95;
-    this.rotationSpeed = 2.5;
+    this.maxSpeed = CONTROL_SETTINGS.MOVEMENT.SHIP_SPEED;
+    this.friction = CONTROL_SETTINGS.MOVEMENT.DECELERATION;
+    this.rotationSpeed = CONTROL_SETTINGS.MOVEMENT.ROTATION_SPEED;
     
     // Controls state
-    this.controls = {
-      forward: false,
-      backward: false,
-      left: false,
-      right: false,
-      strafeLeft: false,
-      strafeRight: false,
-      brake: false,
-      boost: false,
-      fire: false
-    };
+    this.controls = { ...DEFAULT_CONTROL_STATE };
     
     // Create ship mesh
     this.mesh = new THREE.Group();
@@ -78,7 +69,7 @@ export class Player {
     });
     
     // Setup key controls
-    this.setupControls();
+    this.setupInputHandlers();
     
     // Initialize UI elements
     this.initUI();
@@ -255,60 +246,29 @@ export class Player {
   setupInputHandlers() {
     // Keyboard event listeners
     document.addEventListener('keydown', (event) => {
-      switch (event.code) {
-        case 'KeyW':
-        case 'ArrowUp':
-          this.moveForward = true;
+      const action = ControlUtils.getActionForKey(event.code);
+      if (!action) return;
+
+      switch (action.category) {
+        case 'MOVEMENT':
+          this.controls[action.action.toLowerCase()] = true;
           break;
-        case 'KeyS':
-        case 'ArrowDown':
-          this.moveBackward = true;
-          break;
-        case 'KeyA':
-        case 'ArrowLeft':
-          this.moveLeft = true;
-          break;
-        case 'KeyD':
-        case 'ArrowRight':
-          this.moveRight = true;
-          break;
-        case 'Space':
-          this.fireLaser();
-          break;
-        case 'Digit1':
-          this.weaponType = 'LASER';
-          document.getElementById('weapon-value').textContent = 'LASER';
-          break;
-        case 'Digit2':
-          this.weaponType = 'BOUNCE_LASER';
-          document.getElementById('weapon-value').textContent = 'BOUNCE LASER';
-          break;
-        case 'Digit3':
-          this.weaponType = 'QUANTUM_GRENADE';
-          document.getElementById('weapon-value').textContent = 'QUANTUM GRENADE';
+        case 'WEAPONS':
+          if (action.action.startsWith('SELECT_')) {
+            const weaponType = action.action.replace('SELECT_', '');
+            this.selectWeapon(weaponType.toLowerCase());
+          } else if (action.action === 'FIRE') {
+            this.fireLaser();
+          }
           break;
       }
     });
     
     document.addEventListener('keyup', (event) => {
-      switch (event.code) {
-        case 'KeyW':
-        case 'ArrowUp':
-          this.moveForward = false;
-          break;
-        case 'KeyS':
-        case 'ArrowDown':
-          this.moveBackward = false;
-          break;
-        case 'KeyA':
-        case 'ArrowLeft':
-          this.moveLeft = false;
-          break;
-        case 'KeyD':
-        case 'ArrowRight':
-          this.moveRight = false;
-          break;
-      }
+      const action = ControlUtils.getActionForKey(event.code);
+      if (!action || action.category !== 'MOVEMENT') return;
+      
+      this.controls[action.action.toLowerCase()] = false;
     });
   }
   
@@ -354,17 +314,17 @@ export class Player {
     this.velocity.x = 0;
     this.velocity.z = 0;
     
-    if (this.moveForward) {
-      this.velocity.z = -this.speed * deltaTime;
+    if (this.controls.forward) {
+      this.velocity.z = -this.maxSpeed * deltaTime;
     }
-    if (this.moveBackward) {
-      this.velocity.z = this.speed * deltaTime;
+    if (this.controls.backward) {
+      this.velocity.z = this.maxSpeed * deltaTime;
     }
-    if (this.moveLeft) {
-      this.velocity.x = -this.speed * deltaTime;
+    if (this.controls.left) {
+      this.velocity.x = -this.maxSpeed * deltaTime;
     }
-    if (this.moveRight) {
-      this.velocity.x = this.speed * deltaTime;
+    if (this.controls.right) {
+      this.velocity.x = this.maxSpeed * deltaTime;
     }
     
     // Apply velocity to position
@@ -472,10 +432,7 @@ export class Player {
     this.mesh.position.set(0, 0.5, 0);
     
     // Reset movement state
-    this.moveForward = false;
-    this.moveBackward = false;
-    this.moveLeft = false;
-    this.moveRight = false;
+    this.controls = { ...DEFAULT_CONTROL_STATE };
     this.velocity.set(0, 0, 0);
     
     // Reset health

@@ -1,0 +1,99 @@
+#controls {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 20px;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 10px;
+    z-index: 1000;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+}
+
+.control-section {
+    display: flex;
+    gap: 10px;
+    padding: 0 15px;
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.control-section:last-child {
+    border-right: none;
+}
+
+.control-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 40px;
+}
+
+.control-indicator .key {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.control-indicator .label {
+    font-size: 16px;
+    color: #fff;
+}
+
+.control-indicator .tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.control-indicator:hover .tooltip {
+    opacity: 1;
+}
+
+/* Mobile and tablet adjustments */
+@media (max-width: 768px) {
+    #controls {
+        flex-direction: column;
+        bottom: 10px;
+        gap: 10px;
+        padding: 10px;
+    }
+    
+    .control-section {
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 10px 0;
+    }
+    
+    .control-section:last-child {
+        border-bottom: none;
+    }
+    
+    .control-indicator {
+        min-width: 30px;
+    }
+    
+    .control-indicator .key {
+        font-size: 10px;
+        padding: 3px 6px;
+    }
+    
+    .control-indicator .label {
+        font-size: 14px;
+    }
+} 

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import './styles/main.css';
-import { GameUI } from './components/GameUI';
-import { MiniMap } from './components/MiniMap';
+import { GameUI } from './ui/GameUI';
+import { MiniMap } from './ui/MiniMap';
+import { KEY_MAPPINGS, CONTROL_SETTINGS, CONTROL_FEEDBACK, DEFAULT_CONTROL_STATE, ControlUtils } from './config/Controls';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -27,6 +28,9 @@ class SimpleGame {
     // Track assets loading
     this.assetsLoaded = false;
     this.shipModelLoaded = false;
+    
+    // Initialize control state
+    this.keys = { ...DEFAULT_CONTROL_STATE };
     
     // Setup animation timing
     this.clock = new THREE.Clock();
@@ -61,6 +65,10 @@ class SimpleGame {
     this.maxEnergy = 100;
     this.energyRechargeRate = 20; // Units per second
     this.currentWeapon = 'LASER';
+    
+    // Initialize available weapons
+    this.availableWeapons = ['LASER', 'GRENADE', 'BOUNCE'];
+    this.weaponIndex = 0; // Start with LASER
     
     // Load assets
     this.loadAssets();
@@ -744,42 +752,6 @@ class SimpleGame {
   }
   
   setupControls() {
-    // Movement keys
-    this.keys = {
-      forward: false,
-      backward: false,
-      left: false,
-      right: false,
-      strafeLeft: false,
-      strafeRight: false,
-      fire: false,
-      switchWeapon: false
-    };
-    
-    // Store key mappings (for visual feedback)
-    this.keyMap = {
-      KeyW: 'forward',
-      ArrowUp: 'forward',
-      KeyS: 'backward',
-      ArrowDown: 'backward',
-      KeyA: 'left',
-      ArrowLeft: 'left',
-      KeyD: 'right',
-      ArrowRight: 'right',
-      KeyQ: 'strafeLeft',
-      KeyE: 'strafeRight',
-      Space: 'fire',
-      Digit1: 'selectLaser',
-      Digit2: 'selectGrenade',
-      Digit3: 'selectBounce',
-      KeyX: 'switchWeapon',
-      KeyM: 'toggleMap'
-    };
-    
-    // Available weapons
-    this.availableWeapons = ['LASER', 'GRENADE', 'BOUNCE'];
-    this.weaponIndex = 0;
-    
     // Store active keys for visual feedback
     this.activeKeys = new Set();
     
@@ -790,104 +762,78 @@ class SimpleGame {
     this.isTouchDevice = 'ontouchstart' in window;
     
     // Keyboard controls
-    document.addEventListener('keydown', (event) => {
-      // Get control action from key mapping
-      const action = this.keyMap[event.code];
-      
-      // Skip if key isn't mapped
-      if (!action) return;
-      
-      // Set key state to active
-      if (action === 'selectLaser') {
-        this.selectWeapon('laser');
-      } else if (action === 'selectGrenade') {
-        this.selectWeapon('grenade');
-      } else if (action === 'selectBounce') {
-        this.selectWeapon('bounce'); 
-      } else if (action === 'switchWeapon') {
-        this.cycleWeapon();
-      } else if (action === 'toggleMap') {
-        this.toggleMiniMap();
-      } else {
-        this.keys[action] = true;
-      }
-      
-      // Store active key for visual feedback
-      this.activeKeys.add(event.code);
-      
-      // Handle fire action immediately (not just in update loop)
-      if (action === 'fire') {
-        this.fireCurrentWeapon();
-      }
-      
-      // Update control indicators
-      this.updateControlIndicators();
-      
-      // Prevent default browser behavior for these keys
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab', 'KeyM'].includes(event.code)) {
-        event.preventDefault();
-      }
-    });
+    document.addEventListener('keydown', this.boundHandleKeyDown);
+    document.addEventListener('keyup', this.boundHandleKeyUp);
     
-    document.addEventListener('keyup', (event) => {
-      // Get control action from key mapping
-      const action = this.keyMap[event.code];
-      
-      // Skip if key isn't mapped
-      if (!action) return;
-      
-      // Skip weapon selection keys on keyup
-      if (action === 'selectLaser' || action === 'selectGrenade' || action === 'selectBounce' || action === 'switchWeapon') {
-        return;
-      }
-      
-      // Set key state to inactive
-      this.keys[action] = false;
-      
-      // Remove from active keys
-      this.activeKeys.delete(event.code);
-      
-      // Update control indicators
-      this.updateControlIndicators();
-    });
+    // Mouse controls - attach to the canvas for better precision
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener('click', this.boundHandleClick);
+    canvas.addEventListener('mousemove', this.boundHandleMouseMove);
     
     // Setup touch controls for mobile devices
     if (this.isTouchDevice) {
       this.setupTouchControls();
     }
+  }
+  
+  createControlIndicators() {
+    console.log('Creating control indicators');
+    // Create container if it doesn't exist
+    if (!this.controlsContainer) {
+        this.controlsContainer = document.createElement('div');
+        this.controlsContainer.id = 'controls';
+        document.body.appendChild(this.controlsContainer);
+        console.log('Control container created');
+    }
+
+    // Clear existing indicators
+    this.controlsContainer.innerHTML = '';
     
-    // Setup universal click handling for all weapons
-    document.addEventListener('click', (event) => {
-      if (this.currentWeapon === 'GRENADE') {
-        // Grenade has special targeting because it creates an arc
-        this.handleGrenadeTargeting(event);
-      } else {
-        // Handle directional firing for laser and bounce weapons
-        this.handleDirectionalFiring(event);
-      }
+    // Create sections for different control types
+    const sections = ['MOVEMENT', 'WEAPONS', 'ACTIONS'];
+    sections.forEach(section => {
+        console.log('Creating section:', section);
+        const controls = CONTROL_FEEDBACK[section] || [];
+        if (controls.length > 0) {
+            const sectionContainer = document.createElement('div');
+            sectionContainer.className = `control-section ${section.toLowerCase()}`;
+            
+            controls.forEach(control => {
+                const indicator = document.createElement('div');
+                indicator.className = 'control-indicator';
+                indicator.id = `control-${control.id}`;
+                indicator.innerHTML = `
+                    <span class="key">${control.key}</span>
+                    <span class="label">${control.label}</span>
+                    <span class="tooltip">${control.tooltip}</span>
+                `;
+                sectionContainer.appendChild(indicator);
+            });
+            
+            this.controlsContainer.appendChild(sectionContainer);
+        }
     });
     
-    // Setup mouse move for weapon targeting preview
-    document.addEventListener('mousemove', (event) => {
-      // Update targeting indicator for all weapons
-      this.updateTargetingIndicator(event);
-      
-      // Only show grenade-specific targeting indicator when grenade is selected
-      if (this.currentWeapon === 'GRENADE') {
-        this.updateGrenadeTargetingIndicator(event);
-      } else if (this.grenadeTargetIndicator && this.grenadeTargetIndicator.parent) {
-        // Remove the grenade-specific targeting indicator if weapon changed
-        this.scene.remove(this.grenadeTargetIndicator);
-        this.grenadeTargetIndicator = null;
-      }
-    });
+    console.log('Control indicators created');
+  }
+  
+  updateControlIndicators() {
+    // Skip if control indicators aren't created yet
+    if (!this.controlsContainer) return;
     
-    // Add event listeners with bound methods
-    window.addEventListener('resize', this.boundHandleResize);
-    document.addEventListener('keydown', this.boundHandleKeyDown);
-    document.addEventListener('keyup', this.boundHandleKeyUp);
-    document.addEventListener('click', this.boundHandleClick);
-    document.addEventListener('mousemove', this.boundHandleMouseMove);
+    // Update each indicator based on key state and active keys
+    for (const category of Object.values(KEY_MAPPINGS)) {
+      for (const [action, keys] of Object.entries(category)) {
+        const indicator = document.getElementById(`indicator-${action.toLowerCase()}`);
+        if (indicator) {
+          if (keys.some(key => this.activeKeys.has(key))) {
+            indicator.classList.add('active');
+          } else {
+            indicator.classList.remove('active');
+          }
+        }
+      }
+    }
   }
   
   handleResize(event) {
@@ -906,64 +852,73 @@ class SimpleGame {
   
   handleKeyDown(event) {
     // Get control action from key mapping
-    const action = this.keyMap[event.code];
+    const action = ControlUtils.getActionForKey(event.code);
     
     // Skip if key isn't mapped or event is repeated
     if (!action || event.repeat) return;
     
-    // Handle weapon selection with cooldown
-    if (action.startsWith('select') || action === 'switchWeapon') {
-      const now = Date.now();
-      if (now - this.lastWeaponSwitch < 200) { // 200ms cooldown
-        return;
-      }
-      this.lastWeaponSwitch = now;
+    // Handle weapon selection
+    if (action.category === 'WEAPONS') {
+        if (action.action === 'SWITCH_WEAPON') {
+            this.cycleWeapon();
+            return;
+        } else if (action.action === 'SELECT_LASER') {
+            this.selectWeapon('LASER');
+            return;
+        } else if (action.action === 'SELECT_GRENADE') {
+            this.selectWeapon('GRENADE');
+            return;
+        } else if (action.action === 'SELECT_BOUNCE') {
+            this.selectWeapon('BOUNCE');
+            return;
+        }
+    }
+    
+    // Handle UI controls
+    if (action.category === 'UI') {
+        if (action.action === 'TOGGLE_MAP') {
+            this.toggleMiniMap();
+            return;
+        } else if (action.action === 'TOGGLE_CONTROLS') {
+            this.toggleControls();
+            return;
+        }
     }
     
     // Set key state to active
-    if (action === 'selectLaser') {
-      this.selectWeapon('laser');
-    } else if (action === 'selectGrenade') {
-      this.selectWeapon('grenade');
-    } else if (action === 'selectBounce') {
-      this.selectWeapon('bounce'); 
-    } else if (action === 'switchWeapon') {
-      this.cycleWeapon();
-    } else if (action === 'toggleMap') {
-      this.toggleMiniMap();
-    } else {
-      this.keys[action] = true;
+    if (action.category === 'MOVEMENT') {
+        this.keys[action.action.toLowerCase()] = true;
     }
     
     // Store active key for visual feedback
     this.activeKeys.add(event.code);
-    
-    // Handle fire action with rate limiting
-    if (action === 'fire') {
-      this.handleFireAction();
-    }
     
     // Update control indicators
     this.updateControlIndicators();
     
     // Prevent default browser behavior for game controls
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab', 'KeyM'].includes(event.code)) {
-      event.preventDefault();
+        event.preventDefault();
     }
-  }
+}
   
   handleKeyUp(event) {
-    const action = this.keyMap[event.code];
+    const action = ControlUtils.getActionForKey(event.code);
     if (!action) return;
     
     // Skip weapon selection keys on keyup
-    if (action === 'selectLaser' || action === 'selectGrenade' || 
-        action === 'selectBounce' || action === 'switchWeapon') {
+    if (action.category === 'WEAPONS' && action.action.startsWith('SELECT_')) {
       return;
     }
     
     // Set key state to inactive
-    this.keys[action] = false;
+    if (action.category === 'MOVEMENT') {
+      this.keys[action.action.toLowerCase()] = false;
+    } else if (action.category === 'WEAPONS') {
+      this.keys[action.action.toLowerCase()] = false;
+    } else if (action.category === 'UI') {
+      this.keys[action.action.toLowerCase()] = false;
+    }
     
     // Remove from active keys
     this.activeKeys.delete(event.code);
@@ -973,45 +928,79 @@ class SimpleGame {
   }
   
   handleClick(event) {
+    // Ensure we have a valid event object
+    if (event && event.preventDefault) {
+        event.preventDefault();
+    }
+    
     // Prevent rapid-fire clicking
     const now = Date.now();
     const weaponCooldown = this.weaponCooldowns.get(this.currentWeapon) || 0;
     
     if (now < weaponCooldown) {
-      return;
+        return;
     }
     
-    // Set next allowed fire time based on weapon type
-    const cooldownTime = this.currentWeapon === 'GRENADE' ? 1000 : // 1 second for grenades
-                        this.currentWeapon === 'BOUNCE' ? 500 :    // 0.5 seconds for bounce
-                        200;                                       // 0.2 seconds for regular laser
+    // Get click coordinates relative to canvas
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const clientX = event.clientX || (event.touches && event.touches[0].clientX);
+    const clientY = event.clientY || (event.touches && event.touches[0].clientY);
     
-    this.weaponCooldowns.set(this.currentWeapon, now + cooldownTime);
+    if (typeof clientX !== 'number' || typeof clientY !== 'number') {
+        console.warn('Invalid click coordinates');
+        return;
+    }
     
-    // Handle weapon firing based on type
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    
+    // Convert to normalized device coordinates
+    const mouse = new THREE.Vector2(
+        (x / this.renderer.domElement.clientWidth) * 2 - 1,
+        -(y / this.renderer.domElement.clientHeight) * 2 + 1
+    );
+    
+    // Handle weapon-specific targeting
     if (this.currentWeapon === 'GRENADE') {
-      this.handleGrenadeTargeting(event);
+        this.handleGrenadeTargeting({ 
+            clientX, 
+            clientY,
+            preventDefault: () => {} // Add dummy preventDefault for consistency
+        });
     } else {
-      this.handleDirectionalFiring(event);
+        this.handleDirectionalFiring({ clientX, clientY });
     }
   }
   
   handleMouseMove(event) {
-    // Debounce mouse move events
+    // Skip if we're moving too frequently (throttle)
     if (this.mouseMoveTimer) {
-      clearTimeout(this.mouseMoveTimer);
+        return;
     }
     
-    this.mouseMoveTimer = setTimeout(() => {
-      this.updateTargetingIndicator(event);
-      
-      if (this.currentWeapon === 'GRENADE') {
-        this.updateGrenadeTargetingIndicator(event);
-      }
-      
-      this.mouseMoveTimer = null;
-    }, 16); // ~60fps
-  }
+    // Use requestAnimationFrame for smoother updates
+    this.mouseMoveTimer = requestAnimationFrame(() => {
+        // Get mouse coordinates relative to canvas
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        
+        // Update targeting indicators
+        this.updateTargetingIndicator({
+            clientX: event.clientX,
+            clientY: event.clientY
+        });
+        
+        if (this.currentWeapon === 'GRENADE') {
+            this.updateGrenadeTargetingIndicator({
+                clientX: event.clientX,
+                clientY: event.clientY
+            });
+        }
+        
+        this.mouseMoveTimer = null;
+    });
+}
   
   handleFireAction() {
     const now = Date.now();
@@ -1052,13 +1041,13 @@ class SimpleGame {
     // Create fire button
     const fireButton = document.createElement('div');
     fireButton.className = 'touch-button fire-button';
-    fireButton.innerHTML = '🔥';
+    fireButton.innerHTML = CONTROL_FEEDBACK.INDICATORS.ACTIONS.find(a => a.id === 'fire').label;
     touchControls.appendChild(fireButton);
     
     // Create weapon switch button
     const weaponButton = document.createElement('div');
     weaponButton.className = 'touch-button weapon-button';
-    weaponButton.innerHTML = '🔄';
+    weaponButton.innerHTML = CONTROL_FEEDBACK.INDICATORS.WEAPONS.find(w => w.id === 'switchWeapon').label;
     touchControls.appendChild(weaponButton);
     
     // Joystick handling
@@ -1088,17 +1077,22 @@ class SimpleGame {
         joystickActive = false;
         joystickKnob.style.transform = 'translate(0, 0)';
         
-        // Reset movement keys
-        this.keys.forward = false;
-        this.keys.backward = false;
-        this.keys.left = false;
-        this.keys.right = false;
+        // Reset movement keys using DEFAULT_CONTROL_STATE
+        Object.keys(DEFAULT_CONTROL_STATE).forEach(key => {
+          if (key.startsWith('forward') || key.startsWith('backward') || 
+              key.startsWith('left') || key.startsWith('right') || 
+              key.startsWith('strafe')) {
+            this.keys[key] = DEFAULT_CONTROL_STATE[key];
+          }
+        });
+        
         this.updateControlIndicators();
       }
     });
     
     const handleJoystickMove = (touch) => {
-      const maxDistance = 40; // Maximum joystick movement distance
+      const maxDistance = CONTROL_SETTINGS.TOUCH.JOYSTICK_MAX_DISTANCE;
+      const deadZone = CONTROL_SETTINGS.TOUCH.JOYSTICK_DEAD_ZONE;
       
       // Calculate distance from center
       const dx = touch.clientX - joystickOrigin.x;
@@ -1113,19 +1107,27 @@ class SimpleGame {
       const knobY = distance * Math.sin(angle);
       joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
       
-      // Convert joystick position to key presses
-      this.keys.forward = dy < -10;
-      this.keys.backward = dy > 10;
-      this.keys.left = dx < -10;
-      this.keys.right = dx > 10;
+      // Convert joystick position to key presses using deadzone
+      this.keys.forward = dy < -deadZone;
+      this.keys.backward = dy > deadZone;
+      this.keys.left = dx < -deadZone;
+      this.keys.right = dx > deadZone;
       
       this.updateControlIndicators();
     };
     
-    // Fire button handling
+    // Fire button handling with weapon cooldown
+    let lastFireTime = 0;
     fireButton.addEventListener('touchstart', (e) => {
-      this.keys.fire = true;
-      this.fireCurrentWeapon();
+      const now = Date.now();
+      const cooldown = CONTROL_SETTINGS.WEAPON_COOLDOWNS[this.currentWeapon];
+      
+      if (now - lastFireTime >= cooldown) {
+        this.keys.fire = true;
+        this.fireCurrentWeapon();
+        lastFireTime = now;
+      }
+      
       this.updateControlIndicators();
       e.preventDefault();
     });
@@ -1136,15 +1138,22 @@ class SimpleGame {
       e.preventDefault();
     });
     
-    // Weapon switch button handling
+    // Weapon switch button handling with cooldown
+    let lastWeaponSwitchTime = 0;
     weaponButton.addEventListener('touchstart', (e) => {
-      this.cycleWeapon();
+      const now = Date.now();
+      if (now - lastWeaponSwitchTime >= 200) { // 200ms cooldown for weapon switching
+        this.cycleWeapon();
+        lastWeaponSwitchTime = now;
+      }
       e.preventDefault();
     });
     
     // Enable directional fire on game area tap
     const gameArea = document.querySelector('canvas');
     if (gameArea) {
+      let lastTapTime = 0;
+      
       gameArea.addEventListener('touchstart', (e) => {
         // Ignore if touch is in control areas
         const touch = e.touches[0];
@@ -1152,169 +1161,70 @@ class SimpleGame {
           touchControls.contains(document.elementFromPoint(touch.clientX, touch.clientY));
           
         if (!isInControlArea && this.playerShip) {
-          // Similar to handling mouse click but for touch
-          const touchX = touch.clientX;
-          const touchY = touch.clientY;
+          const now = Date.now();
+          const doubleTapDelay = CONTROL_SETTINGS.TOUCH.DOUBLE_TAP_DELAY;
           
-          // Handle directional firing similarly to mouse
-          const touchPoint = new THREE.Vector2(
-            (touchX / window.innerWidth) * 2 - 1,
-            -(touchY / window.innerHeight) * 2 + 1
-          );
-          
-          // Use raycasting to determine the point in 3D space
-          const raycaster = new THREE.Raycaster();
-          raycaster.setFromCamera(touchPoint, this.camera);
-          
-          // Check for intersection with the floor
-          const intersects = raycaster.intersectObject(this.floor);
-          
-          if (intersects.length > 0) {
-            const targetPoint = intersects[0].point;
+          // Check for double tap
+          if (now - lastTapTime < doubleTapDelay) {
+            // Handle double tap action (e.g., special weapon)
+            this.cycleWeapon();
+          } else {
+            // Handle single tap (directional firing)
+            const touchX = touch.clientX;
+            const touchY = touch.clientY;
             
-            // Calculate the direction from the player to the target point
-            const shipPosition = this.playerShip.position.clone();
-            const direction = targetPoint.clone().sub(shipPosition).normalize();
+            // Handle directional firing similarly to mouse
+            const touchPoint = new THREE.Vector2(
+              (touchX / window.innerWidth) * 2 - 1,
+              -(touchY / window.innerHeight) * 2 + 1
+            );
             
-            // Only care about horizontal direction (ignore y component)
-            direction.y = 0;
-            direction.normalize();
+            // Use raycasting to determine the point in 3D space
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(touchPoint, this.camera);
             
-            // Store the original rotation
-            const originalRotation = this.playerShip.rotation.clone();
+            // Check for intersection with the floor
+            const intersects = raycaster.intersectObject(this.floor);
             
-            // Temporarily rotate the ship to face the target
-            this.playerShip.lookAt(shipPosition.clone().add(direction));
-            
-            // Fire the weapon in that direction
-            if (this.currentWeapon === 'GRENADE') {
-              // For grenades, we simulate a tap at the target location
-              const targetEvent = {
-                clientX: touchX,
-                clientY: touchY,
-                preventDefault: () => {}
-              };
-              this.handleGrenadeTargeting(targetEvent);
-            } else {
-              // For lasers and bounce, fire in the direction
-              this.fireCurrentWeapon(direction);
+            if (intersects.length > 0) {
+              const targetPoint = intersects[0].point;
+              
+              // Calculate the direction from the player to the target point
+              const shipPosition = this.playerShip.position.clone();
+              const direction = targetPoint.clone().sub(shipPosition).normalize();
+              
+              // Only care about horizontal direction (ignore y component)
+              direction.y = 0;
+              direction.normalize();
+              
+              // Store the original rotation
+              const originalRotation = this.playerShip.rotation.clone();
+              
+              // Temporarily rotate the ship to face the target
+              this.playerShip.lookAt(shipPosition.clone().add(direction));
+              
+              // Fire the weapon in that direction
+              if (this.currentWeapon === 'GRENADE') {
+                // For grenades, we simulate a tap at the target location
+                const targetEvent = {
+                  clientX: touchX,
+                  clientY: touchY,
+                  preventDefault: () => {}
+                };
+                this.handleGrenadeTargeting(targetEvent);
+              } else {
+                // For lasers and bounce, fire in the direction
+                this.fireCurrentWeapon(direction);
+              }
+              
+              // Restore the original rotation
+              this.playerShip.rotation.copy(originalRotation);
             }
-            
-            // Restore the original rotation
-            this.playerShip.rotation.copy(originalRotation);
           }
           
+          lastTapTime = now;
           e.preventDefault();
         }
-      });
-    }
-  }
-  
-  createControlIndicators() {
-    // Create a container for the control indicators
-    this.controlsContainer = document.createElement('div');
-    this.controlsContainer.className = 'control-indicators';
-    document.body.appendChild(this.controlsContainer);
-    
-    // Create movement controls container
-    const movementControls = document.createElement('div');
-    movementControls.className = 'control-group movement-controls';
-    this.controlsContainer.appendChild(movementControls);
-    
-    // Define movement keys with better icons
-    const movementKeys = [
-      { id: 'forward', key: 'W', label: '⬆️', tooltip: 'Forward' },
-      { id: 'backward', key: 'S', label: '⬇️', tooltip: 'Backward' },
-      { id: 'left', key: 'A', label: '⬅️', tooltip: 'Turn Left' },
-      { id: 'right', key: 'D', label: '➡️', tooltip: 'Turn Right' },
-      { id: 'strafeLeft', key: 'Q', label: '↩️', tooltip: 'Strafe Left' },
-      { id: 'strafeRight', key: 'E', label: '↪️', tooltip: 'Strafe Right' },
-      { id: 'fire', key: 'SPACE', label: '🔥', tooltip: 'Fire' }
-    ];
-    
-    // Create movement key indicators
-    movementKeys.forEach(keyInfo => {
-      const indicator = document.createElement('div');
-      indicator.className = 'key-indicator';
-      indicator.id = `indicator-${keyInfo.id}`;
-      indicator.title = keyInfo.tooltip; // Add tooltip
-      
-      const keyElement = document.createElement('div');
-      keyElement.className = 'key';
-      keyElement.textContent = keyInfo.key;
-      
-      const labelElement = document.createElement('div');
-      labelElement.className = 'label';
-      labelElement.textContent = keyInfo.label;
-      
-      indicator.appendChild(keyElement);
-      indicator.appendChild(labelElement);
-      movementControls.appendChild(indicator);
-    });
-    
-    // Create weapon controls container
-    const weaponControls = document.createElement('div');
-    weaponControls.className = 'control-group weapon-controls';
-    this.controlsContainer.appendChild(weaponControls);
-    
-    // Define weapon keys with better icons
-    const weaponKeys = [
-      { id: 'selectLaser', key: '1', label: '🔫', tooltip: 'Laser' },
-      { id: 'selectGrenade', key: '2', label: '💣', tooltip: 'Grenade' },
-      { id: 'selectBounce', key: '3', label: '↗️↘️', tooltip: 'Bounce Laser' },
-      { id: 'switchWeapon', key: 'X', label: '🔄', tooltip: 'Switch Weapon' }
-    ];
-    
-    // Create weapon key indicators
-    weaponKeys.forEach(keyInfo => {
-      const indicator = document.createElement('div');
-      indicator.className = 'key-indicator weapon-key';
-      indicator.id = `indicator-${keyInfo.id}`;
-      indicator.title = keyInfo.tooltip; // Add tooltip
-      
-      const keyElement = document.createElement('div');
-      keyElement.className = 'key';
-      keyElement.textContent = keyInfo.key;
-      
-      const labelElement = document.createElement('div');
-      labelElement.className = 'label';
-      labelElement.textContent = keyInfo.label;
-      
-      indicator.appendChild(keyElement);
-      indicator.appendChild(labelElement);
-      weaponControls.appendChild(indicator);
-    });
-    
-    // Create a controls hint
-    const controlsHint = document.createElement('div');
-    controlsHint.className = 'controls-hint';
-    controlsHint.textContent = 'Press C to toggle controls';
-    this.controlsContainer.appendChild(controlsHint);
-    
-    // Initially show the controls for first-time users
-    this.controlsContainer.classList.remove('hidden');
-    this.controlsContainer.classList.add('visible');
-    
-    // Add C key listener to toggle controls display
-    document.addEventListener('keydown', (event) => {
-      if (event.code === 'KeyC') {
-        this.toggleControls();
-        event.preventDefault();
-      }
-    });
-    
-    // Remove F1 alternative as we only want C to show controls
-    // But keep it for touch devices
-    if ('ontouchstart' in window) {
-      // Add a touch-friendly button to toggle controls
-      const controlsToggleButton = document.createElement('button');
-      controlsToggleButton.className = 'controls-toggle-button';
-      controlsToggleButton.textContent = 'Controls';
-      document.body.appendChild(controlsToggleButton);
-      
-      controlsToggleButton.addEventListener('touchstart', (event) => {
-        this.toggleControls();
-        event.preventDefault();
       });
     }
   }
@@ -1336,82 +1246,82 @@ class SimpleGame {
   }
   
   fadeInControls() {
-    this.controlsContainer.classList.remove('hidden');
-    this.controlsContainer.classList.add('visible');
-    this.controlsContainer.classList.remove('fading');
+    console.log('Fading in controls');
+    if (this.controlsContainer) {
+        this.controlsContainer.style.opacity = '1';
+        this.controlsContainer.style.display = 'flex';
+    } else {
+        console.warn('Control container not found during fade in');
+    }
   }
   
   fadeOutControls() {
-    this.controlsContainer.classList.add('fading');
-    // After fade animation completes, hide completely
-    setTimeout(() => {
-      if (this.controlsContainer.classList.contains('fading')) {
-        this.controlsContainer.classList.remove('visible');
-        this.controlsContainer.classList.add('hidden');
-        this.controlsContainer.classList.remove('fading');
-      }
-    }, 500); // Match this with CSS transition duration
+    console.log('Fading out controls');
+    if (this.controlsContainer) {
+        this.controlsContainer.style.opacity = '0';
+        setTimeout(() => {
+            if (this.controlsContainer.style.opacity === '0') {
+                this.controlsContainer.style.display = 'none';
+            }
+        }, 500);
+    } else {
+        console.warn('Control container not found during fade out');
+    }
   }
   
-  updateControlIndicators() {
-    // Skip if control indicators aren't created yet
-    if (!this.controlsContainer) return;
-    
-    // Update each indicator based on key state and active keys
-    for (const [code, action] of Object.entries(this.keyMap)) {
-      const indicator = document.getElementById(`indicator-${action}`);
-      if (indicator) {
-        if (this.activeKeys.has(code)) {
-          indicator.classList.add('active');
-        } else {
-          indicator.classList.remove('active');
+  updateWeaponUI() {
+    // Update UI to reflect weapon change
+    if (this.ui) {
+        this.ui.updateWeapon(this.currentWeapon);
+        
+        // Update targeting indicator color if it exists
+        if (this.targetingIndicator) {
+            const colors = {
+                'LASER': new THREE.Color(0x00ffff),
+                'GRENADE': new THREE.Color(0xff4500),
+                'BOUNCE': new THREE.Color(0x00ff99)
+            };
+            const color = colors[this.currentWeapon] || colors['LASER'];
+            
+            this.targetingIndicator.children.forEach(child => {
+                if (child.material) {
+                    child.material.color = color;
+                }
+            });
         }
-      }
-    }
-  }
-  
-  selectWeapon(action) {
-    // Update the current weapon
-    switch (action) {
-      case 'laser':
-        this.currentWeapon = 'LASER';
-        break;
-      case 'grenade':
-        this.currentWeapon = 'GRENADE';
-        break;
-      case 'bounce':
-        this.currentWeapon = 'BOUNCE';
-        break;
     }
     
-    // Update weapon index for cycling
-    this.weaponIndex = this.availableWeapons.indexOf(this.currentWeapon);
-    
-    // Update the UI
-    this.ui.updateWeapon(this.currentWeapon);
-    
-    console.log(`Selected weapon: ${this.currentWeapon}`);
-    
-    // If we select grenade, make sure to remove any existing targeting indicators
-    if (this.currentWeapon !== 'GRENADE' && this.grenadeTargetIndicator) {
-      this.scene.remove(this.grenadeTargetIndicator);
-      this.grenadeTargetIndicator = null;
+    // Log weapon change
+    console.log('Weapon updated:', this.currentWeapon);
+}
+
+selectWeapon(weaponType) {
+    console.log('Selecting specific weapon:', weaponType);
+    const index = this.availableWeapons.indexOf(weaponType);
+    if (index !== -1) {
+        this.weaponIndex = index;
+        this.currentWeapon = weaponType;
+        console.log('Weapon selection successful');
+        
+        // Update UI to reflect weapon change
+        this.updateWeaponUI();
+        
+        // Play weapon switch sound if available
+        this.playSound('weapon-switch');
+    } else {
+        console.warn('Attempted to select unavailable weapon:', weaponType);
     }
-  }
+}
   
   cycleWeapon() {
+    console.log('Cycling weapon from:', this.currentWeapon);
     this.weaponIndex = (this.weaponIndex + 1) % this.availableWeapons.length;
     this.currentWeapon = this.availableWeapons[this.weaponIndex];
+    console.log('New weapon selected:', this.currentWeapon);
     
-    // Update UI
-    this.ui.updateWeapon(this.currentWeapon);
-    
-    // If we cycled away from grenade, remove targeting indicator
-    if (this.currentWeapon !== 'GRENADE' && this.grenadeTargetIndicator) {
-      this.scene.remove(this.grenadeTargetIndicator);
-      this.grenadeTargetIndicator = null;
-    }
-  }
+    // Update UI to reflect weapon change
+    this.updateWeaponUI();
+}
   
   fireGrenade() {
     console.log("Grenade weapon selected - click to target");
@@ -1890,11 +1800,36 @@ class SimpleGame {
   }
   
   updateEnergy(deltaTime) {
-    // Recharge energy
-    if (this.energy < this.maxEnergy) {
-      this.energy = Math.min(this.energy + this.energyRechargeRate * deltaTime, this.maxEnergy);
-      // Update UI
-      this.ui.updateEnergy(this.energy, this.maxEnergy);
+    // Validate parameters
+    if (typeof deltaTime !== 'number' || deltaTime < 0) {
+        console.warn('Invalid deltaTime in updateEnergy:', deltaTime);
+        return;
+    }
+
+    // Initialize energy values if undefined
+    if (typeof this.energy !== 'number') this.energy = 0;
+    if (typeof this.maxEnergy !== 'number') this.maxEnergy = 100;
+    if (typeof this.energyRechargeRate !== 'number') this.energyRechargeRate = 20;
+
+    // Store old energy for change detection
+    const oldEnergy = this.energy;
+
+    // Calculate recharge amount
+    const rechargeAmount = this.energyRechargeRate * deltaTime;
+    
+    // Apply recharge with bounds checking
+    this.energy = Math.min(this.maxEnergy, this.energy + rechargeAmount);
+
+    // Update UI only if energy changed
+    if (this.energy !== oldEnergy) {
+        if (this.ui && typeof this.ui.updateEnergy === 'function') {
+            this.ui.updateEnergy(this.energy, this.maxEnergy);
+        }
+
+        // Log significant energy changes (more than 1 unit) for debugging
+        if (Math.abs(this.energy - oldEnergy) > 1) {
+            console.log(`Energy updated: ${oldEnergy.toFixed(1)} -> ${this.energy.toFixed(1)} (Δ${deltaTime.toFixed(3)}s)`);
+        }
     }
   }
   
@@ -1988,38 +1923,47 @@ class SimpleGame {
     grenade.explosionMesh = explosionMesh;
     grenade.explosionLight = explosionLight;
     
+    // Calculate damage radius
+    const explosionCenter = grenade.mesh.position.clone();
+    const maxDamage = 50; // Maximum damage at center
+    const damageRadius = grenade.explosionRadius || 4; // Default radius of 4 units
+    
     // Check for obstacle hits in explosion radius
     for (const obstacle of this.obstacles) {
-      const distance = grenade.mesh.position.distanceTo(obstacle.position);
-      if (distance < grenade.explosionRadius) {
-        // Create hit effect at the point closest to the explosion
-        const direction = obstacle.position.clone().sub(grenade.mesh.position).normalize();
-        const hitPoint = grenade.mesh.position.clone().add(direction.multiplyScalar(distance * 0.8));
+      const distance = obstacle.position.distanceTo(explosionCenter);
+      if (distance < damageRadius) {
+        // Calculate damage based on distance (linear falloff)
+        const damagePercent = 1 - (distance / damageRadius);
+        const hitPoint = obstacle.position.clone().add(
+          explosionCenter.clone().sub(obstacle.position).normalize().multiplyScalar(distance * 0.8)
+        );
         this.createHitEffect(hitPoint);
       }
     }
     
-    // Check for player hit
+    // Check for player damage
     const playerPosition = this.playerShip.position.clone();
     playerPosition.y = 0; // Project to ground plane
-    const grenadePosition = grenade.mesh.position.clone();
+    const grenadePosition = explosionCenter.clone();
     grenadePosition.y = 0; // Project to ground plane
     
     const playerDistance = playerPosition.distanceTo(grenadePosition);
-    if (playerDistance < grenade.explosionRadius) {
-      // Calculate damage based on distance (closer = more damage)
-      const damagePercent = 1 - (playerDistance / grenade.explosionRadius);
-      const damage = Math.floor(30 * damagePercent); // Up to 30 damage
+    if (playerDistance < damageRadius) {
+      // Calculate damage with distance falloff
+      const damagePercent = 1 - (playerDistance / damageRadius);
+      const damage = Math.floor(maxDamage * damagePercent);
       
       // Apply damage to player
-      this.health -= damage;
-      if (this.health < 0) this.health = 0;
+      this.health = Math.max(0, this.health - damage);
       
       // Update UI
-      this.ui.updateHealth(this.health, this.maxHealth);
+      if (this.ui) {
+        this.ui.updateHealth(this.health, this.maxHealth);
+      }
       
-      // Flash the screen
+      // Visual feedback
       this.flashCollisionWarning();
+      this.createHitEffect(playerPosition);
     }
     
     // Play explosion sound
@@ -2415,18 +2359,36 @@ class SimpleGame {
   }
   
   handleGrenadeTargeting(event) {
-    event.preventDefault();
+    // Ensure we have a valid event object
+    if (event && event.preventDefault && typeof event.preventDefault === 'function') {
+        event.preventDefault();
+    }
+    
+    // Validate energy before proceeding
+    if (!this.energy || !this.maxEnergy) {
+        console.warn('Energy values invalid:', { energy: this.energy, maxEnergy: this.maxEnergy });
+        return;
+    }
     
     // Check if we have enough energy - now requires FULL energy
     if (this.energy < this.maxEnergy) {
-      console.log("Not enough energy for grenade");
-      return;
+        console.log("Not enough energy for grenade");
+        return;
+    }
+    
+    // Validate event coordinates
+    const clientX = event.clientX || (event.touches && event.touches[0].clientX);
+    const clientY = event.clientY || (event.touches && event.touches[0].clientY);
+    
+    if (typeof clientX !== 'number' || typeof clientY !== 'number') {
+        console.warn('Invalid grenade target coordinates');
+        return;
     }
     
     // Get the position where to throw the grenade
     const mouse = new THREE.Vector2(
-      (event.clientX / window.innerWidth) * 2 - 1,
-      -(event.clientY / window.innerHeight) * 2 + 1
+        (clientX / window.innerWidth) * 2 - 1,
+        -(clientY / window.innerHeight) * 2 + 1
     );
     
     // Raycasting to get the point on the floor
@@ -2437,32 +2399,38 @@ class SimpleGame {
     const intersects = raycaster.intersectObject(this.floor);
     
     if (intersects.length > 0) {
-      const targetPoint = intersects[0].point;
-      
-      // Check if the target is within maximum range
-      const maxRange = 20;
-      const shipPosition = this.playerShip.position.clone();
-      shipPosition.y = 0; // Project to ground plane
-      
-      // Vector from ship to target
-      const toTarget = targetPoint.clone().sub(shipPosition);
-      const distance = toTarget.length();
-      
-      // If beyond max range, limit to max range
-      if (distance > maxRange) {
-        toTarget.normalize().multiplyScalar(maxRange);
-        targetPoint.copy(shipPosition).add(toTarget);
-      }
-      
-      // Consume full energy
-      this.energy = 0;
-      this.ui.updateEnergy(this.energy, this.maxEnergy);
-      
-      // Create and launch the grenade
-      this.launchGrenade(targetPoint);
-      
-      // Play grenade sound
-      this.playSound('grenade-laser');
+        const targetPoint = intersects[0].point;
+        
+        // Check if the target is within maximum range
+        const maxRange = 20;
+        const shipPosition = this.playerShip.position.clone();
+        shipPosition.y = 0; // Project to ground plane
+        
+        // Vector from ship to target
+        const toTarget = targetPoint.clone().sub(shipPosition);
+        const distance = toTarget.length();
+        
+        // If beyond max range, limit to max range
+        if (distance > maxRange) {
+            toTarget.normalize().multiplyScalar(maxRange);
+            targetPoint.copy(shipPosition).add(toTarget);
+        }
+        
+        // Consume full energy
+        this.energy = 0;
+        
+        // Update UI with energy change
+        if (this.ui && typeof this.ui.updateEnergy === 'function') {
+            this.ui.updateEnergy(this.energy, this.maxEnergy);
+        } else {
+            console.warn('UI energy update failed');
+        }
+        
+        // Create and launch the grenade
+        this.launchGrenade(targetPoint);
+        
+        // Play grenade sound
+        this.playSound('grenade-laser');
     }
   }
   
@@ -2525,10 +2493,16 @@ class SimpleGame {
   
   // Add a method to show targeting indicator for all weapons
   updateTargetingIndicator(event) {
+    // Skip if indicator was recently updated
+    if (this.lastIndicatorUpdate && Date.now() - this.lastIndicatorUpdate < 16) {
+        return;
+    }
+    this.lastIndicatorUpdate = Date.now();
+    
     // Get the mouse position in normalized device coordinates
     const mouse = new THREE.Vector2(
-      (event.clientX / window.innerWidth) * 2 - 1,
-      -(event.clientY / window.innerHeight) * 2 + 1
+        (event.clientX / window.innerWidth) * 2 - 1,
+        -(event.clientY / window.innerHeight) * 2 + 1
     );
     
     // Use raycasting to determine the point in 3D space
@@ -2539,58 +2513,89 @@ class SimpleGame {
     const intersects = raycaster.intersectObject(this.floor);
     
     if (intersects.length > 0) {
-      const targetPoint = intersects[0].point;
-      
-      // Create or update targeting indicator
-      if (!this.targetingIndicator) {
-        // Create a simple indicator
-        const geometry = new THREE.RingGeometry(0.2, 0.3, 32);
-        const material = new THREE.MeshBasicMaterial({
-          color: 0x00ff00,
-          transparent: true,
-          opacity: 0.5,
-          side: THREE.DoubleSide
-        });
-        this.targetingIndicator = new THREE.Mesh(geometry, material);
-        this.targetingIndicator.rotation.x = Math.PI / 2; // Make it horizontal
-        this.scene.add(this.targetingIndicator);
-      }
-      
-      // Position indicator at the target point
-      this.targetingIndicator.position.copy(targetPoint);
-      this.targetingIndicator.position.y = 0.05; // Slightly above floor
-      
-      // Set color based on weapon type
-      switch(this.currentWeapon) {
-        case 'LASER':
-          this.targetingIndicator.material.color.set(0x00ffff);
-          break;
-        case 'GRENADE':
-          this.targetingIndicator.material.color.set(0xff4500);
-          break;
-        case 'BOUNCE':
-          this.targetingIndicator.material.color.set(0x00ff99);
-          break;
-      }
-      
-      // Add subtle pulse animation
-      if (!this.targetingIndicator.pulse) {
-        this.targetingIndicator.pulse = 0;
-      }
-      this.targetingIndicator.pulse += 0.1;
-      const scale = 1 + 0.1 * Math.sin(this.targetingIndicator.pulse);
-      this.targetingIndicator.scale.set(scale, scale, scale);
-      
-      // Show indicator
-      this.targetingIndicator.visible = true;
-      
-      // Hide it after 2 seconds of inactivity
-      clearTimeout(this.targetingTimeout);
-      this.targetingTimeout = setTimeout(() => {
-        if (this.targetingIndicator) {
-          this.targetingIndicator.visible = false;
+        const targetPoint = intersects[0].point;
+        
+        // Create or update targeting indicator
+        if (!this.targetingIndicator) {
+            // Create a more efficient indicator using a single geometry
+            const geometry = new THREE.Group();
+            
+            // Outer ring with fewer segments
+            const outerRing = new THREE.RingGeometry(0.4, 0.5, 16);
+            const material = new THREE.MeshBasicMaterial({
+                color: 0x00ffff,
+                transparent: true,
+                opacity: 0.6,
+                side: THREE.DoubleSide
+            });
+            const outer = new THREE.Mesh(outerRing, material);
+            
+            // Inner ring with fewer segments
+            const innerRing = new THREE.RingGeometry(0.1, 0.2, 16);
+            const inner = new THREE.Mesh(innerRing, material.clone());
+            
+            // Simplified crosshair
+            const lineGeometry = new THREE.BufferGeometry();
+            const lineVertices = new Float32Array([
+                -0.3, 0, 0,
+                0.3, 0, 0,
+                0, -0.3, 0,
+                0, 0.3, 0
+            ]);
+            lineGeometry.setAttribute('position', new THREE.BufferAttribute(lineVertices, 3));
+            const lines = new THREE.LineSegments(lineGeometry, material.clone());
+            
+            geometry.add(outer);
+            geometry.add(inner);
+            geometry.add(lines);
+            
+            this.targetingIndicator = geometry;
+            this.targetingIndicator.rotation.x = Math.PI / 2;
+            this.scene.add(this.targetingIndicator);
         }
-      }, 2000);
+        
+        // Update position
+        this.targetingIndicator.position.copy(targetPoint);
+        this.targetingIndicator.position.y = 0.05;
+        
+        // Update color based on weapon type
+        const colors = {
+            'LASER': new THREE.Color(0x00ffff),
+            'GRENADE': new THREE.Color(0xff4500),
+            'BOUNCE': new THREE.Color(0x00ff99)
+        };
+        const color = colors[this.currentWeapon] || colors['LASER'];
+        
+        // Only update colors if they've changed
+        if (!this.lastWeaponColor || this.lastWeaponColor !== this.currentWeapon) {
+            this.targetingIndicator.children.forEach(child => {
+                if (child.material) {
+                    child.material.color = color;
+                }
+            });
+            this.lastWeaponColor = this.currentWeapon;
+        }
+        
+        // Simplified pulse animation
+        if (!this.targetingIndicator.pulse) {
+            this.targetingIndicator.pulse = 0;
+        }
+        this.targetingIndicator.pulse = (this.targetingIndicator.pulse + 0.1) % (Math.PI * 2);
+        const pulseScale = 1.0 + 0.1 * Math.sin(this.targetingIndicator.pulse);
+        this.targetingIndicator.scale.setScalar(pulseScale);
+        
+        // Show indicator
+        this.targetingIndicator.visible = true;
+        
+        // Reset fade timeout
+        if (this.targetingTimeout) {
+            clearTimeout(this.targetingTimeout);
+        }
+        this.targetingTimeout = setTimeout(() => {
+            if (this.targetingIndicator && this.targetingIndicator.visible) {
+                this.targetingIndicator.visible = false;
+            }
+        }, 1000);
     }
   }
   
@@ -2658,11 +2663,11 @@ class SimpleGame {
     // Hide start screen
     const startScreen = document.getElementById('start-screen');
     if (startScreen) {
-      startScreen.classList.add('fade-out');
-      setTimeout(() => {
-        startScreen.classList.add('hidden');
-        startScreen.classList.remove('fade-out');
-      }, 500);
+        startScreen.classList.add('fade-out');
+        setTimeout(() => {
+            startScreen.classList.add('hidden');
+            startScreen.classList.remove('fade-out');
+        }, 500);
     }
 
     // Show game UI
@@ -2670,16 +2675,14 @@ class SimpleGame {
 
     // Show mini-map
     if (this.miniMap) {
-      this.miniMap.show();
+        this.miniMap.show();
     }
 
-    // Set timer to hide controls after 5 seconds
-    if (this.controlsTimeout) {
-      clearTimeout(this.controlsTimeout);
+    // Create and show controls if not already created
+    if (!this.controlsContainer) {
+        this.createControlIndicators();
     }
-    this.controlsTimeout = setTimeout(() => {
-      this.fadeOutControls();
-    }, 5000);
+    this.fadeInControls();
 
     // Start animation loop
     this.animate();
@@ -2688,8 +2691,8 @@ class SimpleGame {
   handleDirectionalFiring(event) {
     // Get mouse position in normalized device coordinates
     const mouse = new THREE.Vector2(
-      (event.clientX / window.innerWidth) * 2 - 1,
-      -(event.clientY / window.innerHeight) * 2 + 1
+        (event.clientX / window.innerWidth) * 2 - 1,
+        -(event.clientY / window.innerHeight) * 2 + 1
     );
 
     // Use raycasting to determine the point in 3D space
@@ -2700,36 +2703,64 @@ class SimpleGame {
     const intersects = raycaster.intersectObject(this.floor);
 
     if (intersects.length > 0) {
-      const targetPoint = intersects[0].point;
+        const targetPoint = intersects[0].point;
 
-      // Calculate direction from ship to target
-      const direction = targetPoint.clone().sub(this.playerShip.position).normalize();
-      direction.y = 0; // Keep shots parallel to ground
+        // Calculate direction from ship to target
+        const direction = targetPoint.clone().sub(this.playerShip.position).normalize();
+        direction.y = 0; // Keep shots parallel to ground
 
-      // Get firing position (slightly in front of ship)
-      const position = this.playerShip.position.clone().add(direction.multiplyScalar(1.5));
-      position.y = 0.5; // Set height
+        // Store original rotation
+        const originalRotation = this.playerShip.rotation.clone();
 
-      // Fire weapon in calculated direction
-      this.fireCurrentWeapon(direction);
+        // Temporarily rotate ship to face target for accurate firing
+        const shipPosition = this.playerShip.position.clone();
+        this.playerShip.lookAt(shipPosition.clone().add(direction));
+
+        // Fire weapon
+        this.fireCurrentWeapon(direction);
+
+        // Restore original rotation
+        this.playerShip.rotation.copy(originalRotation);
     }
-  }
+}
 
-  fireCurrentWeapon(direction) {
+fireCurrentWeapon(direction) {
     // Check weapon cooldown
     const now = Date.now();
     const weaponCooldown = this.weaponCooldowns.get(this.currentWeapon) || 0;
 
     if (now < weaponCooldown) {
-      return;
+        return;
+    }
+
+    // Define energy costs for each weapon
+    const energyCosts = {
+        'LASER': 25,    // 4 shots (100/25 = 4)
+        'BOUNCE': 50,   // 2-3 shots (100/40 = 2.5)
+        'GRENADE': 100  // 1 shot (requires full energy)
+    };
+
+    // Check if we have enough energy
+    const energyCost = energyCosts[this.currentWeapon];
+    if (this.energy < energyCost) {
+        console.log(`Not enough energy for ${this.currentWeapon}`);
+        return;
     }
 
     // Set cooldown based on weapon type
     const cooldownTime = this.currentWeapon === 'GRENADE' ? 1000 :
                         this.currentWeapon === 'BOUNCE' ? 500 :
-                        200;
+                        250; // Slightly increased laser cooldown for balance
 
     this.weaponCooldowns.set(this.currentWeapon, now + cooldownTime);
+
+    // Consume energy
+    this.energy = Math.max(0, this.energy - energyCost);
+    
+    // Update UI with energy change
+    if (this.ui && typeof this.ui.updateEnergy === 'function') {
+        this.ui.updateEnergy(this.energy, this.maxEnergy);
+    }
 
     // Get firing position (slightly in front of ship)
     const shipDirection = direction || new THREE.Vector3(0, 0, 1).applyQuaternion(this.playerShip.quaternion);
@@ -2738,26 +2769,64 @@ class SimpleGame {
 
     // Create weapon effect based on type
     switch (this.currentWeapon) {
-      case 'LASER':
-        this.fireLaser(position, shipDirection);
-        break;
-      case 'BOUNCE':
-        this.fireBouncingLaser(position, shipDirection);
-        break;
-      case 'GRENADE':
-        // Grenades are handled separately through handleGrenadeTargeting
-        break;
+        case 'LASER':
+            this.fireLaser(position, shipDirection.normalize());
+            break;
+        case 'BOUNCE':
+            this.fireBouncingLaser(position, shipDirection.normalize());
+            break;
+        case 'GRENADE':
+            // Grenades are handled separately through handleGrenadeTargeting
+            break;
     }
 
     // Play appropriate sound
     const soundMap = {
-      'LASER': 'laser',
-      'BOUNCE': 'laser-bounce',
-      'GRENADE': 'grenade-laser'
+        'LASER': 'laser',
+        'BOUNCE': 'laser-bounce',
+        'GRENADE': 'grenade-laser'
     };
 
     this.playSound(soundMap[this.currentWeapon]);
-  }
+
+    // Visual feedback for firing
+    this.createMuzzleFlash(position, shipDirection);
+
+    // Log energy state for debugging
+    console.log(`Weapon fired: ${this.currentWeapon}, Energy remaining: ${this.energy}/${this.maxEnergy}`);
+}
+
+createMuzzleFlash(position, direction) {
+    // Create a quick flash effect at the firing position
+    const flashGeometry = new THREE.CircleGeometry(0.3, 16);
+    const flashMaterial = new THREE.MeshBasicMaterial({
+        color: this.currentWeapon === 'BOUNCE' ? 0x00ff99 : 0x00ffff,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide
+    });
+
+    const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+    flash.position.copy(position);
+    flash.lookAt(position.clone().add(direction));
+
+    this.scene.add(flash);
+
+    // Animate the flash
+    let frame = 0;
+    const animate = () => {
+        frame++;
+        flash.scale.addScalar(0.2);
+        flashMaterial.opacity *= 0.8;
+
+        if (frame < 10) {
+            requestAnimationFrame(animate);
+        } else {
+            this.scene.remove(flash);
+        }
+    };
+    animate();
+}
 
   fireLaser(position, direction) {
     // Create laser geometry - make it longer and thinner for better visual
@@ -2866,6 +2935,106 @@ class SimpleGame {
       trailPoints: [],
       pulsePhase: 0
     });
+  }
+
+  createHitEffect(position) {
+    // Create particle burst effect
+    const particleCount = 15;
+    const particles = [];
+    
+    // Create particle material with orange/red color for explosion
+    const particleMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff6600,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    });
+
+    for (let i = 0; i < particleCount; i++) {
+      // Create small particle geometry
+      const particleGeometry = new THREE.PlaneGeometry(0.2, 0.2);
+      const particle = new THREE.Mesh(particleGeometry, particleMaterial.clone());
+      
+      // Position at hit point
+      particle.position.copy(position);
+      
+      // Random velocity in all directions
+      const velocity = new THREE.Vector3(
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1
+      ).normalize().multiplyScalar(0.2 + Math.random() * 0.3);
+      
+      particle.userData.velocity = velocity;
+      particle.userData.life = 1.0;
+      
+      this.scene.add(particle);
+      particles.push(particle);
+    }
+
+    // Add impact flash
+    const flashGeometry = new THREE.CircleGeometry(0.5, 16);
+    const flashMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff6600,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    });
+    
+    const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+    flash.position.copy(position);
+    flash.lookAt(this.camera.position);
+    this.scene.add(flash);
+
+    // Add point light
+    const light = new THREE.PointLight(0xff6600, 3, 6);
+    light.position.copy(position);
+    this.scene.add(light);
+
+    // Animate particles and effects
+    let frame = 0;
+    const animate = () => {
+      frame++;
+      
+      // Update particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const particle = particles[i];
+        
+        // Move particle
+        particle.position.add(particle.userData.velocity);
+        
+        // Reduce life
+        particle.userData.life -= 0.05;
+        
+        // Update opacity
+        particle.material.opacity = particle.userData.life;
+        
+        // Remove dead particles
+        if (particle.userData.life <= 0) {
+          this.scene.remove(particle);
+          particles.splice(i, 1);
+        }
+      }
+
+      // Update flash
+      flash.scale.addScalar(0.2);
+      flashMaterial.opacity *= 0.8;
+
+      // Update light
+      light.intensity *= 0.8;
+
+      // Continue animation if particles remain
+      if (particles.length > 0 && frame < 20) {
+        requestAnimationFrame(animate);
+      } else {
+        // Clean up
+        this.scene.remove(flash);
+        this.scene.remove(light);
+      }
+    };
+
+    // Start animation
+    animate();
   }
 }
 

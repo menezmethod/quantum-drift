@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { Player } from './Player';
-import { WeaponSystem } from './WeaponSystem';
-import { EnemyManager } from './EnemyManager';
-import { GameRoom } from './GameRoom';
-import { SoundManager } from './SoundManager';
-import { RegularLaser } from './RegularLaser';
-import { GameUI } from './GameUI';
+import { Player } from '../entities/player/Player';
+import { WeaponSystem } from '../entities/weapons/WeaponSystem';
+import { EnemyManager } from '../entities/enemies/EnemyManager';
+import { GameRoom } from '../ui/GameRoom';
+import { SoundManager } from '../assets/SoundManager';
+import { RegularLaser } from '../entities/weapons/RegularLaser';
+import { GameUI } from '../ui/GameUI';
 
 export class GameEngine {
   constructor() {
