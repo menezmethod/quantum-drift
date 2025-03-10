@@ -851,15 +851,15 @@ class SimpleGame {
     this.energy -= energyCost;
     this.ui.updateEnergy(this.energy, this.maxEnergy);
     
-    // Create bouncing laser geometry
-    const geometry = new THREE.CylinderGeometry(0.08, 0.08, 1, 8);
+    // Create bouncing laser geometry - thicker than regular laser
+    const geometry = new THREE.CylinderGeometry(0.15, 0.15, 1.5, 12);
     geometry.rotateX(Math.PI / 2);
     
-    // Create glowing material with animation
+    // Create pulsing glowing material with animation
     const material = new THREE.MeshBasicMaterial({
-      color: 0x00ff99,
+      color: 0x00ffcc,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.9
     });
     
     // Create laser mesh
@@ -877,20 +877,38 @@ class SimpleGame {
     // Add to scene
     this.scene.add(laser);
     
-    // Add glow effect
-    const light = new THREE.PointLight(0x00ff99, 1.5, 3);
+    // Add stronger glow effect - brighter and larger than regular laser
+    const light = new THREE.PointLight(0x00ffcc, 2, 5);
     laser.add(light);
     
-    // Add a trail effect
-    const trail = new THREE.Points(
-      new THREE.BufferGeometry(),
-      new THREE.PointsMaterial({
-        color: 0x00ff99,
-        size: 0.05,
-        transparent: true,
-        opacity: 0.6
-      })
-    );
+    // Add a secondary smaller light for extra glow
+    const secondaryLight = new THREE.PointLight(0xffffff, 0.5, 3);
+    laser.add(secondaryLight);
+    
+    // Create halo effect around laser
+    const haloGeometry = new THREE.RingGeometry(0.2, 0.4, 24);
+    const haloMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffcc,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide
+    });
+    
+    const halo = new THREE.Mesh(haloGeometry, haloMaterial);
+    halo.rotation.x = Math.PI / 2;
+    laser.add(halo);
+    
+    // Add a more sophisticated trail effect
+    const trailGeometry = new THREE.BufferGeometry();
+    const trailMaterial = new THREE.PointsMaterial({
+      color: 0x00ffcc,
+      size: 0.1,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
+    });
+    
+    const trail = new THREE.Points(trailGeometry, trailMaterial);
     this.scene.add(trail);
     
     // Store bouncing laser data
@@ -898,8 +916,13 @@ class SimpleGame {
       this.bouncingLasers = [];
     }
     
+    // Create a unique ID for animation tracking
+    const laserId = Date.now() + Math.random();
+    
     this.bouncingLasers.push({
+      id: laserId,
       mesh: laser,
+      halo: halo,
       trail: trail,
       direction: direction,
       speed: 0.35, // Slower than regular lasers
@@ -910,7 +933,8 @@ class SimpleGame {
       trailPoints: [],
       lastPosition: laser.position.clone(),
       canHitPlayer: false, // Initially can't hit player
-      bounceTimeout: 10 // Wait frames before allowing player collision
+      bounceTimeout: 10, // Wait frames before allowing player collision
+      pulsePhase: 0 // For pulsing animation
     });
     
     // Play bounce laser sound
@@ -1495,25 +1519,61 @@ class SimpleGame {
     for (let i = this.bouncingLasers.length - 1; i >= 0; i--) {
       const laser = this.bouncingLasers[i];
       
+      // Animate the laser's pulse effect
+      laser.pulsePhase += 0.1;
+      const pulseValue = Math.sin(laser.pulsePhase) * 0.5 + 0.5; // 0 to 1 range
+      
+      // Pulse the material
+      laser.mesh.material.opacity = 0.7 + pulseValue * 0.3;
+      
+      // Pulse the light intensity
+      const mainLight = laser.mesh.children[0];
+      if (mainLight && mainLight.isPointLight) {
+        mainLight.intensity = 1.5 + pulseValue * 1;
+      }
+      
+      // Rotate the halo for extra effect
+      if (laser.halo) {
+        laser.halo.rotation.z += 0.05;
+      }
+      
       // Move laser
       const movement = laser.direction.clone().multiplyScalar(laser.speed);
       const newPosition = laser.mesh.position.clone().add(movement);
       
       // Store current position for trail
       laser.trailPoints.push(laser.mesh.position.clone());
-      if (laser.trailPoints.length > 20) {
+      
+      // Keep more trail points for a longer trail
+      const maxTrailPoints = 25 + laser.bounces * 5; // Longer trail after bounces
+      if (laser.trailPoints.length > maxTrailPoints) {
         laser.trailPoints.shift();
       }
       
-      // Update trail geometry
+      // Update trail geometry with fading points
       const positions = new Float32Array(laser.trailPoints.length * 3);
+      const colors = new Float32Array(laser.trailPoints.length * 3);
+      
+      // Base color in RGB components (0x00ffcc)
+      const r = 0, g = 1, b = 0.8;
+      
       for (let j = 0; j < laser.trailPoints.length; j++) {
         positions[j * 3] = laser.trailPoints[j].x;
         positions[j * 3 + 1] = laser.trailPoints[j].y;
         positions[j * 3 + 2] = laser.trailPoints[j].z;
+        
+        // Calculate fade based on position in trail
+        const fade = j / laser.trailPoints.length;
+        
+        // Apply color with fade
+        colors[j * 3] = r * fade;
+        colors[j * 3 + 1] = g * fade;
+        colors[j * 3 + 2] = b * fade;
       }
       
       laser.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      laser.trail.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      laser.trail.material.vertexColors = true;
       
       // Check for bounces
       let bounced = false;
@@ -1529,7 +1589,7 @@ class SimpleGame {
       let closestObstacle = null;
       
       for (const obstacle of this.obstacles) {
-        // Skip if obstacle doesn't have geometry (shouldn't happen but just in case)
+        // Skip if obstacle doesn't have geometry
         if (!obstacle.geometry) continue;
         
         // Get obstacle in world space
@@ -1559,7 +1619,7 @@ class SimpleGame {
           const radius = obstacle.geometry.parameters.radiusTop;
           const center = obstacle.position.clone();
           
-          // For simplicity, treat cylinder as a sphere for bounce calculation
+          // For cylinders, treat as a sphere for bounce calculation
           const sphereIntersection = tempRay.intersectSphere(
             new THREE.Sphere(center, radius),
             tempVector
@@ -1574,7 +1634,6 @@ class SimpleGame {
             }
           }
         }
-        // Add more geometry types as needed
       }
       
       // If we found an intersection
@@ -1582,7 +1641,7 @@ class SimpleGame {
         // Position at the intersection point
         laser.mesh.position.copy(closestIntersection);
         
-        // Calculate normal for bounce (simplification - just use direction to center)
+        // Calculate normal for bounce
         const normal = closestIntersection.clone().sub(closestObstacle.position).normalize();
         
         // Calculate reflection direction: r = d - 2(d·n)n
@@ -1598,14 +1657,26 @@ class SimpleGame {
         // Increment bounce count
         laser.bounces++;
         
-        // Create hit effect
-        this.createHitEffect(closestIntersection.clone());
+        // Create enhanced bounce effect
+        this.createBounceEffect(closestIntersection.clone(), normal.clone());
         
         // Play bounce sound
         this.playSound('bounce');
         
         // After first bounce, it can hit the player
         laser.canHitPlayer = true;
+        
+        // Slightly increase speed after each bounce
+        laser.speed *= 1.05;
+        
+        // Make laser more energetic after bounce
+        if (mainLight && mainLight.isPointLight) {
+          mainLight.intensity += 0.5;
+          mainLight.distance += 0.5;
+        }
+        
+        // Reset pulse for dramatic effect
+        laser.pulsePhase = 0;
         
         bounced = true;
       } else if (laser.bounceTimeout > 0) {
@@ -1634,8 +1705,11 @@ class SimpleGame {
           // Update UI
           this.ui.updateHealth(this.health, this.maxHealth);
           
-          // Flash screen
+          // Flash the screen
           this.flashCollisionWarning();
+          
+          // Create impact effect on player
+          this.createBounceEffect(playerPosition, new THREE.Vector3(0, 1, 0));
           
           // Remove laser
           this.scene.remove(laser.mesh);
@@ -1656,6 +1730,141 @@ class SimpleGame {
         this.bouncingLasers.splice(i, 1);
       }
     }
+  }
+  
+  // Create a special effect for laser bounces
+  createBounceEffect(position, normal) {
+    // Create a particle burst effect at the bounce point
+    const particleCount = 20;
+    const particleGeometry = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
+    const particleSizes = new Float32Array(particleCount);
+    
+    // Add a flash of light at bounce point
+    const bounceLight = new THREE.PointLight(0x00ffcc, 3, 5);
+    bounceLight.position.copy(position);
+    this.scene.add(bounceLight);
+    
+    // Create a ring effect at bounce point
+    const ringGeometry = new THREE.RingGeometry(0.1, 0.5, 24);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffcc,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    });
+    
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.position.copy(position);
+    
+    // Orient the ring according to the normal
+    if (Math.abs(normal.y) > 0.99) { // If normal is pointing mainly up/down
+      ring.rotation.x = Math.PI / 2; // Rotate to lie flat
+    } else {
+      // Point the ring along the normal
+      const rotationAxis = new THREE.Vector3(0, 1, 0).cross(normal).normalize();
+      const angle = Math.acos(normal.dot(new THREE.Vector3(0, 1, 0)));
+      ring.setRotationFromAxisAngle(rotationAxis, angle);
+    }
+    
+    this.scene.add(ring);
+    
+    // Create particles around bounce point
+    for (let i = 0; i < particleCount; i++) {
+      // Random direction from bounce point
+      const direction = new THREE.Vector3(
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1
+      ).normalize();
+      
+      // Bias direction toward normal
+      direction.add(normal.clone().multiplyScalar(2)).normalize();
+      
+      // Starting at bounce point
+      const startPoint = position.clone();
+      particlePositions[i * 3] = startPoint.x;
+      particlePositions[i * 3 + 1] = startPoint.y;
+      particlePositions[i * 3 + 2] = startPoint.z;
+      
+      // Random sizes for particles
+      particleSizes[i] = Math.random() * 0.1 + 0.05;
+    }
+    
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    particleGeometry.setAttribute('size', new THREE.BufferAttribute(particleSizes, 1));
+    
+    const particleMaterial = new THREE.PointsMaterial({
+      color: 0x00ffcc,
+      size: 0.1,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending
+    });
+    
+    const particles = new THREE.Points(particleGeometry, particleMaterial);
+    this.scene.add(particles);
+    
+    // Store particle velocities
+    const particleVelocities = [];
+    for (let i = 0; i < particleCount; i++) {
+      const direction = new THREE.Vector3(
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1, 
+        Math.random() * 2 - 1
+      ).normalize();
+      
+      // Bias direction toward normal
+      direction.add(normal.clone().multiplyScalar(1.5)).normalize();
+      
+      // Random speed
+      const speed = Math.random() * 0.1 + 0.05;
+      particleVelocities.push(direction.multiplyScalar(speed));
+    }
+    
+    // Animate particles and effects
+    let frameCount = 0;
+    const maxFrames = 30;
+    
+    const animate = () => {
+      frameCount++;
+      
+      // Update particles
+      const positions = particles.geometry.attributes.position.array;
+      
+      for (let i = 0; i < particleCount; i++) {
+        positions[i * 3] += particleVelocities[i].x;
+        positions[i * 3 + 1] += particleVelocities[i].y;
+        positions[i * 3 + 2] += particleVelocities[i].z;
+        
+        // Slow down particles over time
+        particleVelocities[i].multiplyScalar(0.95);
+      }
+      
+      particles.geometry.attributes.position.needsUpdate = true;
+      
+      // Fade the light
+      bounceLight.intensity *= 0.85;
+      
+      // Expand and fade the ring
+      ring.scale.addScalar(0.15);
+      ring.material.opacity *= 0.9;
+      
+      // Fade the particles
+      particles.material.opacity *= 0.92;
+      
+      if (frameCount < maxFrames) {
+        requestAnimationFrame(animate);
+      } else {
+        // Clean up
+        this.scene.remove(bounceLight);
+        this.scene.remove(ring);
+        this.scene.remove(particles);
+      }
+    };
+    
+    // Start animation
+    animate();
   }
 }
 
