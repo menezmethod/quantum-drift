@@ -13,19 +13,22 @@ export const GAME_CONFIG = {
             COOLDOWN: 200,
             SPEED: 1.2,
             DAMAGE: 10,
+            ENERGY_COST: 25,
             TRAIL_LENGTH: 8
         },
         BOUNCE: {
             COOLDOWN: 500,
             SPEED: 0.8,
-            DAMAGE: 10,
+            DAMAGE: 25,
+            ENERGY_COST: 50,
             MAX_BOUNCES: 3,
             TRAIL_LENGTH: 12
         },
         GRENADE: {
             COOLDOWN: 1000,
             EXPLOSION_RADIUS: 4,
-            DAMAGE: 30,
+            MAX_DAMAGE: 50,
+            ENERGY_COST: 100,
             TRAIL_LENGTH: 20
         }
     },

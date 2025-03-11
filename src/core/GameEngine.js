@@ -6,6 +6,7 @@ import { GameRoom } from '../ui/GameRoom';
 import { SoundManager } from '../assets/SoundManager';
 import { RegularLaser } from '../entities/weapons/RegularLaser';
 import { GameUI } from '../ui/GameUI';
+import { NetworkManager } from './NetworkManager';
 
 export class GameEngine {
   constructor() {
@@ -35,6 +36,9 @@ export class GameEngine {
       red: { score: 0, players: [] },
       blue: { score: 0, players: [] }
     };
+    
+    // Add NetworkManager instance
+    this.networkManager = new NetworkManager();
     
     // Initialize Three.js components
     this.initThree();
@@ -393,6 +397,11 @@ export class GameEngine {
     
     // Update UI
     this.updateUI();
+    
+    // Send player updates if multiplayer is enabled
+    if (this.multiplayerEnabled && this.networkManager.isConnected()) {
+      this.sendPlayerUpdate();
+    }
   }
   
   updateCamera() {
@@ -635,6 +644,12 @@ export class GameEngine {
     
     // Show multiplayer info in UI
     document.getElementById('multiplayer-info').classList.remove('hidden');
+    
+    // Set up NetworkManager event listeners
+    this.setupNetworkListeners();
+    
+    // Connect to server
+    this.connectToServer();
   }
   
   disableMultiplayer() {
@@ -643,14 +658,81 @@ export class GameEngine {
     
     // Hide multiplayer info in UI
     document.getElementById('multiplayer-info').classList.add('hidden');
+    
+    // Disconnect from server
+    this.disconnectFromServer();
   }
   
-  connectToServer(serverUrl) {
-    // This will be implemented with actual WebSocket connection
-    console.log(`Connecting to multiplayer server: ${serverUrl}`);
+  setupNetworkListeners() {
+    // Clear existing listeners
+    this.networkManager.removeAllListeners();
     
-    // For now, generate a fake playerId
-    this.playerId = 'player_' + Math.floor(Math.random() * 10000);
+    // Handle player joined
+    this.networkManager.on('player_joined', (playerData) => {
+      console.log('Player joined:', playerData);
+      
+      // Create other player visual representation
+      const newPlayer = this.createOtherPlayer(playerData);
+      this.players[playerData.id] = newPlayer;
+      
+      // Update player count in UI
+      document.getElementById('players-count').textContent = Object.keys(this.players).length + 1; // +1 for local player
+    });
+    
+    // Handle player left
+    this.networkManager.on('player_left', (id) => {
+      console.log('Player left:', id);
+      
+      // Remove player from scene
+      if (this.players[id]) {
+        this.scene.remove(this.players[id].mesh);
+        delete this.players[id];
+        
+        // Update player count in UI
+        document.getElementById('players-count').textContent = Object.keys(this.players).length + 1; // +1 for local player
+      }
+    });
+    
+    // Handle player update
+    this.networkManager.on('player_update', (data) => {
+      if (this.players[data.id]) {
+        this.updateOtherPlayer(this.players[data.id], data);
+      }
+    });
+    
+    // Handle laser shot from other players
+    this.networkManager.on('laser_shot', (data) => {
+      // Create laser from other player
+      if (data.origin && data.direction) {
+        this.createLaserFromPlayer(data.origin, data.direction, data.playerId);
+      }
+    });
+    
+    // Handle connection status
+    this.networkManager.on('connected', () => {
+      console.log('Connected to server');
+      document.getElementById('connection-status').textContent = 'Connected';
+      document.getElementById('connection-status').classList.add('connected');
+    });
+    
+    this.networkManager.on('disconnected', () => {
+      console.log('Disconnected from server');
+      document.getElementById('connection-status').textContent = 'Disconnected';
+      document.getElementById('connection-status').classList.remove('connected');
+    });
+    
+    // Handle player ID assignment
+    this.networkManager.on('player_id', (id) => {
+      this.playerId = id;
+      console.log('Assigned player ID:', id);
+    });
+  }
+  
+  connectToServer(serverUrl = 'http://localhost:3000') {
+    if (!this.multiplayerEnabled) return;
+    
+    console.log(`Connecting to multiplayer server: ${serverUrl}`);
+    this.networkManager.connect(serverUrl);
     
     // Update player count in UI
     document.getElementById('players-count').textContent = '1';
@@ -665,147 +747,86 @@ export class GameEngine {
   }
   
   disconnectFromServer() {
-    // This will be implemented with actual WebSocket disconnection
     console.log("Disconnecting from multiplayer server");
+    
+    // Use NetworkManager to disconnect
+    this.networkManager.disconnect();
     
     // Reset multiplayer state
     this.playerId = null;
-    this.players = {};
     
-    // Reset team assignments
+    // Remove other players from scene
+    for (const id in this.players) {
+      this.scene.remove(this.players[id].mesh);
+    }
+    
+    // Reset players and teams
+    this.players = {};
     this.teams.red.players = [];
     this.teams.blue.players = [];
     this.player.team = null;
   }
   
   sendPlayerUpdate() {
-    // This will send player position, rotation, etc. to the server
-    if (!this.multiplayerEnabled || !this.playerId) return;
+    if (!this.multiplayerEnabled || !this.networkManager.isConnected()) return;
+    if (!this.player || !this.player.mesh) return;
     
-    // In real implementation, we'd send:
-    // - Player position
-    // - Player rotation
-    // - Player actions (shooting, etc.)
-    
-    // For now, just a placeholder
-    const update = {
-      id: this.playerId,
-      position: this.player.mesh.position.clone(),
+    const playerData = {
+      position: {
+        x: this.player.mesh.position.x,
+        y: this.player.mesh.position.y,
+        z: this.player.mesh.position.z
+      },
       rotation: this.player.mesh.rotation.y,
-      team: this.player.team
+      team: this.player.team,
+      name: this.playerName,
+      shipType: this.player.shipType
     };
     
-    // This would be sent to the server
-    // console.log('Player update:', update);
+    this.networkManager.sendPlayerUpdate(playerData);
   }
   
-  handleServerUpdate(data) {
-    // This will handle updates from the server about other players
-    if (!this.multiplayerEnabled) return;
+  createLaserFromPlayer(origin, direction, playerId) {
+    // Implement this method to spawn a laser from another player
+    // Similar to your existing laser creation code but from a different origin
+    const laserGeometry = new THREE.CylinderGeometry(0.05, 0.05, 1, 8);
     
-    // In real implementation, we'd handle:
-    // - Other player positions
-    // - Other player actions
-    // - Game state changes
-    
-    // For now, just a placeholder
-    if (data.players) {
-      // Update other players
-      for (const playerId in data.players) {
-        if (playerId === this.playerId) continue; // Skip our own player
-        
-        const playerData = data.players[playerId];
-        
-        // Create or update player
-        if (!this.players[playerId]) {
-          // Create new player representation
-          this.players[playerId] = this.createOtherPlayer(playerData);
-        } else {
-          // Update existing player
-          this.updateOtherPlayer(this.players[playerId], playerData);
-        }
-      }
-      
-      // Update player count in UI
-      const playerCount = Object.keys(data.players).length;
-      document.getElementById('players-count').textContent = playerCount;
+    // Determine color based on player's team if applicable
+    let laserColor = 0xff0000; // Default red
+    if (this.players[playerId] && this.players[playerId].team) {
+      laserColor = this.players[playerId].team === 'red' ? 0xff0000 : 0x0000ff;
     }
     
-    // Handle game state updates
-    if (data.gameState) {
-      if (data.gameState.teams) {
-        // Update team scores
-        this.teams = data.gameState.teams;
-        this.updateTeamScores();
-      }
-    }
-  }
-  
-  createOtherPlayer(playerData) {
-    // Create a visual representation of another player
-    // This is a simplified version - in a real game you'd use actual models
-    
-    const geometry = new THREE.ConeGeometry(0.5, 2, 8);
-    
-    // Create material with team color
-    const color = playerData.team === 'red' ? 0xff0000 : 0x0000ff;
-    const material = new THREE.MeshStandardMaterial({
-      color: color,
-      emissive: color,
-      emissiveIntensity: 0.5,
-      metalness: 0.8,
-      roughness: 0.2
+    const laserMaterial = new THREE.MeshBasicMaterial({ 
+      color: laserColor,
+      emissive: laserColor,
+      emissiveIntensity: 1.0
     });
     
-    // Create mesh
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.rotation.x = Math.PI / 2;
+    const laser = new THREE.Mesh(laserGeometry, laserMaterial);
     
-    // Set position
-    if (playerData.position) {
-      mesh.position.copy(playerData.position);
-    }
+    // Set laser position and rotation
+    laser.position.copy(origin);
     
-    // Set rotation
-    if (playerData.rotation !== undefined) {
-      mesh.rotation.y = playerData.rotation;
-    }
+    // Set laser direction
+    const laserDirection = new THREE.Vector3().copy(direction);
+    laser.lookAt(laserDirection.add(origin));
+    
+    // Rotate to align with direction
+    laser.rotateX(Math.PI / 2);
     
     // Add to scene
-    this.scene.add(mesh);
+    this.scene.add(laser);
     
-    // Return player data
-    return {
-      id: playerData.id,
-      mesh: mesh,
-      team: playerData.team,
-      lastUpdate: Date.now()
-    };
-  }
-  
-  updateOtherPlayer(player, playerData) {
-    // Update player position and rotation with simple interpolation
-    if (playerData.position) {
-      // Simple lerp for smoother movement
-      player.mesh.position.lerp(playerData.position, 0.3);
-    }
+    // Add to lasers array for update
+    this.lasers.push({
+      mesh: laser,
+      direction: laserDirection.normalize(),
+      speed: 0.5, // Adjust as needed
+      playerId: playerId
+    });
     
-    if (playerData.rotation !== undefined) {
-      // Simple rotation interpolation
-      const targetRotation = playerData.rotation;
-      const currentRotation = player.mesh.rotation.y;
-      
-      // Calculate the shortest direction to rotate
-      let rotationDiff = targetRotation - currentRotation;
-      if (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
-      if (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
-      
-      // Apply some interpolation
-      player.mesh.rotation.y += rotationDiff * 0.3;
-    }
-    
-    // Update last update time
-    player.lastUpdate = Date.now();
+    return laser;
   }
   
   /**
@@ -1054,5 +1075,118 @@ export class GameEngine {
     if (splashScreen) {
       splashScreen.style.display = 'none';
     }
+  }
+  
+  // Create visual representation for other players
+  createOtherPlayer(playerData) {
+    // Get ship type from player data or default to STANDARD
+    const shipType = playerData.shipType || 'STANDARD';
+    
+    // Create geometry based on ship type
+    let geometry;
+    switch(shipType) {
+      case 'INTERCEPTOR':
+        geometry = new THREE.ConeGeometry(0.4, 1.25, 4);
+        break;
+      case 'HEAVY':
+        geometry = new THREE.CylinderGeometry(0.6, 0.7, 1.0, 6);
+        break;
+      case 'SCOUT':
+        geometry = new THREE.ConeGeometry(0.3, 1.1, 5);
+        break;
+      case 'STANDARD':
+      default:
+        geometry = new THREE.ConeGeometry(0.5, 1.0, 3);
+        break;
+    }
+    
+    // Rotate geometry to align with movement direction
+    geometry.rotateX(Math.PI / 2);
+    
+    // Create material based on team color
+    const shipColor = playerData.teamColor || 0x00ffff;
+    const material = new THREE.MeshPhongMaterial({ 
+      color: shipColor, 
+      emissive: shipColor,
+      emissiveIntensity: 0.5,
+      shininess: 100
+    });
+    
+    // Create mesh
+    const ship = new THREE.Mesh(geometry, material);
+    
+    // Add engine glow effect
+    const engineGlow = new THREE.PointLight(shipColor, 1, 2);
+    engineGlow.position.set(0, 0, -0.5);
+    ship.add(engineGlow);
+    
+    // Add ship to scene
+    this.scene.add(ship);
+    
+    // Create name label
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'player-label';
+    nameDiv.textContent = playerData.name || `Player-${playerData.id.substring(0, 4)}`;
+    
+    const nameLabel = new CSS2DObject(nameDiv);
+    nameLabel.position.set(0, 1, 0);
+    ship.add(nameLabel);
+    
+    // Set initial position if provided
+    if (playerData.position) {
+      ship.position.set(
+        playerData.position.x,
+        playerData.position.y || 0.5,
+        playerData.position.z
+      );
+    }
+    
+    // Set initial rotation if provided
+    if (playerData.rotation !== undefined) {
+      ship.rotation.y = playerData.rotation;
+    }
+    
+    // Return the player object
+    return {
+      mesh: ship,
+      nameLabel,
+      engineGlow,
+      team: playerData.team,
+      health: 100,
+      shipType
+    };
+  }
+  
+  // Update other player with new data
+  updateOtherPlayer(player, data) {
+    if (!player || !player.mesh) return;
+    
+    // Update position with smooth lerping
+    if (data.position) {
+      const targetPos = new THREE.Vector3(
+        data.position.x,
+        data.position.y || 0.5,
+        data.position.z
+      );
+      
+      player.mesh.position.lerp(targetPos, 0.3);
+    }
+    
+    // Update rotation with smooth interpolation
+    if (data.rotation !== undefined) {
+      // Find shortest rotation path
+      let rotDiff = data.rotation - player.mesh.rotation.y;
+      if (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+      if (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+      
+      player.mesh.rotation.y += rotDiff * 0.3;
+    }
+    
+    // Update team if changed
+    if (data.team !== undefined && data.team !== player.team) {
+      player.team = data.team;
+    }
+    
+    // Update other properties as needed
   }
 } 

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OrbitControls } from '@three/examples/controls/OrbitControls';
 import { GLTFLoader } from '@three/examples/loaders/GLTFLoader';
 import './styles/main.css';
 import { GameUI } from './ui/GameUI';
@@ -7,6 +8,9 @@ import { KEY_MAPPINGS, CONTROL_SETTINGS, CONTROL_FEEDBACK, DEFAULT_CONTROL_STATE
 import { ShipSelectionUI } from './ui/ShipSelectionUI';
 import AssetLoader from './assets/AssetLoader';
 import { InfiniteMap } from './core/InfiniteMap';
+import { NetworkManager } from './core/NetworkManager';
+import { CSS2DRenderer, CSS2DObject } from '@three/examples/renderers/CSS2DRenderer';
+import { GAME_CONFIG } from './config/GameConfig';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -103,35 +107,67 @@ class SimpleGame {
 
     // Add frame counter
     this.frameCount = 0;
+    
+    // Initialize NetworkManager
+    this.networkManager = new NetworkManager();
+    this.networkManager.on('connected', () => {
+      console.log('Connected to game server!');
+      document.getElementById('connection-status').textContent = 'Connected';
+      document.getElementById('connection-status').classList.add('connected');
+    });
+    
+    this.networkManager.on('disconnected', () => {
+      console.log('Disconnected from game server');
+      document.getElementById('connection-status').textContent = 'Disconnected';
+      document.getElementById('connection-status').classList.remove('connected');
+    });
+    
+    this.networkManager.on('player_joined', (playerData) => {
+      console.log('Player joined:', playerData);
+      // Update player count
+      this.updatePlayerCount();
+    });
+    
+    this.networkManager.on('player_left', (id) => {
+      console.log('Player left:', id);
+      // Update player count
+      this.updatePlayerCount();
+    });
+    
+    // Add helper method to update player count
+    this.updatePlayerCount = () => {
+      const count = this.networkManager.getOtherPlayers().length + 1; // +1 for self
+      document.getElementById('players-count').textContent = count;
+    };
+    
+    this.multiplayerEnabled = false;
   }
   
   setupScene() {
-    // Create scene
+    // Create scene, camera, and renderer
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x000011);
     
-    // Setup camera
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.camera.position.set(0, 15, -10);
+    // Set up isometric camera
+    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    this.camera.position.set(10, 10, 10);
     this.camera.lookAt(0, 0, 0);
     
-    // Camera smoothing properties
-    this.cameraTargetPosition = new THREE.Vector3();
-    this.cameraTargetLookAt = new THREE.Vector3();
-    this.cameraSmoothingFactor = 0.05;
-    
-    // Setup renderer
+    // Create WebGL renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    const container = document.getElementById('game-container');
-    if (container) {
-      container.appendChild(this.renderer.domElement);
-    } else {
-      console.error('Game container not found!');
-      document.body.appendChild(this.renderer.domElement);
-    }
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.getElementById('game-container').appendChild(this.renderer.domElement);
     
-    // Add lights
+    // Add CSS2D renderer for player name labels
+    this.labelRenderer = new CSS2DRenderer();
+    this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    this.labelRenderer.domElement.style.position = 'absolute';
+    this.labelRenderer.domElement.style.top = '0';
+    this.labelRenderer.domElement.style.pointerEvents = 'none';
+    document.body.appendChild(this.labelRenderer.domElement);
+    
+    // Add lighting
     const ambientLight = new THREE.AmbientLight(0x404040);
     this.scene.add(ambientLight);
     
@@ -2230,58 +2266,107 @@ selectWeapon(weaponType) {
   }
   
   animate() {
-    // Request next frame immediately
-    requestAnimationFrame(() => this.animate());
+    // Call animationFrame with this instance as context
+    requestAnimationFrame(this.animate.bind(this));
     
-    // Calculate delta time
-    const now = Date.now();
-    const deltaTime = (now - this.lastTime) / 1000;
-    this.lastTime = now;
-    
-    // Update infinite map with player position
-    if (this.playerShip && this.infiniteMap) {
-      this.infiniteMap.update(this.playerShip.position);
+    try {
+      // Calculate delta time
+      const now = performance.now();
+      const deltaTime = (now - this.lastTime) / 1000; // in seconds
+      this.lastTime = now;
+      
+      // Update frame counter
+      this.frameCount++;
+      
+      // Limit update rate
+      if (this.frameCount % 2 === 0) { // Reduce update frequency
+        // Only update gameplay if the player ship exists
+        if (this.playerShip) {
+          // Update player
+          if (typeof this.updatePlayer === 'function') {
+            this.updatePlayer(deltaTime);
+          }
+          
+          // Update other elements - only if they exist
+          if (typeof this.updateLasers === 'function') {
+            this.updateLasers();
+          }
+          
+          if (typeof this.updateEnergy === 'function') {
+            this.updateEnergy(deltaTime);
+          }
+          
+          if (typeof this.updateCamera === 'function') {
+            this.updateCamera();
+          }
+          
+          // Update collision detection
+          if (typeof this.checkObstacleCollisions === 'function') {
+            this.checkObstacleCollisions();
+          }
+          
+          // Update thruster effects
+          if (typeof this.updateThrusterEffects === 'function') {
+            this.updateThrusterEffects();
+          }
+          
+          // Check if boost is active and update energy consumption
+          if (this.keys && this.keys.boost && this.energy > 0) {
+            this.energy = Math.max(0, this.energy - 30 * deltaTime); // Boost drains energy
+            if (this.ui) {
+              this.ui.updateEnergy(this.energy, this.maxEnergy);
+            }
+          }
+        }
+        
+        // Update bounceLasers if they exist
+        if (this.bouncingLasers && this.bouncingLasers.length > 0 && 
+            typeof this.updateBouncingLasers === 'function') {
+          this.updateBouncingLasers();
+        }
+        
+        // Update grenades if they exist
+        if (this.grenades && this.grenades.length > 0 && 
+            typeof this.updateGrenades === 'function') {
+          this.updateGrenades();
+        }
+        
+        // Update multiplayer
+        if (this.multiplayerEnabled && this.networkManager) {
+          // Send our position and rotation to server
+          if (this.playerShip) {
+            this.networkManager.sendPlayerUpdate({
+              position: {
+                x: this.playerShip.position.x,
+                y: this.playerShip.position.y,
+                z: this.playerShip.position.z
+              },
+              rotation: this.playerShip.rotation.y,
+              name: this.playerName,
+              shipType: this.currentShipType || 'default'
+            });
+          }
+          
+          // Update other players
+          if (typeof this.updateOtherPlayers === 'function') {
+            this.updateOtherPlayers();
+          }
+        }
+      }
+      
+      // Render the scene
+      if (this.renderer && this.scene && this.camera) {
+        this.renderer.render(this.scene, this.camera);
+        
+        // Render CSS2D elements if renderer exists
+        if (this.labelRenderer) {
+          this.labelRenderer.render(this.scene, this.camera);
+        }
+      }
+    } catch (error) {
+      console.error("Error in animate loop:", error);
+      // Don't rethrow, we want to keep the animation loop running
     }
-    
-    // Update game state
-    this.updatePlayer(deltaTime);
-    this.updateCamera();
-    this.updateEnergy(deltaTime);
-    this.updateLasers();
-    this.updateBouncingLasers();
-    this.updateGrenades();
-    this.updateControlIndicators();
-    
-    // Ensure targeting indicators are properly positioned
-    if (this.targetingIndicator && this.targetingIndicator.visible) {
-      // Ensure targeting indicator stays visible above the terrain
-      this.targetingIndicator.position.y = 0.15;
-    }
-    
-    if (this.grenadeTargetIndicator && this.grenadeTargetIndicator.visible) {
-      // Ensure grenade targeting indicator stays visible above the terrain
-      this.grenadeTargetIndicator.position.y = 0.15;
-    }
-    
-    // Update mini-map
-    if (this.miniMap) {
-      this.miniMap.update();
-    }
-    
-    // Update visual effects
-    if (this.playerHighlight) {
-      this.playerHighlight.position.x = this.playerShip.position.x;
-      this.playerHighlight.position.z = this.playerShip.position.z;
-      const pulseFactor = (Math.sin(Date.now() * 0.003) + 1) / 2;
-      this.playerHighlight.material.opacity = 0.05 + pulseFactor * 0.1;
-    }
-    
-    if (this.thruster && this.thrusterLight && this.thrusterPulse) {
-      this.updateThrusterEffects();
-    }
-    
-    // Always render
-    this.renderer.render(this.scene, this.camera);
   }
   
   updatePlayer(deltaTime) {
@@ -2314,38 +2399,37 @@ selectWeapon(weaponType) {
     if (this.keys.left) {
         // Rotate left
         this.playerShip.rotation.y += rotateSpeed * deltaTime;
+        moved = true;
     }
     else if (this.keys.right) {
         // Rotate right
         this.playerShip.rotation.y -= rotateSpeed * deltaTime;
-    }
-
-    // Handle strafing (if enabled)
-    if (this.keys.strafeLeft) {
-        // Strafe left
-        const leftDir = new THREE.Vector3(-1, 0, 0).applyQuaternion(this.playerShip.quaternion);
-        this.playerShip.position.addScaledVector(leftDir, moveSpeed * 0.7 * deltaTime);
-        moved = true;
-    }
-    else if (this.keys.strafeRight) {
-        // Strafe right
-        const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(this.playerShip.quaternion);
-        this.playerShip.position.addScaledVector(rightDir, moveSpeed * 0.7 * deltaTime);
         moved = true;
     }
     
-    // ALWAYS check for obstacle collisions, whether the ship moved or not
-    // The checkObstacleCollisions function will handle pushing the ship back if needed
+    // Update player highlight to follow the player ship
+    if (this.playerHighlight) {
+        this.playerHighlight.position.x = this.playerShip.position.x;
+        this.playerHighlight.position.z = this.playerShip.position.z;
+        
+        // Add a subtle pulsing effect to the highlight
+        const pulseFactor = (Math.sin(Date.now() * 0.003) + 1) / 2;
+        this.playerHighlight.material.opacity = 0.05 + pulseFactor * 0.1;
+    }
+    
+    // Check for collisions after movement
     if (moved) {
-        console.log(`Ship moved to: ${this.playerShip.position.x.toFixed(1)}, ${this.playerShip.position.y.toFixed(1)}, ${this.playerShip.position.z.toFixed(1)}`);
-    }
-    
-    // Check for collisions
-    this.checkObstacleCollisions();
-    
-    // Update thruster effects based on movement
-    if (typeof this.updateThrusterEffects === 'function') {
-        this.updateThrusterEffects();
+        this.checkObstacleCollisions();
+        
+        // If no collisions, update thruster effects
+        if (typeof this.updateThrusterEffects === 'function') {
+            this.updateThrusterEffects();
+        }
+        
+        // Send position update to server if multiplayer is enabled
+        if (this.multiplayerEnabled && this.networkManager && this.networkManager.isConnected()) {
+            this.sendPlayerPositionUpdate();
+        }
     }
   }
   
@@ -2787,6 +2871,16 @@ selectWeapon(weaponType) {
   }
   
   updateCamera() {
+    // Check if cameraTargetPosition is initialized
+    if (!this.cameraTargetPosition) {
+      this.cameraTargetPosition = new THREE.Vector3();
+      this.cameraTargetLookAt = new THREE.Vector3();
+      this.cameraSmoothingFactor = 0.05;
+    }
+    
+    // If playerShip doesn't exist, early return
+    if (!this.playerShip) return;
+    
     // Define the camera offset from the player
     const offsetY = 18; // Height above the player
     const offsetZ = -16; // Distance behind the player (adjusted for larger ship)
@@ -2805,12 +2899,8 @@ selectWeapon(weaponType) {
     // Smoothly move camera toward target position
     this.camera.position.lerp(this.cameraTargetPosition, this.cameraSmoothingFactor);
     
-    // Simply look directly at the player with a slight forward offset
+    // Make camera look at the player
     this.cameraTargetLookAt.copy(this.playerShip.position);
-    const lookAheadOffset = forwardDir.clone().multiplyScalar(4); // Look ahead offset for larger ship
-    this.cameraTargetLookAt.add(lookAheadOffset);
-    
-    // Directly look at the target (no smoothing on look target to prevent jitter)
     this.camera.lookAt(this.cameraTargetLookAt);
   }
   
@@ -3015,7 +3105,7 @@ selectWeapon(weaponType) {
     
     // Calculate damage radius
     const explosionCenter = grenade.mesh.position.clone();
-    const maxDamage = 50; // Maximum damage at center
+    const maxDamage = 50; // Maximum damage at center - 50% of health
     const damageRadius = grenade.explosionRadius || 4; // Default radius of 4 units
     
     // Check for obstacle hits in explosion radius
@@ -3060,66 +3150,48 @@ selectWeapon(weaponType) {
   updateBouncingLasers() {
     if (!this.bouncingLasers || this.bouncingLasers.length === 0) return;
     
-    const tempRay = new THREE.Ray();
-    const tempVector = new THREE.Vector3();
+    const playerPos = this.playerShip ? this.playerShip.position.clone() : null;
     
+    // Update each laser
     for (let i = this.bouncingLasers.length - 1; i >= 0; i--) {
       const laser = this.bouncingLasers[i];
       
-      // Animate the laser's pulse effect
-      laser.pulsePhase += 0.2;
-      const pulseValue = Math.sin(laser.pulsePhase) * 0.5 + 0.5;
+      // Skip invalid lasers
+      if (!laser || !laser.mesh) continue;
       
-      // Pulse the material and light
-      laser.mesh.material.opacity = 0.6 + pulseValue * 0.4;
-      const mainLight = laser.mesh.children[0];
-      if (mainLight && mainLight.isPointLight) {
-        mainLight.intensity = 1.5 + pulseValue;
-      }
+      // Update laser position
+      laser.mesh.position.add(laser.direction.clone().multiplyScalar(laser.speed));
       
-      // Calculate next position
-      const nextPosition = laser.mesh.position.clone().add(
-        laser.direction.clone().multiplyScalar(laser.speed)
-      );
-      
-      // Store current position for trail
-      laser.trailPoints.push(laser.mesh.position.clone());
-      if (laser.trailPoints.length > 12) {
-        laser.trailPoints.shift();
-      }
-      
-      // Update trail with fade effect
-      const positions = new Float32Array(laser.trailPoints.length * 3);
-      const colors = new Float32Array(laser.trailPoints.length * 3);
-      
-      for (let j = 0; j < laser.trailPoints.length; j++) {
-        positions[j * 3] = laser.trailPoints[j].x;
-        positions[j * 3 + 1] = laser.trailPoints[j].y;
-        positions[j * 3 + 2] = laser.trailPoints[j].z;
+      // Update the trail
+      if (laser.trail) {
+        // Add current position to trail points
+        laser.trailPoints.push(laser.mesh.position.clone());
         
-        // Calculate fade based on position in trail
-        const fade = j / laser.trailPoints.length;
-        colors[j * 3] = 0; // R
-        colors[j * 3 + 1] = 1 * fade; // G
-        colors[j * 3 + 2] = 0.6 * fade; // B
+        // Limit the number of trail points
+        if (laser.trailPoints.length > 20) {
+          laser.trailPoints.shift();
+        }
+        
+        // Update trail geometry
+        const positions = new Float32Array(laser.trailPoints.length * 3);
+        for (let j = 0; j < laser.trailPoints.length; j++) {
+          positions[j * 3] = laser.trailPoints[j].x;
+          positions[j * 3 + 1] = laser.trailPoints[j].y;
+          positions[j * 3 + 2] = laser.trailPoints[j].z;
+        }
+        
+        // Update geometry
+        laser.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        laser.trail.geometry.attributes.position.needsUpdate = true;
       }
       
-      laser.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      laser.trail.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      laser.trail.material.vertexColors = true;
-      
-      // Check for collisions
-      let bounced = false;
-      
-      // Set up ray for collision detection
-      tempRay.origin.copy(laser.mesh.position);
-      tempRay.direction.copy(laser.direction);
-      
-      // Check each obstacle
-      let closestDist = Infinity;
+      // Check for collisions with obstacles
+      let collision = false;
       let closestPoint = null;
+      let closestDistance = Infinity;
       let closestNormal = null;
       
+      // Check for collision with each obstacle
       for (const obstacle of this.obstacles) {
         if (!obstacle.geometry) continue;
         
@@ -3803,17 +3875,35 @@ selectWeapon(weaponType) {
   }
 
   startGame() {
-    // Hide start screen with fade out
+    console.log("Starting game...");
+    
+    // Get player name from input
+    const playerNameInput = document.getElementById('player-name');
+    this.playerName = playerNameInput.value.trim() || 'Pilot-' + Math.floor(Math.random() * 1000);
+    
+    // Hide start screen
     const startScreen = document.getElementById('start-screen');
-    if (startScreen) {
-        startScreen.classList.add('fade-out');
-        setTimeout(() => {
-            startScreen.classList.add('hidden');
-            startScreen.classList.remove('fade-out');
-            // Show ship selection after start screen fades out
-            this.showShipSelection();
-        }, 500);
+    startScreen.classList.add('hidden');
+    
+    // Enable multiplayer mode by default
+    this.multiplayerEnabled = true;
+    
+    // Connect to server
+    if (this.networkManager) {
+      this.networkManager.connect();
+      
+      // Show multiplayer info UI
+      const multiplayerInfo = document.getElementById('multiplayer-info');
+      if (multiplayerInfo) {
+        multiplayerInfo.classList.remove('hidden');
+      }
+      
+      // Update player info on server
+      this.networkManager.updatePlayerInfo(this.playerName, this.currentShipType || 'default');
     }
+    
+    // Show ship selection screen
+    this.showShipSelection();
   }
 
   showShipSelection() {
@@ -3903,6 +3993,27 @@ selectWeapon(weaponType) {
     // Set ship model based on selection
     const type = selection.type.toUpperCase(); // Make sure it's uppercase for consistency
     this.setShipModel(type);
+    this.currentShipType = type;
+    
+    // Position ship at a random location in the playing area
+    // Avoid spawning too close to the center (where other players might spawn)
+    const spawnRadius = 30; // Radius from center for spawning
+    const randomAngle = Math.random() * Math.PI * 2; // Random angle
+    const randomDistance = spawnRadius * (0.5 + Math.random() * 0.5); // Between 50% and 100% of spawn radius
+    
+    // Calculate position
+    const spawnX = Math.cos(randomAngle) * randomDistance;
+    const spawnZ = Math.sin(randomAngle) * randomDistance;
+    
+    // Set player ship position
+    if (this.playerShip) {
+        this.playerShip.position.set(spawnX, this.playerShip.position.y, spawnZ);
+        
+        // Set random rotation
+        this.playerShip.rotation.y = Math.random() * Math.PI * 2;
+        
+        console.log(`Player spawned at position: [${spawnX.toFixed(2)}, ${spawnZ.toFixed(2)}], rotation: ${this.playerShip.rotation.y.toFixed(2)}`);
+    }
     
     // Apply ship color if specified
     if (selection.color && this.playerShip) {
@@ -4134,11 +4245,11 @@ exitToMainMenu() {
         return;
     }
 
-    // Define energy costs for each weapon
+    // Define energy costs for each weapon from GAME_CONFIG
     const energyCosts = {
-        'LASER': 25,    // 4 shots (100/25 = 4)
-        'BOUNCE': 50,   // 2-3 shots (100/40 = 2.5)
-        'GRENADE': 100  // 1 shot (requires full energy)
+        'LASER': GAME_CONFIG.WEAPONS.LASER.ENERGY_COST,
+        'BOUNCE': GAME_CONFIG.WEAPONS.BOUNCE.ENERGY_COST,
+        'GRENADE': GAME_CONFIG.WEAPONS.GRENADE.ENERGY_COST
     };
 
     // Check if we have enough energy
@@ -4148,10 +4259,13 @@ exitToMainMenu() {
         return;
     }
 
-    // Set cooldown based on weapon type
-    const cooldownTime = this.currentWeapon === 'GRENADE' ? 1000 :
-                        this.currentWeapon === 'BOUNCE' ? 500 :
-                        250; // Slightly increased laser cooldown for balance
+    // Set cooldown based on weapon type from GAME_CONFIG
+    const cooldowns = {
+        'LASER': GAME_CONFIG.WEAPONS.LASER.COOLDOWN,
+        'BOUNCE': GAME_CONFIG.WEAPONS.BOUNCE.COOLDOWN,
+        'GRENADE': GAME_CONFIG.WEAPONS.GRENADE.COOLDOWN
+    };
+    const cooldownTime = cooldowns[this.currentWeapon];
 
     this.weaponCooldowns.set(this.currentWeapon, now + cooldownTime);
 
@@ -4188,10 +4302,27 @@ exitToMainMenu() {
         case 'LASER':
             this.fireLaser(position, firingDirection);
             this.playSound('laser');
+            
+            // Send laser shot to other players if multiplayer is enabled
+            if (this.multiplayerEnabled && this.networkManager && this.networkManager.isConnected()) {
+                this.networkManager.sendLaserShot({
+                    origin: position,
+                    direction: firingDirection
+                });
+            }
             break;
         case 'BOUNCE':
             this.fireBouncingLaser(position, firingDirection);
             this.playSound('laser-bounce');
+            
+            // Send bounce laser shot to other players if multiplayer is enabled
+            if (this.multiplayerEnabled && this.networkManager && this.networkManager.isConnected()) {
+                this.networkManager.sendLaserShot({
+                    origin: position,
+                    direction: firingDirection,
+                    type: 'bounce'
+                });
+            }
             break;
         case 'GRENADE':
             // Grenades are handled separately through handleGrenadeTargeting
@@ -5076,6 +5207,157 @@ createMuzzleFlash(position, direction) {
     }
     
     return shapes;
+  }
+
+  // Add this method to render other players
+  updateOtherPlayers() {
+    if (!this.networkManager || !this.multiplayerEnabled) return;
+
+    const otherPlayers = this.networkManager.getOtherPlayers();
+    
+    // If we don't have tracking object yet, initialize it
+    if (!this.otherPlayerObjects) this.otherPlayerObjects = {};
+    
+    // Update existing players and add new ones
+    otherPlayers.forEach(playerData => {
+      let playerObject = this.otherPlayerObjects[playerData.id];
+      
+      // Create new player if it doesn't exist
+      if (!playerObject) {
+        console.log('Creating new player representation for:', playerData.id);
+        
+        // Get ship type from player data or default to STANDARD
+        const shipType = playerData.shipType || 'STANDARD';
+        
+        // Create geometry based on ship type
+        let geometry;
+        switch(shipType) {
+          case 'INTERCEPTOR':
+            geometry = new THREE.ConeGeometry(0.4, 1.25, 4);
+            break;
+          case 'HEAVY':
+            geometry = new THREE.CylinderGeometry(0.6, 0.7, 1.0, 6);
+            break;
+          case 'SCOUT':
+            geometry = new THREE.ConeGeometry(0.3, 1.1, 5);
+            break;
+          case 'STANDARD':
+          default:
+            geometry = new THREE.ConeGeometry(0.5, 1.0, 3);
+            break;
+        }
+        
+        // Rotate geometry to align with movement direction
+        geometry.rotateX(Math.PI / 2);
+        
+        // Create material based on team color if available
+        const shipColor = playerData.teamColor || 0x00ffff;
+        const material = new THREE.MeshPhongMaterial({ 
+          color: shipColor, 
+          emissive: shipColor,
+          emissiveIntensity: 0.5,
+          shininess: 100
+        });
+        
+        const ship = new THREE.Mesh(geometry, material);
+        ship.rotation.x = Math.PI / 2; // Orient the ship correctly
+        this.scene.add(ship);
+        
+        // Add engine glow effect
+        const engineGlow = new THREE.PointLight(shipColor, 1, 2);
+        engineGlow.position.set(0, 0, -0.5);
+        ship.add(engineGlow);
+        
+        // Create player name label
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'player-label';
+        nameDiv.textContent = playerData.name || `Player-${playerData.id.substring(0, 4)}`;
+        
+        const nameLabel = new CSS2DObject(nameDiv);
+        nameLabel.position.set(0, 1, 0);
+        ship.add(nameLabel);
+        
+        // Store the player object
+        playerObject = this.otherPlayerObjects[playerData.id] = {
+          ship,
+          nameLabel,
+          engineGlow,
+          lastUpdate: Date.now()
+        };
+      }
+      
+      // Update player position and rotation if data exists
+      if (playerData.position) {
+        // Smooth movement with lerp
+        playerObject.ship.position.lerp(
+          new THREE.Vector3(
+            playerData.position.x,
+            playerData.position.y || 0.5, // Default height if not provided
+            playerData.position.z
+          ),
+          0.3
+        );
+      }
+      
+      if (playerData.rotation !== undefined) {
+        // Smooth rotation
+        const targetY = playerData.rotation;
+        const currentY = playerObject.ship.rotation.y;
+        let rotDiff = targetY - currentY;
+        
+        // Find shortest rotation path
+        if (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+        if (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+        
+        playerObject.ship.rotation.y += rotDiff * 0.3;
+      }
+      
+      // Update name if changed
+      if (playerData.name && playerObject.nameLabel) {
+        const nameDiv = playerObject.nameLabel.element;
+        if (nameDiv && nameDiv.textContent !== playerData.name) {
+          nameDiv.textContent = playerData.name;
+        }
+      }
+      
+      // Update last seen time
+      playerObject.lastUpdate = Date.now();
+    });
+    
+    // Remove players that haven't been updated recently
+    const now = Date.now();
+    Object.keys(this.otherPlayerObjects).forEach(id => {
+      const playerObj = this.otherPlayerObjects[id];
+      // Remove if not updated in 10 seconds
+      if (now - playerObj.lastUpdate > 10000) {
+        console.log('Removing disconnected player:', id);
+        this.scene.remove(playerObj.ship);
+        delete this.otherPlayerObjects[id];
+        
+        // Update player count display
+        this.updatePlayerCount();
+      }
+    });
+  }
+
+  // Helper method to send player position and rotation to the server
+  sendPlayerPositionUpdate() {
+    if (!this.playerShip || !this.networkManager || !this.networkManager.isConnected()) return;
+    
+    // Create a simple data object with player information
+    const playerData = {
+      position: {
+        x: this.playerShip.position.x,
+        y: this.playerShip.position.y,
+        z: this.playerShip.position.z
+      },
+      rotation: this.playerShip.rotation.y,
+      shipType: this.currentShipType || 'STANDARD',
+      name: this.playerName
+    };
+    
+    // Send the update to the network manager
+    this.networkManager.sendPlayerUpdate(playerData);
   }
 }
 

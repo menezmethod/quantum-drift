@@ -55,27 +55,28 @@ This streamlined roadmap focuses on delivering a fun, isometric ship combat game
 - [x] Sync laser shots (spawn + collision)
 - [x] Connection status indicator (e.g., "Connected" text)
 
+**Notes:** The game is now multiplayer-only. To test, run `npm run dev:all` to start both the game client and server. Multiple browser instances are required to test interactions between players. Implemented using Socket.io for reliable bidirectional communication. The architecture follows a client-server model with the NetworkManager handling all networking operations. Position updates are throttled to 20 per second to reduce bandwidth usage.
+
 ---
 
 ## Phase 4: Infinite Alien Map
 ### Terrain & Environment
-- [ ] Design low-poly alien terrain (<500 tris per section)
-- [ ] Implement infinite scrolling map system
-- [ ] Add procedural terrain generation for new areas
-- [ ] Implement object culling for distant elements (>50 units)
+- [x] Design low-poly alien terrain (<500 tris per section)
+- [x] Implement infinite scrolling map system
+- [x] Add procedural terrain generation for new areas
+- [x] Implement object culling for distant elements (>50 units)
 
 ### Obstacles & Interactive Elements
-- [ ] Add random static obstacles (rocks, ruins, alien structures)
-- [ ] Implement laser collision with obstacles
+- [x] Add random static obstacles (rocks, ruins, alien structures)
+- [x] Implement laser collision with obstacles
 - [ ] Add black holes for teleportation between map areas
 - [ ] Create power-ups (speed boost, shield, weapon upgrade)
 
 ### Visual Enhancement
-- [ ] Add alien atmosphere effects (fog, particles)
-- [ ] Implement basic ambient lighting for mood
-- [ ] Create simple day/night cycle
+- [x] Add alien atmosphere effects (fog, particles)
+- [x] Implement basic ambient lighting for mood
 
-**Notes:** Use free assets from Sketchfab or Unity Asset Store for alien terrain and obstacles. Aim for <500 triangles per model to maintain performance. For procedural generation, use simple algorithms with Three.js.
+**Notes:** Using `/src/assets/models/terrain/Terrain.glb` as the game floor with `/src/assets/models/textures/Colors3.png` texture. Chunk-based system implemented for procedural generation and object management. Added dedicated invisible plane for consistent mouse interaction.
 
 ---
 
@@ -86,9 +87,9 @@ This streamlined roadmap focuses on delivering a fun, isometric ship combat game
 - [x] Energy system (basic bar, drains on shot, slow regen)
 
 ### Feedback
-- [ ] Hit markers (color flash on ship)
-- [ ] Score display (top corner, simple text)
-- [ ] Weapon switch UI (e.g., 1/2 keys, text indicator)
+- [x] Hit markers (color flash on ship)
+- [x] Score display (top corner, simple text)
+- [x] Weapon switch UI (e.g., 1/2 keys, text indicator)
 - [ ] Power-up collection feedback (glow effect, sound)
 
 ### Effects
