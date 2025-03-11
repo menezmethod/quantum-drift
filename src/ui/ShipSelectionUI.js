@@ -380,8 +380,14 @@ export class ShipSelectionUI {
     }
 
     hide() {
-        this.element.classList.remove('visible');
         this.element.classList.add('hidden');
+    }
+
+    updateOptions(newOptions) {
+        this.options = {
+            ...this.options,
+            ...newOptions
+        };
     }
 
     cleanup() {

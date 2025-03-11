@@ -10,6 +10,9 @@ import AssetLoader from './assets/AssetLoader';
 class SimpleGame {
   constructor() {
     // Initialize all properties first
+    // Player information
+    this.playerName = 'Pilot';  // Default player name
+    
     // Sound management
     this.audioListener = new THREE.AudioListener();
     this.soundPools = new Map();
@@ -92,6 +95,9 @@ class SimpleGame {
     window.addEventListener('resize', this.boundHandleResize);
     
     console.log('Simple game initialized!');
+
+    // Add frame counter
+    this.frameCount = 0;
   }
   
   setupScene() {
@@ -339,65 +345,46 @@ class SimpleGame {
   }
   
   setShipModel(type) {
-    console.log('🔍 Setting ship model:', {
-        type,
-        hasAssetLoader: !!this.assetLoader
-    });
-
-    // Safety check for AssetLoader
-    if (!this.assetLoader) {
-        console.error(`❌ AssetLoader not initialized!`);
-        return;
-    }
+    console.log('🔍 Setting ship model:', type);
     
-    // Wait for loading to complete if needed
-    if (!this.assetLoader.isLoaded()) {
-        console.warn(`⚠️ AssetLoader not fully loaded yet. Using default ship.`);
-        return;
-    }
-
-    // Remove existing ship
-    if (this.playerShip) {
-        console.log('🔍 Removing existing ship');
-        this.scene.remove(this.playerShip);
-    }
-
-    // Create new ship group
-    this.playerShip = new THREE.Group();
-    
-    // Get the model from AssetLoader
+    // Get the ship model from assets
     let model = this.assetLoader.getShipModel(type);
     
-    // If model not found, try to get a fallback model
+    // If model is null or undefined, create fallback model
     if (!model) {
-        console.warn(`⚠️ Ship model type ${type} not found! Trying fallback models...`);
-        
-        // Try other model types as fallbacks
-        const fallbackTypes = ['FIGHTER', 'INTERCEPTOR', 'SCOUT', 'EXPERIMENTAL'];
-        for (const fallbackType of fallbackTypes) {
-            if (fallbackType !== type) {
-                model = this.assetLoader.getShipModel(fallbackType);
-                if (model) {
-                    console.log(`✅ Using fallback ship model: ${fallbackType}`);
-                    break;
-                }
-            }
-        }
-        
-        // If still no model, create a default geometric shape
-        if (!model) {
-            console.error(`❌ No ship models available! Creating default geometry.`);
-            const geometry = new THREE.BoxGeometry(1, 0.5, 2);
-            const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
-            model = new THREE.Mesh(geometry, material);
-        }
+      console.warn('⚠️ Using fallback ship model');
+      if (this.debugging) {
+        console.trace('Stack trace for fallback ship model');
+      }
+      
+      if (!THREE.BoxGeometry) {
+        console.error('THREE.BoxGeometry not available for fallback ship');
+        return;
+      }
+      
+      try {
+        console.log('📦 Creating simple fallback model');
+        // Create a simple fallback model (box)
+        const geometry = new THREE.BoxGeometry(1, 0.5, 2);
+        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+        model = new THREE.Mesh(geometry, material);
+      } catch (error) {
+        console.error('Error creating fallback model:', error);
+        return;
+      }
     }
     
+    // Make all ships smaller (50-60% smaller)
+    const scaleFactor = 0.45; // About 55% smaller
+    model.scale.set(scaleFactor, scaleFactor, scaleFactor);
+    console.log(`DIAGNOSTIC: Applied reduced scale: [${model.scale.x}, ${model.scale.y}, ${model.scale.z}]`);
+    
+    // Log ship model information
     console.log('🔍 Using ship model:', {
-        children: model.children?.length || 0,
-        position: model.position,
-        rotation: model.rotation,
-        scale: model.scale
+      children: model.children?.length || 0,
+      position: model.position,
+      rotation: model.rotation,
+      scale: model.scale
     });
 
     // Store the model reference for thruster effects
@@ -406,7 +393,7 @@ class SimpleGame {
     // Add the model to the player ship group
     this.playerShip.add(model);
     
-    // Position the ship - use original position
+    // Position the ship
     this.playerShip.position.set(0, 0.5, 0);
     
     // Add to scene
@@ -415,7 +402,117 @@ class SimpleGame {
     // Add thruster effects
     this.addThrusterGlow();
     
+    // Add player name label above the ship
+    this.addPlayerNameLabel();
+    
     console.log('✅ Ship model set successfully');
+    
+    // Set a fixed collision radius that works with the reduced ship size
+    const fixedCollisionRadius = 0.35; // Reduced radius to match smaller ship size
+    this.playerShip.userData.collisionRadius = fixedCollisionRadius;
+    console.log(`DIAGNOSTIC: Set ship collision radius: ${this.playerShip.userData.collisionRadius}`);
+  }
+  
+  // Function to add a player name label above the ship
+  addPlayerNameLabel() {
+    // Remove any existing name label
+    if (this.playerNameLabel) {
+      this.playerShip.remove(this.playerNameLabel);
+      this.playerNameLabel = null;
+    }
+    
+    // Create a canvas for the player name
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 512;
+    canvas.height = 128;
+    
+    // Set canvas background transparent
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Create gradient for the text
+    const gradient = context.createLinearGradient(0, 0, canvas.width, 0);
+    gradient.addColorStop(0, '#00c3ff');    // Cyan blue
+    gradient.addColorStop(0.5, '#80ffff');  // Light cyan
+    gradient.addColorStop(1, '#00c3ff');    // Cyan blue
+    
+    // Draw player name on canvas
+    context.font = 'bold 40px Orbitron';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    
+    // Add shadow/glow effect
+    context.shadowColor = '#0062ff';
+    context.shadowBlur = 15;
+    
+    // Draw stroke
+    context.strokeStyle = '#000';
+    context.lineWidth = 6;
+    context.strokeText(this.playerName, canvas.width / 2, canvas.height / 2);
+    
+    // Fill with gradient
+    context.fillStyle = gradient;
+    context.fillText(this.playerName, canvas.width / 2, canvas.height / 2);
+    
+    // Add a subtle underline
+    context.beginPath();
+    context.moveTo(canvas.width / 2 - context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
+    context.lineTo(canvas.width / 2 + context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
+    context.strokeStyle = '#00c3ff';
+    context.lineWidth = 2;
+    context.stroke();
+    
+    // Add a mini rank/icon before the name
+    const icon = this.getPlayerIcon();
+    const iconSize = 30;
+    context.font = 'bold 20px Orbitron';
+    context.fillStyle = '#ffcc00';
+    context.strokeStyle = '#000';
+    context.lineWidth = 3;
+    const iconX = canvas.width / 2 - context.measureText(this.playerName).width / 2 - iconSize - 10;
+    const iconY = canvas.height / 2;
+    context.strokeText(icon, iconX, iconY);
+    context.fillText(icon, iconX, iconY);
+    
+    // Create texture from canvas
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    
+    // Create sprite material
+    const material = new THREE.SpriteMaterial({ 
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false
+    });
+    
+    // Create sprite
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(3, 0.8, 1);
+    sprite.position.set(0, 1.8, 0); // Position above the ship
+    
+    // Store reference and add to ship
+    this.playerNameLabel = sprite;
+    this.playerShip.add(this.playerNameLabel);
+    
+    console.log(`Added enhanced name label for player: ${this.playerName}`);
+  }
+  
+  // Helper function to get player icon based on name
+  getPlayerIcon() {
+    // Simple hash function to determine icon
+    let hash = 0;
+    for (let i = 0; i < this.playerName.length; i++) {
+      hash = ((hash << 5) - hash) + this.playerName.charCodeAt(i);
+      hash |= 0; // Convert to 32bit integer
+    }
+    
+    // Array of possible icons
+    const icons = ['⚡', '✦', '★', '♦', '◆', '⬢', '⚔️', '⚜️', '☄️', '⚪'];
+    
+    // Use hash to select icon
+    const iconIndex = Math.abs(hash) % icons.length;
+    return icons[iconIndex];
   }
   
   handleLoadError(assetType, error) {
@@ -691,6 +788,8 @@ class SimpleGame {
     // Create some simple obstacles
     this.obstacles = [];
     
+    console.log('🚧 DIAGNOSTIC: Starting obstacle creation');
+    
     // Create 15 random obstacles with more variety
     for (let i = 0; i < 15; i++) {
       // Choose a random shape (box, cylinder, or sphere)
@@ -698,66 +797,75 @@ class SimpleGame {
       
       let geometry;
       let size;
+      let type;
       
       if (shapeType === 0) {
         // Box
         size = 1.5 + Math.random() * 3;
         const height = 3 + Math.random() * 4; // Taller for better visibility
         geometry = new THREE.BoxGeometry(size, height, size);
+        type = 'box';
       } else if (shapeType === 1) {
         // Cylinder
         const radius = 1 + Math.random() * 2;
         const height = 4 + Math.random() * 5;
         geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
         size = radius * 2;
+        type = 'cylinder';
       } else {
         // Sphere
         const radius = 1.5 + Math.random() * 2;
         geometry = new THREE.SphereGeometry(radius, 16, 16);
         size = radius * 2;
+        type = 'sphere';
       }
       
-      // Create neon material with random color
-      const hue = Math.random();
-      const color = new THREE.Color().setHSL(hue, 0.8, 0.6);
+      // Create random position within boundary but away from center
+      let x, z;
+      do {
+        x = (Math.random() * 80) - 40;
+        z = (Math.random() * 80) - 40;
+      } while (Math.sqrt(x * x + z * z) < 10); // Keep away from center spawn
       
-      const material = new THREE.MeshPhongMaterial({
+      // Create random color
+      const hue = Math.random();
+      const color = new THREE.Color().setHSL(hue, 0.7, 0.5);
+      
+      // Create material (some emissive for glow effect)
+      const material = new THREE.MeshStandardMaterial({
         color: color,
-        emissive: color.clone().multiplyScalar(0.5),
-        shininess: 100
+        emissive: color.clone().multiplyScalar(0.2),
+        roughness: 0.7,
+        metalness: 0.3
       });
       
       // Create mesh
-      const obstacle = new THREE.Mesh(geometry, material);
-      
-      // Add a point light inside the obstacle for glow effect
-      const light = new THREE.PointLight(color, 0.5, 5);
-      light.position.set(0, 0, 0);
-      obstacle.add(light);
-      
-      // Random position - avoid overlap with the player spawn position
-      let x, z;
-      let validPosition = false;
-      
-      while (!validPosition) {
-        x = (Math.random() - 0.5) * 45; // Slightly inside boundary
-        z = (Math.random() - 0.5) * 45;
-        
-        // Make sure it's not too close to the origin (player spawn)
-        const distanceFromOrigin = Math.sqrt(x * x + z * z);
-        if (distanceFromOrigin > 10) {
-          validPosition = true;
-        }
-      }
-      
-      // Random height offset to make some float
-      const y = shapeType === 2 ? Math.random() * 3 : size / 2;
-      obstacle.position.set(x, y, z);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, size / 2, z); // Position on floor with correct height
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
       
       // Add to scene
-      this.scene.add(obstacle);
-      this.obstacles.push(obstacle);
+      this.scene.add(mesh);
+      
+      // Store obstacle data with SLIGHTLY LARGER collision size (reduced inflation)
+      // Use 15% inflation instead of the previous 50%
+      const inflatedSize = size * 1.15; 
+      this.obstacles.push({
+        mesh: mesh,
+        type: type,
+        size: inflatedSize, // Use inflated size for collisions
+        actualSize: size,   // Store actual visual size for reference
+        position: mesh.position.clone()
+      });
+      
+      // Only log details for a few obstacles to avoid console spam
+      if (i < 3) {
+        console.log(`DIAGNOSTIC: Created ${type} obstacle #${i+1}: visual size ${size.toFixed(2)}, collision size ${inflatedSize.toFixed(2)} at [${x.toFixed(1)}, ${mesh.position.y.toFixed(1)}, ${z.toFixed(1)}]`);
+      }
     }
+    
+    console.log(`DIAGNOSTIC: Created ${this.obstacles.length} obstacles with 15% inflated collision sizes`);
   }
   
   setupControls() {
@@ -912,9 +1020,9 @@ class SimpleGame {
   }
   
   handleKeyDown(event) {
-    // Handle escape key for exiting to main menu
-    if (event.code === 'Escape' && this.isRunning) {
-        this.exitToMainMenu();
+    // Handle escape key for in-game menu
+    if (event.code === 'Escape') {
+        this.showInGameMenu();
         return;
     }
     
@@ -1464,10 +1572,7 @@ selectWeapon(weaponType) {
   }
   
   animate() {
-    // Skip if game is not running
-    if (!this.isRunning) return;
-    
-    // Request next frame
+    // Request next frame immediately - keep game running always
     requestAnimationFrame(() => this.animate());
     
     // Calculate delta time
@@ -1475,68 +1580,60 @@ selectWeapon(weaponType) {
     const deltaTime = (now - this.lastTime) / 1000;
     this.lastTime = now;
     
-    // Update player
+    // Update game state
     this.updatePlayer(deltaTime);
-    
-    // Update camera to follow player
     this.updateCamera();
-    
-    // Update energy
     this.updateEnergy(deltaTime);
-    
-    // Update regular lasers
     this.updateLasers();
-    
-    // Update bouncing lasers
     this.updateBouncingLasers();
-    
-    // Update grenades
     this.updateGrenades();
-    
-    // Update control indicators (keyboard/touch displays)
     this.updateControlIndicators();
     
     // Update mini-map
     if (this.miniMap) {
-      this.miniMap.update();
+        this.miniMap.update();
     }
     
-    // Update player highlight position
+    // Update visual effects
     if (this.playerHighlight) {
-      this.playerHighlight.position.x = this.playerShip.position.x;
-      this.playerHighlight.position.z = this.playerShip.position.z;
-      
-      // Make it pulse
-      const pulseFactor = (Math.sin(Date.now() * 0.003) + 1) / 2;
-      this.playerHighlight.material.opacity = 0.05 + pulseFactor * 0.1;
+        this.playerHighlight.position.x = this.playerShip.position.x;
+        this.playerHighlight.position.z = this.playerShip.position.z;
+        const pulseFactor = (Math.sin(Date.now() * 0.003) + 1) / 2;
+        this.playerHighlight.material.opacity = 0.05 + pulseFactor * 0.1;
     }
     
-    // Update ship thruster effects - with safety check
     if (this.thruster && this.thrusterLight && this.thrusterPulse) {
-      this.updateThrusterEffects();
+        this.updateThrusterEffects();
     }
     
-    // Render scene
+    // Always render
     this.renderer.render(this.scene, this.camera);
   }
   
   updatePlayer(deltaTime) {
     if (!this.playerShip) return;
     
+    // Save original position in case we need to revert due to collision
+    const originalPosition = this.playerShip.position.clone();
+    
     // ORIGINAL SHIP MOVEMENT PHYSICS
     const moveSpeed = 10; // Base movement speed
     const rotateSpeed = 2.5; // Base rotation speed
+    
+    let moved = false; // Track if the ship moved
     
     // Handle forward/backward movement
     if (this.keys.forward) {
         // Move forward
         const forwardDir = new THREE.Vector3(0, 0, 1).applyQuaternion(this.playerShip.quaternion);
         this.playerShip.position.addScaledVector(forwardDir, moveSpeed * deltaTime);
+        moved = true;
     }
     else if (this.keys.backward) {
         // Move backward
         const backwardDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.playerShip.quaternion);
         this.playerShip.position.addScaledVector(backwardDir, moveSpeed * deltaTime);
+        moved = true;
     }
 
     // Handle left/right rotation
@@ -1554,16 +1651,24 @@ selectWeapon(weaponType) {
         // Strafe left
         const leftDir = new THREE.Vector3(-1, 0, 0).applyQuaternion(this.playerShip.quaternion);
         this.playerShip.position.addScaledVector(leftDir, moveSpeed * 0.7 * deltaTime);
+        moved = true;
     }
     else if (this.keys.strafeRight) {
         // Strafe right
         const rightDir = new THREE.Vector3(1, 0, 0).applyQuaternion(this.playerShip.quaternion);
         this.playerShip.position.addScaledVector(rightDir, moveSpeed * 0.7 * deltaTime);
+        moved = true;
     }
     
-    // Check for obstacle collisions
+    // ALWAYS check for obstacle collisions, whether the ship moved or not
+    // The checkObstacleCollisions function will handle pushing the ship back if needed
+    if (moved) {
+        console.log(`Ship moved to: ${this.playerShip.position.x.toFixed(1)}, ${this.playerShip.position.y.toFixed(1)}, ${this.playerShip.position.z.toFixed(1)}`);
+    }
+    
+    // Check for collisions
     this.checkObstacleCollisions();
-
+    
     // Keep the player within bounds
     this.constrainToBounds();
     
@@ -1571,7 +1676,7 @@ selectWeapon(weaponType) {
     if (typeof this.updateThrusterEffects === 'function') {
         this.updateThrusterEffects();
     }
-}
+  }
   
   updateLasers() {
     if (!this.lasers) return;
@@ -1740,71 +1845,65 @@ selectWeapon(weaponType) {
   }
   
   checkObstacleCollisions() {
-    if (!this.playerShip || !this.obstacles) return;
+    if (!this.playerShip || !this.obstacles) {
+      console.log('Skipping collision check - player ship or obstacles not available');
+      return;
+    }
     
-    // Player's bounding sphere (rough approximation)
-    const playerRadius = 1.0;  // Assuming a 1 unit radius for the player ship
+    // DIAGNOSTIC: Log the current ship position and collision settings
+    const playerRadius = this.playerShip.userData.collisionRadius || 0.35; // Default to 0.35 to match our new reduced radius
     const playerPos = this.playerShip.position.clone();
     
-    // Check each obstacle
+    // Only log occasionally to avoid overwhelming the console
+    const logFrequency = 0.01; // 1% of frames
+    const shouldLog = Math.random() < logFrequency;
+    
+    if (shouldLog) {
+      console.log(`DIAGNOSTIC: Ship position [${playerPos.x.toFixed(2)}, ${playerPos.y.toFixed(2)}, ${playerPos.z.toFixed(2)}], collision radius: ${playerRadius}`);
+    }
+    
+    // DIAGNOSTIC: Track closest obstacle distance
+    let closestDistance = Infinity;
+    let closestObstacle = null;
+    
+    // Check each obstacle with a more reasonable approach
     for (const obstacle of this.obstacles) {
         if (!obstacle.mesh) continue;
         
         const obstaclePos = obstacle.mesh.position.clone();
         let collision = false;
         
-        // Different collision detection based on obstacle shape
-        if (obstacle.type === 'sphere') {
-            // Sphere-sphere collision
-            const distance = playerPos.distanceTo(obstaclePos);
-            const minDistance = playerRadius + obstacle.size;
-            collision = distance < minDistance;
-        }
-        else if (obstacle.type === 'box') {
-            // Simplified box collision (treating player as sphere)
-            // Get box dimensions
-            const halfWidth = obstacle.size / 2;
-            const halfHeight = obstacle.size / 2;
-            const halfDepth = obstacle.size / 2;
-            
-            // Check if player sphere intersects with box
-            const dx = Math.max(obstaclePos.x - halfWidth - playerPos.x, 0, playerPos.x - (obstaclePos.x + halfWidth));
-            const dy = Math.max(obstaclePos.y - halfHeight - playerPos.y, 0, playerPos.y - (obstaclePos.y + halfHeight));
-            const dz = Math.max(obstaclePos.z - halfDepth - playerPos.z, 0, playerPos.z - (obstaclePos.z + halfDepth));
-            
-            collision = (dx * dx + dy * dy + dz * dz) < (playerRadius * playerRadius);
-        }
-        else if (obstacle.type === 'cylinder') {
-            // Simplified cylinder collision (horizontal cylinder)
-            // Get cylinder dimensions
-            const radius = obstacle.size / 2;
-            const height = obstacle.size;
-            
-            // Project player position onto cylinder axis
-            const cylinderDir = new THREE.Vector3(0, 1, 0); // Assume y-axis cylinder
-            const toPlayer = new THREE.Vector3().subVectors(playerPos, obstaclePos);
-            const axisProj = cylinderDir.clone().multiplyScalar(toPlayer.dot(cylinderDir));
-            
-            // Check height bounds
-            const heightDist = axisProj.length();
-            if (heightDist < height / 2) {
-                // Within height bounds, check radial distance
-                const radialVec = toPlayer.clone().sub(axisProj);
-                const radialDist = radialVec.length();
-                collision = radialDist < (radius + playerRadius);
-            }
+        // Use simple distance-based collision with appropriate parameters
+        const distance = playerPos.distanceTo(obstaclePos);
+        const minDistance = playerRadius + obstacle.size; // Use the inflated size without extra margin
+        
+        // Update closest obstacle tracking
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestObstacle = obstacle;
         }
         
-        // Handle collision
+        // Check for collision - no extra safety margin needed now
+        collision = distance < minDistance;
+        
+        // Increase logging for debugging based on our random sample
+        if (shouldLog && distance < minDistance * 2) {
+            console.log(`DIAGNOSTIC: Near object: distance=${distance.toFixed(2)}, threshold=${minDistance.toFixed(2)}, collision=${collision}, type=${obstacle.type}`);
+        }
+        
+        // Handle collision with reasonable push-back
         if (collision) {
-            // Push player away from obstacle
+            console.log('COLLISION DETECTED: Pushing ship back');
+            
+            // Push player away from obstacle with appropriate force
             const pushDir = new THREE.Vector3().subVectors(playerPos, obstaclePos).normalize();
-            this.playerShip.position.addScaledVector(pushDir, 0.5); // Push back a bit
+            // Use a more moderate push force
+            this.playerShip.position.addScaledVector(pushDir, 0.7);
             
             // Flash collision warning
             this.flashCollisionWarning();
             
-            // Apply damage
+            // Apply damage if the function exists
             if (typeof this.applyDamage === 'function') {
                 this.applyDamage(5);
             }
@@ -1812,7 +1911,15 @@ selectWeapon(weaponType) {
             break; // Only handle one collision at a time
         }
     }
-}
+    
+    // DIAGNOSTIC: Always log the closest obstacle info
+    if (shouldLog && closestObstacle) {
+      console.log(`DIAGNOSTIC: Closest obstacle: type=${closestObstacle.type}, distance=${closestDistance.toFixed(2)}, collisionSize=${closestObstacle.size.toFixed(2)}`);
+    }
+    
+    // Make sure player stays within bounds
+    this.constrainToBounds();
+  }
   
   constrainToBounds() {
     if (!this.playerShip) return;
@@ -2255,6 +2362,36 @@ selectWeapon(weaponType) {
       // If no bounce, move normally
       if (!bounced) {
         laser.mesh.position.copy(nextPosition);
+      }
+      
+      // Check for enemy collisions - new code
+      if (this.enemyManager && this.enemyManager.enemies.length > 0) {
+        for (let j = this.enemyManager.enemies.length - 1; j >= 0; j--) {
+          const enemy = this.enemyManager.enemies[j];
+          if (!enemy.isActive) continue;
+          
+          const enemyPos = enemy.mesh.position.clone();
+          enemyPos.y = 0.5; // Adjust to match laser height
+          
+          // Check if the laser hit the enemy
+          const hitDistance = 0.7; // Collision distance for enemy hits
+          if (laser.mesh.position.distanceTo(enemyPos) < hitDistance) {
+            // Enemy hit
+            enemy.takeDamage(10); // Damage the enemy
+            
+            // Create hit effect
+            this.createHitEffect(enemyPos);
+            
+            // Play hit sound
+            this.playSound('weapon-armor-hit');
+            
+            // Remove laser
+            this.scene.remove(laser.mesh);
+            this.scene.remove(laser.trail);
+            this.bouncingLasers.splice(i, 1);
+            break; // Exit the enemy loop
+          }
+        }
       }
       
       // Check for player collision
@@ -2859,15 +2996,38 @@ selectWeapon(weaponType) {
         this.createControlIndicators();
     }
     this.fadeInControls();
+    
+    // IMPORTANT: Double-check that the player ship has a proper collision radius
+    if (this.playerShip) {
+        this.playerShip.userData.collisionRadius = 0.35; // Use the same reduced value as defined earlier
+        console.log('🛡️ Verified player ship collision radius:', this.playerShip.userData.collisionRadius);
+    } else {
+        console.error('⚠️ Player ship not available when starting gameplay!');
+    }
+    
+    // Manually check for collisions once to make sure it's working
+    setTimeout(() => {
+        console.log('🔍 Running initial collision check...');
+        this.checkObstacleCollisions();
+    }, 500);
 
     // Start animation loop
     this.animate();
     
     console.log('✅ Game started successfully!');
-}
+  }
 
-applyShipSelection(selection) {
+  applyShipSelection(selection) {
     console.log('🔍 Applying ship selection:', selection);
+    
+    // Clear existing ship model
+    if (this.playerShip) {
+        // Remove all children (previous ship model)
+        while (this.playerShip.children.length > 0) {
+            const child = this.playerShip.children[0];
+            this.playerShip.remove(child);
+        }
+    }
     
     // Set ship model based on selection
     const type = selection.type.toUpperCase(); // Make sure it's uppercase for consistency
@@ -2906,14 +3066,21 @@ applyShipSelection(selection) {
         });
     }
     
-    // No need to set scale here since it's now handled by the AssetLoader
-    
     console.log('✅ Ship configuration applied successfully');
+    
+    // Verify collision detection is working
+    console.log('🔍 Verifying collision detection is working');
 }
 
 exitToMainMenu() {
     // Stop animation loop
     this.isRunning = false;
+
+    // Hide in-game menu if it exists
+    const menuContainer = document.getElementById('in-game-menu');
+    if (menuContainer) {
+      menuContainer.classList.add('hidden');
+    }
 
     // Hide game UI
     this.ui.hide();
@@ -3385,6 +3552,133 @@ createMuzzleFlash(position, direction) {
     // Start animation
     animate();
   }
+
+  showInGameMenu() {
+    // Pause the game
+    this.isRunning = false;
+    
+    // Create or reuse the menu element
+    let menuContainer = document.getElementById('in-game-menu');
+    if (!menuContainer) {
+      menuContainer = document.createElement('div');
+      menuContainer.id = 'in-game-menu';
+      menuContainer.className = 'menu-container';
+      document.getElementById('game-container').appendChild(menuContainer);
+      
+      // Style the menu
+      menuContainer.style.position = 'absolute';
+      menuContainer.style.top = '50%';
+      menuContainer.style.left = '50%';
+      menuContainer.style.transform = 'translate(-50%, -50%)';
+      menuContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+      menuContainer.style.padding = '20px';
+      menuContainer.style.borderRadius = '10px';
+      menuContainer.style.color = '#fff';
+      menuContainer.style.textAlign = 'center';
+      menuContainer.style.zIndex = '1000';
+      menuContainer.style.border = '2px solid #00ffff';
+      menuContainer.style.boxShadow = '0 0 20px rgba(0, 255, 255, 0.4)';
+      menuContainer.style.minWidth = '300px';
+    }
+    
+    // Create menu content
+    menuContainer.innerHTML = `
+      <h2 style="color: #00ffff; margin-top: 0;">Game Menu</h2>
+      <div class="menu-options">
+        <button id="resume-button" class="menu-button">Resume Game</button>
+        <button id="change-ship-button" class="menu-button">Change Ship</button>
+        <button id="exit-button" class="menu-button">Exit to Main Menu</button>
+      </div>
+    `;
+    
+    // Style buttons
+    const buttons = menuContainer.querySelectorAll('.menu-button');
+    buttons.forEach(button => {
+      button.style.display = 'block';
+      button.style.width = '100%';
+      button.style.padding = '10px';
+      button.style.margin = '10px 0';
+      button.style.backgroundColor = '#001a33';
+      button.style.color = '#00ffff';
+      button.style.border = '1px solid #00ffff';
+      button.style.borderRadius = '5px';
+      button.style.cursor = 'pointer';
+      button.style.fontSize = '16px';
+      button.style.transition = 'all 0.2s';
+      
+      // Hover effect
+      button.onmouseenter = () => {
+        button.style.backgroundColor = '#00ffff';
+        button.style.color = '#001a33';
+      };
+      button.onmouseleave = () => {
+        button.style.backgroundColor = '#001a33';
+        button.style.color = '#00ffff';
+      };
+    });
+    
+    // Add event listeners
+    document.getElementById('resume-button').addEventListener('click', () => this.resumeGame());
+    document.getElementById('change-ship-button').addEventListener('click', () => this.showShipChangeScreen());
+    document.getElementById('exit-button').addEventListener('click', () => this.exitToMainMenu());
+    
+    // Show the menu
+    menuContainer.classList.remove('hidden');
+  }
+  
+  resumeGame() {
+    console.log('Hiding menus');
+    
+    // Hide ship selection if it exists
+    if (this.shipSelection) {
+        this.shipSelection.hide();
+    }
+    
+    // Hide menu
+    const menuContainer = document.getElementById('in-game-menu');
+    if (menuContainer) {
+        menuContainer.classList.add('hidden');
+    }
+  }
+  
+  showShipChangeScreen() {
+    // Hide the menu
+    const menuContainer = document.getElementById('in-game-menu');
+    if (menuContainer) {
+        menuContainer.classList.add('hidden');
+    }
+    
+    // Make sure we have a container
+    const container = document.getElementById('game-container');
+    if (!container) {
+        console.error('Game container not found');
+        return;
+    }
+    
+    // Clean up existing ship selection if it exists
+    if (this.shipSelection) {
+        this.shipSelection.hide();
+        
+        // Safely remove the element from DOM if it exists and has a parent
+        if (this.shipSelection.element && this.shipSelection.element.parentNode) {
+            this.shipSelection.element.parentNode.removeChild(this.shipSelection.element);
+        }
+        
+        this.shipSelection = null;
+    }
+    
+    // Create new ship selection instance
+    this.shipSelection = new ShipSelectionUI(container, {
+        isPremium: false,
+        onShipSelect: (selection) => {
+            this.shipSelection.hide();
+            this.applyShipSelection(selection);
+        }
+    });
+    
+    // Show the ship selection UI
+    this.shipSelection.show();
+  }
 }
 
 // Initialize the game when the DOM is loaded
@@ -3394,6 +3688,17 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Add start button event listener
   document.getElementById('start-button').addEventListener('click', () => {
+    // Get the player name from the input field
+    const playerNameInput = document.getElementById('player-name');
+    if (playerNameInput && playerNameInput.value.trim() !== '') {
+      // Store the player name
+      game.playerName = playerNameInput.value.trim();
+      console.log(`Player name set to: ${game.playerName}`);
+    } else {
+      console.log('Using default player name: ' + game.playerName);
+    }
+    
+    // Start the game
     game.startGame();
   });
 }); 

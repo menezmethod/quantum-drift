@@ -1,346 +1,174 @@
-# Quantum Drift Development Checklist
+# Quantum Drift Development Checklist (Optimized)
 
-This document serves as our roadmap and progress tracker for developing Quantum Drift. Check off items as they are completed.
+This streamlined roadmap focuses on delivering a fun, isometric ship combat game with multiplayer support, optimized for performance and minimal scope creep.
 
-## Phase 1: Project Setup & Environment
-
-### Basic Setup
-- [x] Initialize project repository
-- [x] Set up Node.js environment with package.json
-- [x] Install Three.js and essential dependencies
-- [x] Create initial HTML/CSS structure
-- [x] Set up basic directory structure (assets, src, components)
-
-### Docker Configuration
-- [x] Create initial Dockerfile for development
-- [x] Set up docker-compose for local development
-- [x] Configure Nginx to serve static assets in container
-- [x] Test Docker container locally
-
-### Basic Three.js Setup
-- [x] Create initial Three.js canvas
-- [x] Set up basic scene, camera, and renderer
+## Phase 1: Project Setup & Core Environment ✅
+- [x] Initialize GitHub repository
+- [x] Set up Node.js with Three.js (lightweight dependencies only)
+- [x] Create basic HTML/CSS structure and Three.js canvas
+- [x] Set up scene, camera, renderer, and animation loop
 - [x] Implement window resize handling
-- [x] Create simple test shape to verify setup
-- [x] Implement basic animation loop
+- [x] Docker setup for development (Dockerfile + docker-compose)
+- [x] Test locally with a simple cube to confirm setup
 
-## Phase 2: Core Game Mechanics (Isometric Ship Combat)
-
-### Arena Development
-- [x] Create isometric camera setup
-- [x] Create arena floor with grid
-- [x] Implement arena boundaries
-- [x] Create wall collision detection
-
-### Player Ship
-- [x] Create player ship 3D model/sprite
-- [x] Implement WASD/arrow key movement controls
-- [x] Add ship rotation based on movement direction
-- [x] Implement collision detection with arena walls
-- [x] Add visual feedback for collisions
-
-### 3D Models Integration
-- [x] Create ModelLoader utility for loading GLB/GLTF assets
-- [x] Download ship models and store in assets directory
-- [x] Implement ship model loading in Player class
-- [x] Add model customization options (colors, variations)
-- [ ] Create ship model selection menu
-
-### Basic Weapons
-- [x] Implement Regular Laser weapon
-- [x] Add projectile collision detection
-- [x] Create visual effects for laser shots
-- [x] Implement weapon cooldown system
-
-### Game Loop
-- [x] Create start screen with play button
-- [x] Implement game timer and scoring system
-- [x] Add game over conditions
-- [x] Create basic UI for score display
-- [x] Implement restart functionality
-
-## Phase 3: Multiplayer Core
-
-### Multiplayer UI
-- [x] Create multiplayer menu screens
-- [x] Add server selection options
-- [x] Implement player name input
-- [x] Create host/join game buttons
-- [x] Add multiplayer in-game HUD elements
-
-### Backend Setup
-- [ ] Set up WebSocket server
-- [ ] Implement basic server-client communication
-- [ ] Create player session management
-- [ ] Add basic matchmaking functionality
-- [ ] Store player stats and preferences
-
-### Multiplayer Gameplay
-- [ ] Implement player synchronization
-- [ ] Add multiplayer ship collision detection
-- [ ] Create game rooms and lobbies
-- [ ] Implement spectator mode
-- [ ] Add friend invite system
-
-### Game Modes
-- [ ] Implement Free-For-All mode
-- [ ] Create Team Deathmatch mode
-- [ ] Build Capture The Flag mechanics
-- [ ] Add King of the Hill mode
-- [ ] Implement game mode selection UI
-
-### Performance Optimization
-- [ ] Implement network prediction and reconciliation
-- [ ] Optimize data transfer size
-- [ ] Add latency compensation
-- [ ] Create reconnection handling
-- [ ] Implement server-side validation
-
-## Phase 4: Enhanced Gameplay
-
-### Complete Weapon System
-- [ ] Implement Bounce Laser (with ricochet mechanics)
-- [ ] Implement Quantum Grenade (with delay and area effect)
-- [x] Add weapon switching mechanics
-- [ ] Create visual effects for all weapons
-- [ ] Implement weapon pickup/selection system
-
-### AI Enemies
-- [ ] Create basic enemy types with different behaviors
-- [ ] Implement enemy spawning system
-- [ ] Add enemy collision with player and projectiles
-- [ ] Create death/explosion animations
-- [ ] Implement enemy difficulty scaling
-
-### Powerups & Collectibles
-- [ ] Design powerup system (shields, speed boost, weapon upgrades)
-- [ ] Create visual representations for powerups
-- [ ] Implement collection and effect activation
-- [ ] Add duration timers for temporary powerups
-- [ ] Create pickup sound effects
-
-### Level Design
-- [ ] Implement random level generator
-- [ ] Create different room/arena layouts
-- [ ] Add interactive environment objects
-- [ ] Implement destructible walls/objects
-- [ ] Create level themes (space station, alien planet, etc.)
-
-### Mobile Support
-- [ ] Implement touch controls for mobile
-- [ ] Create responsive UI design for different screen sizes
-- [ ] Test and optimize for mobile performance
-- [ ] Add mobile-specific visual feedback
-
-## Phase 5: Monetization System
-
-### Store Setup
-- [ ] Integrate Stripe API for payments
-- [ ] Create store UI with item categories
-- [ ] Implement purchase flow
-- [ ] Add confirmation and receipt system
-- [ ] Set up database for purchase records
-
-### Cosmetic Items
-- [ ] Create ship skins/colors system
-- [ ] Implement thruster effects and custom sounds
-- [ ] Add custom explosion animations
-- [ ] Create weapon visual variants
-- [ ] Implement preview system in store
-
-### Battle Pass
-- [ ] Design battle pass progression system
-- [ ] Create seasonal rewards structure
-- [ ] Implement XP/progress tracking
-- [ ] Add unlock notifications
-- [ ] Create premium and free reward tiers
-
-## Phase 6: Polish & Optimization
-
-### Visual Polish
-- [ ] Enhance neon glow effects with shaders
-- [ ] Add particle systems for explosions and movement
-- [ ] Implement screen shake and feedback effects
-- [ ] Create transition animations between screens
-- [ ] Add visual flourishes to UI elements
-
-### Performance Optimization
-- [ ] Implement asset streaming and loading optimization
-- [ ] Add level of detail (LOD) for complex objects
-- [ ] Optimize WebGL rendering
-- [ ] Implement object pooling for projectiles and effects
-- [ ] Test and optimize for lower-end devices
-
-### Progressive Web App
-- [ ] Set up service workers for offline functionality
-- [ ] Implement asset caching
-- [ ] Create app manifest
-- [ ] Add install prompts for mobile
-- [ ] Test offline functionality
-
-## Phase 7: Deployment & Infrastructure
-
-### CI/CD Pipeline
-- [ ] Set up GitHub Actions or similar CI/CD
-- [ ] Create staging and production environments
-- [ ] Implement automated testing
-- [ ] Configure automatic deployment
-- [ ] Set up monitoring and alerting
-
-### Production Deployment
-- [ ] Configure production domain (quantum.yourwebsite.com)
-- [ ] Set up CDN for static assets
-- [ ] Implement SSL certificates
-- [ ] Deploy to production servers
-- [ ] Verify all systems in production environment
-
-### Analytics & Monitoring
-- [ ] Implement gameplay analytics
-- [ ] Set up error tracking and reporting
-- [ ] Create admin dashboard for monitoring
-- [ ] Add user behavior tracking
-- [ ] Implement A/B testing capability
-
-## Phase 8: Community & Growth
-
-### Social Features
-- [ ] Implement social sharing functionality
-- [ ] Create leaderboards system
-- [ ] Add friend management interface
-- [ ] Implement achievements system
-- [ ] Create player profiles
-
-### Team/Clan System
-- [ ] Create clan management interface
-- [ ] Implement clan rankings and stats
-- [ ] Add clan customization options
-- [ ] Create clan challenges and rewards
-- [ ] Implement clan chat system
-
-### Seasonal Content
-- [ ] Design framework for seasonal events
-- [ ] Create special holiday-themed assets
-- [ ] Implement limited-time game modes
-- [ ] Add seasonal cosmetic items
-- [ ] Create seasonal challenges
-
-### User Feedback
-- [ ] Implement in-game feedback system
-- [ ] Create bug reporting mechanism
-- [ ] Set up community forums/Discord
-- [ ] Add update notifications
-- [ ] Create system for feature voting
+**Notes:** Keep this lean—no Webpack or complex build tools yet unless needed for production. Focus on getting Three.js running.
 
 ---
 
-## Development Notes:
-- Remember to keep the game fun and fast-paced
-- Focus on visual polish with the neon aesthetic
-- Maintain balance between free and paid features
-- Prioritize performance across all devices
-- Test frequently with actual players
-- Optimize for PVP balance in multiplayer modes
-- Create varied map layouts to support different play styles 
+## Phase 2: Core Gameplay (MVP Focus) ✅
+### Arena & Ship ✅
+- [x] Isometric camera setup
+- [x] Simple arena floor (flat plane, no grid unless critical)
+- [x] Arena boundaries with basic collision detection
+- [x] Player ship (low-poly model or sprite)
+- [x] WASD movement + rotation based on direction
+- [x] Collision feedback (e.g., stop on wall hit)
+- [x] Optimize ship size (~55% smaller) and collision radius (0.35 units)
 
-src/assets/models/ships/ 
+### Basic Weapon ✅
+- [x] Regular Laser (simple projectile, collision detection, basic VFX)
+- [x] Weapon cooldown system (keep it simple: fixed timer)
 
-## Core Environment and Setup
-- [x] Basic Three.js setup
-- [x] Webpack configuration with code splitting
-- [x] Asset loading system
-- [x] Basic ship controls
-- [x] Camera system
-- [x] Collision detection
-- [x] GitHub repository setup
+### Game Loop ✅
+- [x] Start screen with play button
+- [x] Basic scoring (e.g., time survived or hits landed)
+- [x] Game over condition (e.g., timer runs out)
+- [x] Restart button
 
-## Ship Controls and Physics
-- [x] Ship movement (forward/backward/strafing)
-- [x] Ship rotation
-- [x] Camera following with smooth transitions
-- [x] Boundary constraints
-- [x] Collision feedback
+**Notes:** Skip complex UI, model customization, and extra weapons for now. Focus on a tight, playable loop. Use placeholders (e.g., cubes) if models aren't ready.
 
-## Weapons System
-- [x] Regular Laser implementation
-  - [x] Visual effects
-  - [x] Collision detection
-  - [ ] Energy consumption and recharge mechanics
-- [ ] Grenade Weapon
-  - [ ] Projectile trajectory
-  - [ ] Explosion effect
-  - [ ] Area damage
-  - [ ] Full energy consumption
-- [ ] Bouncing Laser
-  - [ ] Ricochet mechanics (bouncing off walls)
-  - [ ] Visual effects
-  - [ ] 1/3 energy consumption
+---
 
-## Energy System
-- [ ] Energy bar display in UI
-- [ ] Recharge mechanics
-  - [ ] Regular laser: Gradual depletion with simultaneous recharge
-  - [ ] Balanced recharge rate for exciting combat
-  - [ ] Visual feedback for energy levels
-  - [ ] Audio cues for low energy
+## Phase 3: Multiplayer Basics ✅
+### Player Setup ✅
+- [x] Player name input on start screen
+- [x] Display name above ship (simple text, no icons yet)
+- [x] Basic player list UI (names only)
 
-## Room/Level Design
-- [ ] Room generation with tactical walls
-  - [ ] Open areas for maneuverability
-  - [ ] Cover spots for tactical gameplay
-  - [ ] Narrow passages for intense firefights
-- [ ] Multiple room types/layouts
-- [ ] Room transition system
+### Game Features ✅
+- [x] In-game pause menu (ESC key) with ship change option
+- [x] Ship change functionality during gameplay (fixed: seamless ship selection and model updates)
 
-## Power-ups
-- [ ] Convert current obstacles to power-ups
-- [ ] Weapon recharge booster
-  - [ ] Visual effects
-  - [ ] Temporary faster energy recharge
-- [ ] Speed booster
-  - [ ] Visual effects
-  - [ ] Temporary speed increase
-- [ ] Shield power-up
-  - [ ] Visual shield effect
-  - [ ] Temporary invulnerability
-- [ ] Weapon enhancements
-  - [ ] Temporary damage boost
-  - [ ] Temporary fire rate boost
+### Backend ✅
+- [x] Set up lightweight WebSocket server (e.g., `ws` in Node.js)
+- [x] Sync player positions (x, y, rotation)
+- [x] Sync laser shots (spawn + collision)
+- [x] Connection status indicator (e.g., "Connected" text)
 
-## Enemy AI
-- [ ] Basic enemy movement
-- [ ] Enemy targeting system
-- [ ] Different enemy types
-- [ ] Enemy spawning system
-- [ ] Difficulty progression
+---
 
-## Multiplayer
-- [ ] Basic networking
-- [ ] Player synchronization
-- [ ] Room-based matchmaking
-- [ ] Scoreboard
-- [ ] Team modes
+## Phase 4: Infinite Alien Map
+### Terrain & Environment
+- [ ] Design low-poly alien terrain (<500 tris per section)
+- [ ] Implement infinite scrolling map system
+- [ ] Add procedural terrain generation for new areas
+- [ ] Implement object culling for distant elements (>50 units)
 
-## UI and Feedback
-- [ ] Health display
-- [ ] Energy/Ammo display
-- [ ] Score display
-- [ ] Minimap
-- [ ] Weapon selection indicator
-- [ ] Hit markers and damage feedback
-- [ ] Kill notifications
+### Obstacles & Interactive Elements
+- [ ] Add random static obstacles (rocks, ruins, alien structures)
+- [ ] Implement laser collision with obstacles
+- [ ] Add black holes for teleportation between map areas
+- [ ] Create power-ups (speed boost, shield, weapon upgrade)
 
-## Audio
-- [ ] Weapon sounds
-- [ ] Ship engine sounds
-- [ ] Explosion effects
-- [ ] Power-up sounds
-- [ ] Background music
-- [ ] UI sound effects
+### Visual Enhancement
+- [ ] Add alien atmosphere effects (fog, particles)
+- [ ] Implement basic ambient lighting for mood
+- [ ] Create simple day/night cycle
 
-## Polish and Optimization
-- [ ] Performance optimization
-- [ ] Mobile responsiveness
-- [ ] Visual effects polish
-- [ ] Menu system
-- [ ] Tutorial
-- [ ] Settings menu 
+**Notes:** Use free assets from Sketchfab or Unity Asset Store for alien terrain and obstacles. Aim for <500 triangles per model to maintain performance. For procedural generation, use simple algorithms with Three.js.
+
+---
+
+## Phase 5: Gameplay Polish
+### Weapons
+- [x] Regular Laser (keep as-is)
+- [ ] Bounce Laser (improve to make sure it bounces against obstables but kills enemies and self, simple VFX, do after infinite map with objecs so we can calibrate better)
+- [x] Energy system (basic bar, drains on shot, slow regen)
+
+### Feedback
+- [ ] Hit markers (color flash on ship)
+- [ ] Score display (top corner, simple text)
+- [ ] Weapon switch UI (e.g., 1/2 keys, text indicator)
+- [ ] Power-up collection feedback (glow effect, sound)
+
+### Effects
+- [ ] Ship thruster particles (small, low-count)
+- [ ] Obstacle destruction effect (disappear + particles)
+- [ ] Black hole visual effect (simple spiral texture + glow)
+
+**Notes:** Limit to three weapons max for MVP. 
+
+---
+
+## Phase 6: Audio & Final Polish
+### Audio
+- [x] Laser sound (simple pew)
+- [ ] Hit sound (src/assets/sounds/weapon-armor-hit.mp3)
+- [ ] Background ambient music (looped, subtle)
+- [x] Power-up collection sound (src/assets/sounds/weapon-charging.mp3)
+- [ ] Black hole teleportation sound
+- [x] Laser bounce sound (src/assets/sounds/bounce.mp3)
+
+### UI
+- [ ] Modernize start screen to look like a top game (name input + play button)
+- [ ] Player list polish (border + scroll if needed)
+- [x] Add minimap for infinite terrain navigation
+- [ ] Simple settings menu (volume, graphics quality)
+
+**Notes:** Keep effects minimal—focus on gameplay feel over flashiness. Audio is cheap polish; don't skip it.
+
+--- DO NOT WORK ON THE BELOW YET, IT WILL BE EXPERIMENTAL ---
+
+## Phase 7: Optimization for Raspberry Pi 4 (4GB)
+The Raspberry Pi 4 (4GB) has limited CPU/GPU power (quad-core Cortex-A72, VideoCore VI GPU) and 4GB RAM. Here's how to ensure *Quantum Drift* runs smoothly:
+
+### Rendering
+- [ ] Cap frame rate at 30 FPS (reduce CPU/GPU load)
+- [ ] Use low-poly models (<500 tris per ship/obstacle)
+- [ ] Disable shadows and limit lights to 1-2
+- [ ] Reduce canvas resolution (e.g., 800x600 or dynamic scaling)
+- [ ] Implement object pooling for lasers (reuse instead of spawn/destroy)
+
+### Multiplayer
+- [ ] Minimize network packets (send position every 100ms, not 16ms)
+- [ ] Compress data (e.g., x/y as integers, not floats)
+- [ ] Limit active players to 4-6 in view (cull others)
+
+### Map & Physics
+- [ ] Keep terrain height variation minimal
+- [ ] Use simple AABB collision (axis-aligned bounding boxes)
+- [ ] Cap obstacles at 20-30 visible at once
+- [ ] Implement distance-based LOD (level of detail)
+
+### Testing
+- [ ] Test on Pi 4 with Chromium in kiosk mode
+- [ ] Monitor RAM usage (target <2GB) and CPU (<50%)
+- [ ] Add toggle for "low graphics" mode (fewer particles, no fog)
+
+**Notes:** Pi 4 can handle Three.js, but it hates high poly counts and frequent object creation. Prioritize simplicity and reuse.
+
+---
+
+## Asset Acquisition Strategy
+### Finding Low-Poly Assets
+- Check [Sketchfab](https://sketchfab.com/) for free GLB files under Creative Commons
+- Browse [Unity Asset Store](https://assetstore.unity.com/) for free low-poly packs
+- Use [Blender](https://www.blender.org/) with Geometry Nodes for procedural terrain
+- Consider [Stable Diffusion](https://stability.ai/stable-diffusion) for concept art, then model in Blender
+
+### Asset Requirements
+- Ship models: <500 triangles each
+- Terrain sections: <500 triangles per section
+- Obstacles: <200 triangles each
+- Textures: 512x512 or smaller, compressed
+
+**Notes:** Many free assets on Sketchfab are community-created, offering unique alien designs that fit your theme, potentially saving hours compared to modeling from scratch.
+
+---
+
+## Revised Development Notes
+- **MVP Goal:** Infinite alien map with obstacles, power-ups, and black holes; smooth multiplayer experience.
+- **Cut Features:** Complex UI, grenades, mobile support, social features, advanced multiplayer (teams, matchmaking)—add these post-MVP if needed.
+- **Performance Focus:** Keep poly counts low, cull aggressively, and test on weak hardware early.
+- **Multiplayer Priority:** Sync only essentials (position, shots); avoid bloating network traffic.
+- **Ship Size:** Stick with 55% reduction and 0.35 collision radius—works well per your notes.

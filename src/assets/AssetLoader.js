@@ -56,15 +56,66 @@ class AssetLoader {
 
     async loadModels() {
         const loader = new GLTFLoader();
+        // Use absolute paths to ensure models are loaded correctly
         const modelPaths = {
-            'FIGHTER': 'assets/models/ships/FIGHTER.glb',
-            'INTERCEPTOR': 'assets/models/ships/INTERCEPTOR.glb',
+            'FIGHTER': 'assets/models/ships/ALTSPACE1.glb',
+            'INTERCEPTOR': 'assets/models/ships/ALTSPACE2.glb',
             // Add aliases for backward compatibility
-            'SCOUT': 'assets/models/ships/FIGHTER.glb',
-            'EXPERIMENTAL': 'assets/models/ships/INTERCEPTOR.glb'
+            'SCOUT': 'assets/models/ships/ALTSPACE1.glb',
+            'EXPERIMENTAL': 'assets/models/ships/ALTSPACE2.glb',
+            
+            // Terrain models
+            'TERRAIN': 'assets/models/terrain/Terrain.glb',
+            'WATER': 'assets/models/terrain/Water.glb',
+            
+            // Flora models
+            'TREE_01': 'assets/models/flora/SP_Tree01.glb',
+            'TREE_02': 'assets/models/flora/SP_Tree02.glb',
+            'TREE_03': 'assets/models/flora/SP_Tree03.glb',
+            'TREE_04': 'assets/models/flora/SP_Tree04.glb',
+            'PLANT_06': 'assets/models/flora/BigPlant_06.glb',
+            'PLANT_07': 'assets/models/flora/SP_Plant07.glb',
+            'PLANT_08': 'assets/models/flora/SP_Plant08.glb',
+            'GRASS_01': 'assets/models/flora/Grass_01.glb',
+            'MUSHROOMS': 'assets/models/flora/Mushrooms.glb',
+            'ROOTS_01': 'assets/models/flora/SmalRoots_01.glb',
+            'TENTACLES_01': 'assets/models/flora/Tenticles_01.glb',
+            
+            // Rock models
+            'BIG_ROCK_01': 'assets/models/rocks/BigRock_01.glb',
+            'BIG_ROCK_02': 'assets/models/rocks/BigRock_02.glb',
+            'ROCK_FORMATION_01': 'assets/models/rocks/RockFormation_01.glb',
+            'ROCK_FORMATION_02': 'assets/models/rocks/RockFormation_02.glb',
+            'ROCK_FORMATION_03': 'assets/models/rocks/RockFormation_03.glb',
+            'ROCK_FORMATION_05': 'assets/models/rocks/RockFormation_05.glb',
+            'ROCK_FORMATION_07': 'assets/models/rocks/RockFormation_07.glb',
+            'ROCK_01': 'assets/models/rocks/SP_Rock01.glb',
+            'ROCK_02': 'assets/models/rocks/SP_Rock02.glb',
+            'ROCK_03': 'assets/models/rocks/SP_Rock03.glb',
+            'ROCK_04': 'assets/models/rocks/SP_Rock04.glb',
+            'ROCK_05': 'assets/models/rocks/SP_Rock05.glb',
+            'ROCK_06': 'assets/models/rocks/SP_Rock06.glb',
+            'ROCK_07': 'assets/models/rocks/SP_Rock07.glb',
+            'ROCK_08': 'assets/models/rocks/SP_Rock08.glb',
+            'ROCK_09': 'assets/models/rocks/SP_Rock09.glb',
+            
+            // Object models
+            'CRYSTAL_01': 'assets/models/objects/SP_Crystal01.glb',
+            'GROUND_01': 'assets/models/objects/SP_Ground01.glb',
+            'GROUND_02': 'assets/models/objects/SP_Ground02.glb',
+            'GROUND_03': 'assets/models/objects/SP_Ground03.glb',
+            'GROUND_04': 'assets/models/objects/SP_Ground04.glb',
+            'GROUND_05': 'assets/models/objects/SP_Ground05.glb',
+            'MOUNTAIN_01': 'assets/models/objects/SP_Mountain01.glb',
+            'MOUNTAIN_02': 'assets/models/objects/SP_Mountain02.glb',
+            'MOUNTAIN_03': 'assets/models/objects/SP_Mountain03.glb',
+            'STONE_01': 'assets/models/objects/SP_Stone01.glb'
         };
 
+        console.log('🚢 Starting to load models with paths:', modelPaths);
+
         const loadPromises = Object.entries(modelPaths).map(([key, path]) => {
+            console.log(`🔄 Setting up loading for model: ${key} from path: ${path}`);
             return this.loadWithRetry(() => this.loadModel(loader, key, path));
         });
 
@@ -76,6 +127,8 @@ class AssetLoader {
 
     async loadModel(loader, key, path) {
         return new Promise((resolve, reject) => {
+            console.log(`🔍 Actually loading model: ${key} from: ${path}`);
+            
             const timeoutId = setTimeout(() => {
                 reject(new Error(`Model loading timeout: ${key}`));
             }, 15000);
@@ -84,7 +137,9 @@ class AssetLoader {
                 path,
                 (gltf) => {
                     clearTimeout(timeoutId);
-                    // Store the original model without scaling
+                    console.log(`✅ Successfully loaded model: ${key}`);
+                    
+                    // Store the original model before any scaling
                     this.assets.models.set(key, gltf.scene);
                     this.onProgress?.(`Loaded model: ${key}`);
                     resolve();
@@ -95,6 +150,7 @@ class AssetLoader {
                 },
                 (error) => {
                     clearTimeout(timeoutId);
+                    console.error(`⛔ Error loading model ${key}:`, error.message);
                     reject(new Error(`Error loading model ${key}: ${error.message}`));
                 }
             );
@@ -261,59 +317,97 @@ class AssetLoader {
         };
     }
 
-    // New method to ensure all ship models have consistent sizing
+    // Force ship sizes to be consistent
     normalizeShipSizes() {
-        const STANDARD_SCALE = 0.75;
-        const shipKeys = ['FIGHTER', 'INTERCEPTOR', 'SCOUT', 'EXPERIMENTAL'];
+        console.log('🛠️ NORMALIZING SHIP SIZES');
+        
+        // Check what models we have
+        const modelKeys = Array.from(this.assets.models.keys());
+        console.log('Available models:', modelKeys);
         
         // Skip if no models are loaded
         if (this.assets.models.size === 0) {
-            console.warn('No models loaded yet, skipping normalization');
+            console.warn('⚠️ No models loaded yet, skipping normalization');
             return;
         }
         
-        console.log('Normalizing ship sizes to consistent scale...');
-        
-        // Apply standard scale to all ship models
-        shipKeys.forEach(key => {
+        // Set all models to scale 1
+        modelKeys.forEach(key => {
             try {
                 const model = this.assets.models.get(key);
                 if (model) {
-                    // Reset scale to 1 first to ensure consistent starting point
+                    console.log(`Setting standard scale 1.0 for ${key}`);
                     model.scale.set(1, 1, 1);
-                    // Then apply the standard scale
-                    model.scale.set(STANDARD_SCALE, STANDARD_SCALE, STANDARD_SCALE);
-                    console.log(`✅ Normalized scale for ship model: ${key}`);
                 }
             } catch (error) {
-                console.error(`Error normalizing scale for ship model ${key}:`, error);
+                console.error(`Error setting scale for model ${key}:`, error);
             }
         });
         
-        console.log('✅ All ship models normalized to consistent size');
+        console.log('🛠️ SHIP SIZE NORMALIZATION COMPLETE');
     }
     
-    // Method to get a cloned ship model with proper scaling already applied
+    // Method to get a cloned ship model
     getShipModel(key) {
         try {
+            console.log(`Getting ship model: ${key}`);
             const model = this.assets.models.get(key);
+            
             if (!model) {
                 console.warn(`Ship model with key "${key}" not found!`);
+                
                 // Try to find alternative models if aliases didn't work
                 if (key === 'FIGHTER' || key === 'SCOUT') {
                     // Try alternatives for fighter
+                    console.log('Trying to find FIGHTER/SCOUT alternatives');
                     const altModel = this.assets.models.get('FIGHTER') || this.assets.models.get('SCOUT');
-                    if (altModel) return altModel.clone();
+                    if (altModel) {
+                        console.log('Found alternative model, cloning');
+                        
+                        // DIAGNOSTIC: Log scale before cloning
+                        console.log(`DIAGNOSTIC: Original model scale before clone - [${altModel.scale.x}, ${altModel.scale.y}, ${altModel.scale.z}]`);
+                        
+                        const cloned = altModel.clone();
+                        
+                        // DIAGNOSTIC: Log scale after cloning
+                        console.log(`DIAGNOSTIC: Cloned model scale - [${cloned.scale.x}, ${cloned.scale.y}, ${cloned.scale.z}]`);
+                        
+                        return cloned;
+                    }
                 } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL') {
                     // Try alternatives for interceptor
+                    console.log('Trying to find INTERCEPTOR/EXPERIMENTAL alternatives');
                     const altModel = this.assets.models.get('INTERCEPTOR') || this.assets.models.get('EXPERIMENTAL');
-                    if (altModel) return altModel.clone();
+                    if (altModel) {
+                        console.log('Found alternative model, cloning');
+                        
+                        // DIAGNOSTIC: Log scale before cloning
+                        console.log(`DIAGNOSTIC: Original model scale before clone - [${altModel.scale.x}, ${altModel.scale.y}, ${altModel.scale.z}]`);
+                        
+                        const cloned = altModel.clone();
+                        
+                        // DIAGNOSTIC: Log scale after cloning
+                        console.log(`DIAGNOSTIC: Cloned model scale - [${cloned.scale.x}, ${cloned.scale.y}, ${cloned.scale.z}]`);
+                        
+                        return cloned;
+                    }
                 }
+                
+                console.error(`No model or alternative found for key: ${key}`);
                 return null;
             }
             
+            // DIAGNOSTIC: Log scale before cloning 
+            console.log(`DIAGNOSTIC: Original model scale before clone - [${model.scale.x}, ${model.scale.y}, ${model.scale.z}]`);
+            
             // Return a properly cloned model
-            return model.clone();
+            console.log(`Cloning model for: ${key}`);
+            const cloned = model.clone();
+            
+            // DIAGNOSTIC: Log scale after cloning
+            console.log(`DIAGNOSTIC: Cloned model scale - [${cloned.scale.x}, ${cloned.scale.y}, ${cloned.scale.z}]`);
+            
+            return cloned;
         } catch (error) {
             console.error(`Error cloning ship model ${key}:`, error);
             return null;
