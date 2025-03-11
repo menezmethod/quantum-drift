@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import { GLTFLoader } from '@three/examples/loaders/GLTFLoader';
 import './styles/main.css';
 import { GameUI } from './ui/GameUI';
 import { MiniMap } from './ui/MiniMap';
 import { KEY_MAPPINGS, CONTROL_SETTINGS, CONTROL_FEEDBACK, DEFAULT_CONTROL_STATE, ControlUtils } from './config/Controls';
 import { ShipSelectionUI } from './ui/ShipSelectionUI';
 import AssetLoader from './assets/AssetLoader';
+import { InfiniteMap } from './core/InfiniteMap';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -86,6 +88,9 @@ class SimpleGame {
     
     // Setup controls
     this.setupControls();
+    
+    // Initialize infinite map after scene setup
+    this.infiniteMap = new InfiniteMap(this);
     
     // Create mini-map (after scene setup) but keep it hidden initially
     this.miniMap = new MiniMap(this);
@@ -700,28 +705,173 @@ class SimpleGame {
   }
   
   createFloor() {
-    // Create a larger, more detailed grid for better orientation
-    const gridSize = 100;
-    const gridDivisions = 100;
-    const mainGridColor = 0x444444;
-    const secondaryGridColor = 0x222222;
+    console.log('Creating floor with Terrain.glb model');
     
-    const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, mainGridColor, secondaryGridColor);
-    this.scene.add(gridHelper);
-    
-    // Add a subtle glow effect to the grid
-    const floorGeometry = new THREE.PlaneGeometry(gridSize, gridSize, 1, 1);
-    const floorMaterial = new THREE.MeshBasicMaterial({
+    // Create a placeholder floor initially - this will be visible until the model loads
+    const tempFloorGeometry = new THREE.PlaneGeometry(100, 100, 1, 1);
+    const tempFloorMaterial = new THREE.MeshBasicMaterial({
       color: 0x000022,
       transparent: true,
       opacity: 0.2,
     });
     
-    this.floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    this.floor = new THREE.Mesh(tempFloorGeometry, tempFloorMaterial);
     this.floor.rotation.x = -Math.PI / 2;
-    this.floor.position.y = -0.01; // Slightly below the grid to avoid z-fighting
+    this.floor.position.y = -0.01;
     this.scene.add(this.floor);
     
+    // Also create an invisible raycasting plane that will always work for targeting
+    // This ensures mouse input works consistently regardless of the visual floor model
+    this.raycastFloor = new THREE.Mesh(
+      new THREE.PlaneGeometry(1000, 1000),
+      new THREE.MeshBasicMaterial({ 
+        color: 0x00ff00,
+        transparent: true, 
+        opacity: 0.05, // Very slight visibility for debugging
+        side: THREE.DoubleSide
+      })
+    );
+    this.raycastFloor.rotation.x = -Math.PI / 2;
+    this.raycastFloor.position.y = 0.1; // Position higher above terrain
+    this.scene.add(this.raycastFloor);
+    
+    // Add debug logging
+    console.log('Raycast floor created at height:', this.raycastFloor.position.y, 'and size:', 1000);
+    
+    // Load texture first
+    const textureLoader = new THREE.TextureLoader();
+    const terrainTexture = textureLoader.load('assets/models/textures/Colors3.png', 
+      // Success callback
+      (texture) => {
+        console.log('Terrain texture (Colors3.png) loaded successfully');
+        // Configure texture 
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(8, 8); // Repeat the texture more times for better detail
+        
+        // Now load the Terrain.glb model
+        loadTerrainModel(texture);
+      },
+      // Progress callback
+      undefined,
+      // Error callback
+      (error) => {
+        console.error('Error loading Colors3.png texture:', error);
+        // Try fallback to original texture
+        textureLoader.load('assets/models/textures/tex.png', 
+          fallbackTexture => {
+            console.log('Fallback texture loaded');
+            fallbackTexture.wrapS = THREE.RepeatWrapping;
+            fallbackTexture.wrapT = THREE.RepeatWrapping;
+            fallbackTexture.repeat.set(5, 5);
+            loadTerrainModel(fallbackTexture);
+          },
+          undefined,
+          fallbackError => {
+            console.error('Error loading fallback texture:', fallbackError);
+            // Load model anyway without texture
+            loadTerrainModel(null);
+          }
+        );
+      }
+    );
+    
+    // Function to load terrain model with texture
+    const loadTerrainModel = (texture) => {
+      const terrainPath = 'assets/models/terrain/Terrain.glb';
+      
+      // Use GLTFLoader properly imported at the top
+      const loader = new GLTFLoader();
+      loader.load(
+        terrainPath,
+        (gltf) => {
+          console.log('Terrain model loaded successfully');
+          
+          // Remove the temporary floor
+          if (this.floor) {
+            this.scene.remove(this.floor);
+            this.floor.geometry.dispose();
+            this.floor.material.dispose();
+          }
+          
+          // Set up the terrain model
+          const terrain = gltf.scene;
+          
+          // Scale the terrain appropriately
+          const terrainScale = 100; // Adjust this value to change the overall size
+          terrain.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
+          
+          // Position terrain at center and slightly below zero to avoid z-fighting
+          terrain.position.set(0, -0.2, 0);
+          
+          // Set up materials with texture
+          terrain.traverse((node) => {
+            if (node.isMesh) {
+              // Enable shadows
+              node.castShadow = false; // We don't want the floor to cast shadows
+              node.receiveShadow = true; // But we do want it to receive shadows
+              
+              // Apply texture if available
+              if (node.material && texture) {
+                // Store original colors for blending
+                const originalColor = node.material.color ? node.material.color.clone() : new THREE.Color(0xffffff);
+                
+                // Apply texture
+                node.material.map = texture;
+                
+                // Make the terrain slightly emissive for a subtle glow
+                node.material.emissive = new THREE.Color(0x006688);
+                node.material.emissiveIntensity = 0.2;
+                
+                // Add more vibrant color variation for Colors3 texture
+                if (texture.source.data.src.includes('Colors3')) {
+                  // More vibrant color blend for the new texture
+                  node.material.color = originalColor.lerp(new THREE.Color(0x99ccff), 0.4);
+                  // Increase the contrast and saturation
+                  node.material.roughness = 0.6;
+                  node.material.metalness = 0.3;
+                } else {
+                  // Original settings for fallback texture
+                  node.material.color = originalColor.lerp(new THREE.Color(0x88aaff), 0.3);
+                  node.material.roughness = 0.8;
+                  node.material.metalness = 0.2;
+                }
+                
+                // Make sure textures are used
+                node.material.needsUpdate = true;
+              }
+            }
+          });
+          
+          // Store reference and add to scene
+          this.floor = terrain;
+          this.scene.add(terrain);
+          
+          // Add a circular highlight around the player's position
+          this.createPlayerHighlight();
+        },
+        (xhr) => {
+          // Progress callback
+          console.log(`Loading terrain: ${(xhr.loaded / xhr.total * 100).toFixed(2)}%`);
+        },
+        (error) => {
+          // Error callback
+          console.error('Error loading terrain model:', error);
+          console.log('Falling back to default floor');
+          
+          // Create grid as a fallback
+          const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
+          this.scene.add(gridHelper);
+          
+          // Add player highlight anyway
+          this.createPlayerHighlight();
+        }
+      );
+    };
+  }
+
+  // Separate method for player highlight to avoid code duplication
+  createPlayerHighlight() {
     // Add a circular highlight around the player's position
     const highlightGeometry = new THREE.CircleGeometry(5, 32);
     const highlightMaterial = new THREE.MeshBasicMaterial({
@@ -734,9 +884,6 @@ class SimpleGame {
     this.playerHighlight.rotation.x = -Math.PI / 2;
     this.playerHighlight.position.y = 0.02; // Slightly above the floor
     this.scene.add(this.playerHighlight);
-    
-    // Add boundary indicators
-    this.createBoundaryMarkers();
   }
   
   createBoundaryMarkers() {
@@ -785,87 +932,597 @@ class SimpleGame {
   }
   
   createObstacles() {
-    // Create some simple obstacles
+    // Create obstacle arrays
     this.obstacles = [];
     
-    console.log('🚧 DIAGNOSTIC: Starting obstacle creation');
+    console.log('🚧 Creating immersive landscape with pathways and scattered crystals');
     
-    // Create 15 random obstacles with more variety
-    for (let i = 0; i < 15; i++) {
-      // Choose a random shape (box, cylinder, or sphere)
-      const shapeType = Math.floor(Math.random() * 3);
-      
-      let geometry;
-      let size;
-      let type;
-      
-      if (shapeType === 0) {
-        // Box
-        size = 1.5 + Math.random() * 3;
-        const height = 3 + Math.random() * 4; // Taller for better visibility
-        geometry = new THREE.BoxGeometry(size, height, size);
-        type = 'box';
-      } else if (shapeType === 1) {
-        // Cylinder
-        const radius = 1 + Math.random() * 2;
-        const height = 4 + Math.random() * 5;
-        geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
-        size = radius * 2;
-        type = 'cylinder';
-      } else {
-        // Sphere
-        const radius = 1.5 + Math.random() * 2;
-        geometry = new THREE.SphereGeometry(radius, 16, 16);
-        size = radius * 2;
-        type = 'sphere';
+    // Define model categories and paths, with a focus on variety and character
+    const obstacleCategories = {
+      // Small to medium rocks
+      rocks: [
+        'SP_Rock01.glb', 
+        'SP_Rock02.glb',
+        'SP_Rock03.glb',
+        'SP_Rock04.glb',
+        'SP_Rock05.glb',
+        'SP_Rock06.glb',
+        'SP_Rock07.glb',
+        'SP_Rock08.glb',
+        'SP_Rock09.glb'
+      ],
+      // Expanded flora selection
+      flora: [
+        'Grass_01.glb',
+        'Mushrooms.glb',
+        'SP_Plant07.glb',
+        'SP_Plant08.glb',
+        'SmalRoots_01.glb',
+        'Tenticles_01.glb',
+        'BigPlant_06.glb'
+      ],
+      // Expanded ground features for creating pathways
+      groundFeatures: [
+        'objects/SP_Ground02.glb',
+        'objects/SP_Ground03.glb',
+        'objects/SP_Ground04.glb',
+        'objects/SP_Ground05.glb'
+      ],
+      // Crystal clusters for interest points
+      crystals: [
+        'objects/SP_Crystal01.glb',
+        'objects/SP_Stone01.glb'
+      ],
+      // Mountains for landscape borders and key landmarks
+      mountains: [
+        'objects/SP_Mountain01.glb',
+        'objects/SP_Mountain02.glb',
+        'objects/SP_Mountain03.glb'
+      ]
+    };
+    
+    // Enhanced distribution for a more detailed landscape
+    const distribution = {
+      rocks: 8,
+      flora: 10,
+      groundFeatures: 18,  // Increased from 12 to 18
+      crystals: 9,
+      mountains: 12  // Increased from 4 to 12
+    };
+    
+    // Define some pre-made templates for object groupings
+    const templates = [
+      // Rock garden template
+      {
+        position: new THREE.Vector3(25, 0, 15),
+        rotation: Math.PI / 6,
+        elements: [
+          { category: 'rocks', modelIndex: 0, offset: new THREE.Vector3(0, 0, 0), scale: 2.0, rotation: 0 },
+          { category: 'rocks', modelIndex: 2, offset: new THREE.Vector3(3, 0, 1), scale: 1.3, rotation: Math.PI/3 },
+          { category: 'rocks', modelIndex: 1, offset: new THREE.Vector3(-2, 0, 2), scale: 1.5, rotation: Math.PI/5 },
+          { category: 'flora', modelIndex: 1, offset: new THREE.Vector3(2, 0, 3), scale: 1.2, rotation: 0 }
+        ]
+      },
+      // Flora cluster template
+      {
+        position: new THREE.Vector3(-20, 0, -18),
+        rotation: Math.PI / 4,
+        elements: [
+          { category: 'flora', modelIndex: 4, offset: new THREE.Vector3(0, 0, 0), scale: 1.8, rotation: 0 },
+          { category: 'flora', modelIndex: 0, offset: new THREE.Vector3(2, 0, 2), scale: 1.4, rotation: Math.PI/2 },
+          { category: 'flora', modelIndex: 3, offset: new THREE.Vector3(-1.5, 0, 1), scale: 1.2, rotation: Math.PI/6 },
+          { category: 'rocks', modelIndex: 3, offset: new THREE.Vector3(1, 0, -2), scale: 1.0, rotation: 0 }
+        ]
+      },
+      // Crystal formation template
+      {
+        position: new THREE.Vector3(-15, 0, 30),
+        rotation: -Math.PI / 3,
+        elements: [
+          { category: 'crystals', modelIndex: 0, offset: new THREE.Vector3(0, 0, 0), scale: 1.5, rotation: 0 },
+          { category: 'crystals', modelIndex: 0, offset: new THREE.Vector3(1.5, 0, 1), scale: 1.0, rotation: Math.PI/2 },
+          { category: 'crystals', modelIndex: 0, offset: new THREE.Vector3(-1, 0, 1.5), scale: 0.8, rotation: Math.PI/4 },
+          { category: 'groundFeatures', modelIndex: 2, offset: new THREE.Vector3(0, -0.2, 0), scale: 1.8, rotation: 0 }
+        ]
       }
+    ];
+    
+    // Create main pathways (4 paths coming from center, like a cross)
+    const pathways = [
+      { direction: new THREE.Vector3(1, 0, 0), width: 5 },   // East
+      { direction: new THREE.Vector3(-1, 0, 0), width: 5 },  // West
+      { direction: new THREE.Vector3(0, 0, 1), width: 5 },   // North
+      { direction: new THREE.Vector3(0, 0, -1), width: 5 }   // South
+    ];
+    
+    // Add some curved pathways to make it more interesting
+    pathways.push(
+      { 
+        direction: new THREE.Vector3(0.7, 0, 0.7), 
+        width: 4,
+        curve: 0.8 // Will curve around
+      },
+      { 
+        direction: new THREE.Vector3(-0.7, 0, -0.7), 
+        width: 4,
+        curve: -0.5 // Will curve the other way
+      }
+    );
+    
+    // Create some crystal gardens (clusters of crystals)
+    const crystalGardens = [
+      { x: 30, z: 30, radius: 8, count: 4 },
+      { x: -25, z: 20, radius: 6, count: 3 },
+      { x: 15, z: -35, radius: 10, count: 5 }
+    ];
+    
+    // Function to check if a position is near a pathway
+    const isNearPathway = (x, z, pathWidth) => {
+      for (const path of pathways) {
+        // Create a vector from center to this position
+        const posVector = new THREE.Vector3(x, 0, z);
+        const length = posVector.length();
+        
+        // Normalize the vector to compare direction
+        if (length > 0) posVector.divideScalar(length);
+        
+        // Check if this aligns with any pathway
+        const dot = posVector.dot(path.direction);
+        
+        // If aligned with path direction and not too close to center
+        if (dot > 0.7 && length > 15 && length < 40) {
+          // Calculate perpendicular distance to path
+          const perpFactor = Math.sqrt(1 - dot * dot) * length;
+          if (perpFactor < (path.width || pathWidth)) {
+            return true;
+          }
+          
+          // For curved paths
+          if (path.curve) {
+            // Check if in a curved region
+            if (length > 20) {
+              // Apply curvature - this is simplified but creates a nice effect
+              const curveFactor = (length - 20) * path.curve * 0.1;
+              const curvePerp = Math.abs(perpFactor - curveFactor);
+              if (curvePerp < (path.width || pathWidth)) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
+    };
+    
+    // Function to check if position is in a crystal garden
+    const isInCrystalGarden = (x, z) => {
+      for (const garden of crystalGardens) {
+        const dx = x - garden.x;
+        const dz = z - garden.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        if (distance < garden.radius) {
+          return garden;
+        }
+      }
+      return null;
+    };
+    
+    // Load and place models as obstacles
+    for (const [category, models] of Object.entries(obstacleCategories)) {
+      const count = distribution[category];
       
-      // Create random position within boundary but away from center
-      let x, z;
-      do {
-        x = (Math.random() * 80) - 40;
-        z = (Math.random() * 80) - 40;
-      } while (Math.sqrt(x * x + z * z) < 10); // Keep away from center spawn
-      
-      // Create random color
-      const hue = Math.random();
-      const color = new THREE.Color().setHSL(hue, 0.7, 0.5);
-      
-      // Create material (some emissive for glow effect)
-      const material = new THREE.MeshStandardMaterial({
-        color: color,
-        emissive: color.clone().multiplyScalar(0.2),
-        roughness: 0.7,
-        metalness: 0.3
-      });
-      
-      // Create mesh
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(x, size / 2, z); // Position on floor with correct height
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      
-      // Add to scene
-      this.scene.add(mesh);
-      
-      // Store obstacle data with SLIGHTLY LARGER collision size (reduced inflation)
-      // Use 15% inflation instead of the previous 50%
-      const inflatedSize = size * 1.15; 
-      this.obstacles.push({
-        mesh: mesh,
-        type: type,
-        size: inflatedSize, // Use inflated size for collisions
-        actualSize: size,   // Store actual visual size for reference
-        position: mesh.position.clone()
-      });
-      
-      // Only log details for a few obstacles to avoid console spam
-      if (i < 3) {
-        console.log(`DIAGNOSTIC: Created ${type} obstacle #${i+1}: visual size ${size.toFixed(2)}, collision size ${inflatedSize.toFixed(2)} at [${x.toFixed(1)}, ${mesh.position.y.toFixed(1)}, ${z.toFixed(1)}]`);
+      for (let i = 0; i < count; i++) {
+        // Select a random model from this category
+        const modelPath = models[Math.floor(Math.random() * models.length)];
+        
+        // Handle different paths based on category
+        let fullPath;
+        if (modelPath.includes('/')) {
+          // Path already includes the folder
+          fullPath = `assets/models/${modelPath}`;
+        } else {
+          // Use the category as the folder
+          fullPath = `assets/models/${category}/${modelPath}`;
+        }
+        
+        // Create position based on category
+        let x, z;
+        let attempts = 0;
+        let isValid = false;
+        let inGarden = null;
+        
+        while (!isValid && attempts < 30) {
+          attempts++;
+          
+          if (category === 'groundFeatures') {
+            // Ground features go along pathways or in open areas
+            if (Math.random() < 0.7) {
+              // 70% along pathways
+              const angle = Math.random() * Math.PI * 2;
+              const distance = 15 + Math.random() * 25; // Between 15-40 from center
+              x = Math.cos(angle) * distance;
+              z = Math.sin(angle) * distance;
+              
+              // If not near a pathway, try again
+              if (!isNearPathway(x, z, 6)) continue;
+            } else {
+              // 30% randomly placed
+              x = (Math.random() * 80) - 40;
+              z = (Math.random() * 80) - 40;
+            }
+          } else if (category === 'crystals') {
+            // Try to place in crystal gardens
+            if (Math.random() < 0.7) {
+              // 70% in crystal gardens
+              const garden = crystalGardens[Math.floor(Math.random() * crystalGardens.length)];
+              const angle = Math.random() * Math.PI * 2;
+              const distance = Math.random() * garden.radius;
+              x = garden.x + Math.cos(angle) * distance;
+              z = garden.z + Math.sin(angle) * distance;
+              inGarden = garden;
+            } else {
+              // 30% scattered elsewhere, avoiding pathways
+              x = (Math.random() * 70) - 35;
+              z = (Math.random() * 70) - 35;
+              
+              // If near a pathway, try again
+              if (isNearPathway(x, z, 6)) continue;
+            }
+          } else if (category === 'mountains') {
+            // Mountains go on the periphery with more diverse placement
+            if (i < 4) {
+              // Place 4 mountains at the far corners of the map
+              const angle = (Math.PI/4) + (i * Math.PI/2); // Place at 45°, 135°, 225°, 315°
+              const distance = 40 + Math.random() * 5; // Between 40-45 from center
+              x = Math.cos(angle) * distance;
+              z = Math.sin(angle) * distance;
+            } else if (i < 8) {
+              // Place 4 mountains at cardinal directions, but further out
+              const angle = (i - 4) * Math.PI/2; // Place at 0°, 90°, 180°, 270°
+              const distance = 42 + Math.random() * 8; // Between 42-50 from center
+              x = Math.cos(angle) * distance;
+              z = Math.sin(angle) * distance;
+            } else {
+              // Place remaining mountains randomly but still on periphery
+              const angle = Math.random() * Math.PI * 2;
+              const distance = 35 + Math.random() * 10; // Between 35-45 from center
+              x = Math.cos(angle) * distance;
+              z = Math.sin(angle) * distance;
+            }
+            
+            // If near a pathway, try again (want mountains to border but not block paths)
+            if (isNearPathway(x, z, 8)) continue;
+          } else {
+            // Rocks and flora go anywhere but not on paths
+            x = (Math.random() * 80) - 40;
+            z = (Math.random() * 80) - 40;
+            
+            // Avoid pathways for these obstacles
+            if (isNearPathway(x, z, 5)) continue;
+          }
+          
+          // Keep all objects away from center spawn
+          if (Math.sqrt(x * x + z * z) < 15) continue;
+          
+          // Position is valid
+          isValid = true;
+        }
+        
+        if (!isValid) continue; // Skip if couldn't find valid position
+        
+        // Scale factors tailored by category and context
+        let scale;
+        if (category === 'rocks') {
+          scale = 1.5 + Math.random() * 1.0; // Larger rocks (1.5-2.5)
+        } else if (category === 'flora') {
+          scale = 1.2 + Math.random() * 0.8; // Taller flora (1.2-2.0)
+        } else if (category === 'groundFeatures') {
+          if (isNearPathway(x, z, 6)) {
+            // Ground features along pathways have more consistent size
+            scale = 1.2 + Math.random() * 0.6; // Medium-sized ground (1.2-1.8)
+          } else {
+            // Ground features away from pathways can vary more
+            scale = 0.8 + Math.random() * 1.4; // Variable ground features (0.8-2.2)
+          }
+        } else if (category === 'crystals') {
+          if (inGarden) {
+            // Varied crystal sizes in gardens
+            scale = 0.5 + Math.random() * 1.4; // Variety of sizes (0.5-1.9)
+          } else {
+            // Scattered crystals are smaller
+            scale = 0.7 + Math.random() * 0.6; // Smaller scattered (0.7-1.3)
+          }
+        } else if (category === 'mountains') {
+          // More diverse mountain scales based on position
+          if (i < 4) {
+            // Corner mountains are largest
+            scale = 2.2 + Math.random() * 1.3; // Largest mountains (2.2-3.5)
+          } else if (i < 8) {
+            // Cardinal direction mountains are medium-large
+            scale = 1.8 + Math.random() * 1.0; // Medium-large mountains (1.8-2.8)
+          } else {
+            // Random mountains have varied sizes
+            scale = 1.4 + Math.random() * 1.6; // Variable mountains (1.4-3.0)
+          }
+        }
+        
+        // Use loader to get the model
+        const loader = new GLTFLoader();
+        loader.load(
+          fullPath,
+          (gltf) => {
+            const model = gltf.scene;
+            
+            // Apply scale and position
+            model.scale.set(scale, scale, scale);
+            model.position.set(x, 0, z); // Will adjust y based on model size
+            
+            // Add randomized rotation, except for ground features on pathways
+            if (category === 'groundFeatures' && isNearPathway(x, z, 6)) {
+              // Align with nearest pathway for ground features
+              const alignAngle = Math.atan2(z, x);
+              model.rotation.y = alignAngle + (Math.random() * 0.5 - 0.25); // Slight variation
+            } else {
+              model.rotation.y = Math.random() * Math.PI * 2;
+            }
+            
+            // Enable shadows with optimization
+            model.traverse(node => {
+              if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+                
+                // Optimize materials while keeping visual quality
+                if (node.material) {
+                  // Add category-specific visual enhancements
+                  if (category === 'crystals' && modelPath.includes('Crystal')) {
+                    // Make crystals glow with random colors
+                    const crystalColors = [
+                      new THREE.Color(0x00ffff), // cyan
+                      new THREE.Color(0xff00ff), // magenta
+                      new THREE.Color(0x88bbff), // light blue
+                      new THREE.Color(0xffaa00)  // orange
+                    ];
+                    
+                    // Random crystal color
+                    const crystalColor = crystalColors[Math.floor(Math.random() * crystalColors.length)];
+                    node.material.emissive = crystalColor;
+                    node.material.emissiveIntensity = 0.3 + Math.random() * 0.3; // 0.3-0.6
+                  } else if (category === 'mountains') {
+                    // Give mountains a slight purple/blue tint
+                    node.material.color = new THREE.Color(0x9090b0);
+                  } else if (category === 'groundFeatures') {
+                    // Give ground features varied earthy tones
+                    const groundColors = [
+                      new THREE.Color(0x908070), // tan
+                      new THREE.Color(0x807060), // brown
+                      new THREE.Color(0x708060), // olive
+                      new THREE.Color(0x606070)  // slate
+                    ];
+                    node.material.color = groundColors[Math.floor(Math.random() * groundColors.length)];
+                  }
+                }
+              }
+            });
+            
+            // Add to scene
+            this.scene.add(model);
+            
+            // IMPROVED COLLISION DETECTION: Use oriented bounding box for more accurate collisions
+            // First, compute an accurate bounding box
+            const bbox = new THREE.Box3().setFromObject(model);
+            const size = bbox.getSize(new THREE.Vector3());
+            
+            // Use the improved ground placement calculation
+            const groundY = this.calculateGroundOffset(model, category, scale);
+            model.position.y = groundY;
+            
+            // Generate compound collision shapes for more accurate collision detection
+            const collisionShapes = this.generateCompoundCollisionShapes(model, category, scale);
+            
+            // Create better collision data with compound shapes
+            const obstacleData = {
+              mesh: model,
+              type: category,
+              // Advanced collision data
+              collisionShape: 'compound',
+              compoundShapes: collisionShapes.map(shape => {
+                // Transform shape centers to world coordinates
+                const worldCenter = shape.center.clone();
+                worldCenter.add(model.position);
+                
+                return {
+                  ...shape,
+                  center: worldCenter,
+                  worldRotation: model.rotation.y + (shape.rotation || 0)
+                };
+              }),
+              // Keep bounding box for broad-phase checks
+              boundingBox: {
+                min: new THREE.Vector3(
+                  model.position.x - (size.x * scale / 2),
+                  model.position.y - (size.y * scale / 2),
+                  model.position.z - (size.z * scale / 2)
+                ),
+                max: new THREE.Vector3(
+                  model.position.x + (size.x * scale / 2),
+                  model.position.y + (size.y * scale / 2),
+                  model.position.z + (size.z * scale / 2)
+                ),
+                size: size.clone().multiplyScalar(scale),
+                rotation: model.rotation.y
+              },
+              // Also keep a simple radius for quick distance checks
+              size: Math.max(size.x, size.z) * scale * 0.5,
+              position: model.position.clone()
+            };
+            
+            this.obstacles.push(obstacleData);
+            
+            // Log first few obstacles for debugging
+            if (this.obstacles.length <= 3) {
+              console.log(`Created ${category} obstacle from ${modelPath}: width=${size.x * scale}, height=${size.y * scale}, depth=${size.z * scale} at [${model.position.x.toFixed(1)}, ${model.position.y.toFixed(1)}, ${model.position.z.toFixed(1)}]`);
+            }
+          },
+          undefined, // Progress callback
+          (error) => {
+            console.error(`Error loading obstacle model ${fullPath}:`, error);
+          }
+        );
       }
     }
     
-    console.log(`DIAGNOSTIC: Created ${this.obstacles.length} obstacles with 15% inflated collision sizes`);
+    // Create a special centerpiece crystal formation
+    this.createCenterpiece();
+    
+    // Create template-based object groupings for more cohesive landscape
+    this.createTemplateGroupings(templates, obstacleCategories);
+    
+    console.log(`Started loading ${Object.values(distribution).reduce((a, b) => a + b, 0)} obstacles with pathways and crystal gardens`);
+  }
+  
+  /**
+   * Create template-based object groupings
+   */
+  createTemplateGroupings(templates, categoryModels) {
+    console.log('Creating template-based object groupings');
+    
+    templates.forEach((template, templateIndex) => {
+      const templatePosition = template.position;
+      const templateRotation = template.rotation;
+      
+      // Process each element in the template
+      template.elements.forEach(element => {
+        const category = element.category;
+        
+        // Get the model list for this category
+        const models = categoryModels[category];
+        if (!models || models.length === 0) return;
+        
+        // Select model by index or randomly if index is out of bounds
+        const modelIndex = element.modelIndex < models.length ? element.modelIndex : Math.floor(Math.random() * models.length);
+        const modelPath = models[modelIndex];
+        
+        // Handle different paths based on category
+        let fullPath;
+        if (modelPath.includes('/')) {
+          // Path already includes the folder
+          fullPath = `assets/models/${modelPath}`;
+        } else {
+          // Use the category as the folder
+          fullPath = `assets/models/${category}/${modelPath}`;
+        }
+        
+        // Calculate final position with rotation applied to offset
+        const offset = element.offset.clone();
+        
+        // Apply template rotation to the offset
+        if (templateRotation) {
+          // Create rotation matrix
+          const rotMatrix = new THREE.Matrix4().makeRotationY(templateRotation);
+          offset.applyMatrix4(rotMatrix);
+        }
+        
+        // Final position combines template position and rotated offset
+        const finalPosition = new THREE.Vector3(
+          templatePosition.x + offset.x,
+          templatePosition.y + offset.y,
+          templatePosition.z + offset.z
+        );
+        
+        // Final rotation combines template rotation and element rotation
+        const finalRotation = templateRotation + element.rotation;
+        
+        // Use loader to get the model
+        const loader = new GLTFLoader();
+        loader.load(
+          fullPath,
+          (gltf) => {
+            const model = gltf.scene;
+            
+            // Apply scale
+            model.scale.set(element.scale, element.scale, element.scale);
+            
+            // Set initial position 
+            model.position.copy(finalPosition);
+            
+            // Apply rotation
+            model.rotation.y = finalRotation;
+            
+            // Enable shadows with appropriate material enhancements
+            model.traverse(node => {
+              if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+                
+                // Apply category-specific visual effects
+                if (node.material) {
+                  if (category === 'crystals') {
+                    // Crystal glow effect
+                    node.material.emissive = new THREE.Color(0x88bbff);
+                    node.material.emissiveIntensity = 0.3;
+                  }
+                }
+              }
+            });
+            
+            // Add to scene
+            this.scene.add(model);
+            
+            // Compute accurate bounding box
+            const bbox = new THREE.Box3().setFromObject(model);
+            const size = bbox.getSize(new THREE.Vector3());
+            
+            // Use improved ground placement
+            const groundY = this.calculateGroundOffset(model, category, element.scale);
+            model.position.y = groundY + element.offset.y; // Apply any intentional Y offset
+            
+            // Generate compound collision shapes
+            const collisionShapes = this.generateCompoundCollisionShapes(model, category, element.scale);
+            
+            // Add to obstacles array with collision data
+            this.obstacles.push({
+              mesh: model,
+              type: category,
+              collisionShape: 'compound',
+              compoundShapes: collisionShapes.map(shape => {
+                // Transform shape centers to world coordinates
+                const worldCenter = shape.center.clone();
+                worldCenter.add(model.position);
+                
+                return {
+                  ...shape,
+                  center: worldCenter,
+                  worldRotation: model.rotation.y + (shape.rotation || 0)
+                };
+              }),
+              boundingBox: {
+                min: new THREE.Vector3(
+                  model.position.x - (size.x * element.scale / 2),
+                  model.position.y - (size.y * element.scale / 2),
+                  model.position.z - (size.z * element.scale / 2)
+                ),
+                max: new THREE.Vector3(
+                  model.position.x + (size.x * element.scale / 2),
+                  model.position.y + (size.y * element.scale / 2),
+                  model.position.z + (size.z * element.scale / 2)
+                ),
+                size: size.clone().multiplyScalar(element.scale),
+                rotation: model.rotation.y
+              },
+              size: Math.max(size.x, size.z) * element.scale * 0.5,
+              position: model.position.clone()
+            });
+            
+            console.log(`Template ${templateIndex+1}: Added ${category} model at [${model.position.x.toFixed(1)}, ${model.position.y.toFixed(1)}, ${model.position.z.toFixed(1)}]`);
+          },
+          undefined,
+          (error) => {
+            console.error(`Error loading template model ${fullPath}:`, error);
+          }
+        );
+      });
+    });
   }
   
   setupControls() {
@@ -1173,12 +1830,13 @@ class SimpleGame {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
         
-        // Update targeting indicators
+        // Update targeting indicators for any weapon type
         this.updateTargetingIndicator({
             clientX: event.clientX,
             clientY: event.clientY
         });
         
+        // Additional targeting for grenade if that's the current weapon
         if (this.currentWeapon === 'GRENADE') {
             this.updateGrenadeTargetingIndicator({
                 clientX: event.clientX,
@@ -1572,13 +2230,18 @@ selectWeapon(weaponType) {
   }
   
   animate() {
-    // Request next frame immediately - keep game running always
+    // Request next frame immediately
     requestAnimationFrame(() => this.animate());
     
     // Calculate delta time
     const now = Date.now();
     const deltaTime = (now - this.lastTime) / 1000;
     this.lastTime = now;
+    
+    // Update infinite map with player position
+    if (this.playerShip && this.infiniteMap) {
+      this.infiniteMap.update(this.playerShip.position);
+    }
     
     // Update game state
     this.updatePlayer(deltaTime);
@@ -1589,21 +2252,32 @@ selectWeapon(weaponType) {
     this.updateGrenades();
     this.updateControlIndicators();
     
+    // Ensure targeting indicators are properly positioned
+    if (this.targetingIndicator && this.targetingIndicator.visible) {
+      // Ensure targeting indicator stays visible above the terrain
+      this.targetingIndicator.position.y = 0.15;
+    }
+    
+    if (this.grenadeTargetIndicator && this.grenadeTargetIndicator.visible) {
+      // Ensure grenade targeting indicator stays visible above the terrain
+      this.grenadeTargetIndicator.position.y = 0.15;
+    }
+    
     // Update mini-map
     if (this.miniMap) {
-        this.miniMap.update();
+      this.miniMap.update();
     }
     
     // Update visual effects
     if (this.playerHighlight) {
-        this.playerHighlight.position.x = this.playerShip.position.x;
-        this.playerHighlight.position.z = this.playerShip.position.z;
-        const pulseFactor = (Math.sin(Date.now() * 0.003) + 1) / 2;
-        this.playerHighlight.material.opacity = 0.05 + pulseFactor * 0.1;
+      this.playerHighlight.position.x = this.playerShip.position.x;
+      this.playerHighlight.position.z = this.playerShip.position.z;
+      const pulseFactor = (Math.sin(Date.now() * 0.003) + 1) / 2;
+      this.playerHighlight.material.opacity = 0.05 + pulseFactor * 0.1;
     }
     
     if (this.thruster && this.thrusterLight && this.thrusterPulse) {
-        this.updateThrusterEffects();
+      this.updateThrusterEffects();
     }
     
     // Always render
@@ -1668,9 +2342,6 @@ selectWeapon(weaponType) {
     
     // Check for collisions
     this.checkObstacleCollisions();
-    
-    // Keep the player within bounds
-    this.constrainToBounds();
     
     // Update thruster effects based on movement
     if (typeof this.updateThrusterEffects === 'function') {
@@ -1845,101 +2516,275 @@ selectWeapon(weaponType) {
   }
   
   checkObstacleCollisions() {
-    if (!this.playerShip || !this.obstacles) {
-      console.log('Skipping collision check - player ship or obstacles not available');
+    if (!this.playerShip || !this.infiniteMap) {
+      console.log('Skipping collision check - player ship or infinite map not available');
       return;
     }
     
-    // DIAGNOSTIC: Log the current ship position and collision settings
-    const playerRadius = this.playerShip.userData.collisionRadius || 0.35; // Default to 0.35 to match our new reduced radius
+    // Get player collision info
+    const playerRadius = this.playerShip.userData.collisionRadius || 0.35;
     const playerPos = this.playerShip.position.clone();
     
-    // Only log occasionally to avoid overwhelming the console
-    const logFrequency = 0.01; // 1% of frames
-    const shouldLog = Math.random() < logFrequency;
+    // Create player sphere for collision checks
+    const playerSphere = {
+      center: playerPos,
+      radius: playerRadius
+    };
     
-    if (shouldLog) {
-      console.log(`DIAGNOSTIC: Ship position [${playerPos.x.toFixed(2)}, ${playerPos.y.toFixed(2)}, ${playerPos.z.toFixed(2)}], collision radius: ${playerRadius}`);
+    // Check collisions with infinite map objects first
+    const mapCollision = this.infiniteMap.checkCollisions(playerPos, playerRadius);
+    
+    if (mapCollision.collided) {
+      // Handle collision from infinite map
+      this.handleObjectCollision(playerPos, mapCollision.object.position, mapCollision.object.type || 'terrain');
+      return; // Stop checking after handling one collision
     }
     
-    // DIAGNOSTIC: Track closest obstacle distance
-    let closestDistance = Infinity;
-    let closestObstacle = null;
-    
-    // Check each obstacle with a more reasonable approach
+    // Check local obstacles with more accurate collision detection
     for (const obstacle of this.obstacles) {
-        if (!obstacle.mesh) continue;
-        
-        const obstaclePos = obstacle.mesh.position.clone();
-        let collision = false;
-        
-        // Use simple distance-based collision with appropriate parameters
-        const distance = playerPos.distanceTo(obstaclePos);
-        const minDistance = playerRadius + obstacle.size; // Use the inflated size without extra margin
-        
-        // Update closest obstacle tracking
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          closestObstacle = obstacle;
-        }
-        
-        // Check for collision - no extra safety margin needed now
-        collision = distance < minDistance;
-        
-        // Increase logging for debugging based on our random sample
-        if (shouldLog && distance < minDistance * 2) {
-            console.log(`DIAGNOSTIC: Near object: distance=${distance.toFixed(2)}, threshold=${minDistance.toFixed(2)}, collision=${collision}, type=${obstacle.type}`);
-        }
-        
-        // Handle collision with reasonable push-back
-        if (collision) {
-            console.log('COLLISION DETECTED: Pushing ship back');
-            
-            // Push player away from obstacle with appropriate force
-            const pushDir = new THREE.Vector3().subVectors(playerPos, obstaclePos).normalize();
-            // Use a more moderate push force
-            this.playerShip.position.addScaledVector(pushDir, 0.7);
-            
-            // Flash collision warning
-            this.flashCollisionWarning();
-            
-            // Apply damage if the function exists
-            if (typeof this.applyDamage === 'function') {
-                this.applyDamage(5);
-            }
-            
-            break; // Only handle one collision at a time
-        }
+      if (!obstacle.mesh) continue;
+      
+      // First, do a quick broad-phase check with spheres for efficiency
+      const obstaclePos = obstacle.position.clone();
+      const distance = playerPos.distanceTo(obstaclePos);
+      const quickCheckDistance = playerRadius + obstacle.size;
+      
+      // Skip detailed check if clearly not colliding
+      if (distance > quickCheckDistance * 1.5) continue;
+      
+      // Determine if collision happened based on shape type
+      let collision = false;
+      
+      if (obstacle.collisionShape === 'compound' && obstacle.compoundShapes) {
+        // Use compound shape collision detection for complex objects
+        collision = this.checkCompoundCollision(playerSphere, obstacle.compoundShapes);
+      } else if (obstacle.collisionShape === 'complex' && obstacle.boundingBox) {
+        // Fall back to oriented bounding box if compound shapes not available
+        collision = this.checkBoxCollision(
+          playerPos, playerRadius,
+          obstacle.boundingBox, 
+          obstacle.boundingBox.rotation
+        );
+      } else {
+        // Simplest case: sphere-based collision for backward compatibility
+        collision = distance < quickCheckDistance;
+      }
+      
+      if (collision) {
+        // Handle the collision
+        this.handleObjectCollision(playerPos, obstaclePos, obstacle.type);
+        break; // Only handle one collision at a time
+      }
+    }
+  }
+
+  /**
+   * Check collision between player (sphere) and obstacle (compound shapes)
+   */
+  checkCompoundCollision(playerSphere, compoundShapes) {
+    // Check collision against each shape in the compound
+    for (const shape of compoundShapes) {
+      let collision = false;
+      
+      if (shape.type === 'box') {
+        // Box vs sphere collision
+        collision = this.checkBoxSphereCollision(
+          shape.center,
+          shape.halfExtents,
+          shape.worldRotation || 0,
+          playerSphere
+        );
+      } else if (shape.type === 'sphere') {
+        // Sphere vs sphere collision (simpler case)
+        const distance = playerSphere.center.distanceTo(shape.center);
+        collision = distance < (playerSphere.radius + shape.radius);
+      }
+      
+      if (collision) {
+        return true; // Collision with any part means collision with the compound
+      }
     }
     
-    // DIAGNOSTIC: Always log the closest obstacle info
-    if (shouldLog && closestObstacle) {
-      console.log(`DIAGNOSTIC: Closest obstacle: type=${closestObstacle.type}, distance=${closestDistance.toFixed(2)}, collisionSize=${closestObstacle.size.toFixed(2)}`);
-    }
-    
-    // Make sure player stays within bounds
-    this.constrainToBounds();
+    return false; // No collision with any part
   }
   
-  constrainToBounds() {
-    if (!this.playerShip) return;
+  /**
+   * Check collision between a rotated box and a sphere
+   */
+  checkBoxSphereCollision(boxCenter, boxHalfExtents, boxRotation, sphere) {
+    // Transform sphere center to box space (accounting for rotation)
+    const toSphere = new THREE.Vector3().subVectors(sphere.center, boxCenter);
     
-    const boundarySize = 45; // Half width of the allowed area
+    // Apply inverse rotation to get into box space
+    if (boxRotation) {
+      const rotMatrix = new THREE.Matrix4().makeRotationY(-boxRotation);
+      toSphere.applyMatrix4(rotMatrix);
+    }
     
-    // Get current position
-    const pos = this.playerShip.position;
+    // Find closest point on box to sphere in box space
+    const closestPoint = new THREE.Vector3(
+      Math.max(-boxHalfExtents.x, Math.min(boxHalfExtents.x, toSphere.x)),
+      Math.max(-boxHalfExtents.y, Math.min(boxHalfExtents.y, toSphere.y)),
+      Math.max(-boxHalfExtents.z, Math.min(boxHalfExtents.z, toSphere.z))
+    );
     
-    // Keep X position within bounds
-    if (pos.x < -boundarySize) pos.x = -boundarySize;
-    if (pos.x > boundarySize) pos.x = boundarySize;
+    // If using rotation, convert closest point back to world space
+    let worldClosestPoint;
+    if (boxRotation) {
+      const rotMatrix = new THREE.Matrix4().makeRotationY(boxRotation);
+      worldClosestPoint = closestPoint.clone().applyMatrix4(rotMatrix).add(boxCenter);
+    } else {
+      worldClosestPoint = closestPoint.clone().add(boxCenter);
+    }
     
-    // Keep Z position within bounds
-    if (pos.z < -boundarySize) pos.z = -boundarySize;
-    if (pos.z > boundarySize) pos.z = boundarySize;
+    // Calculate squared distance from closest point to sphere center (for efficiency)
+    const squaredDistance = sphere.center.distanceToSquared(worldClosestPoint);
     
-    // Keep Y position above ground
-    if (pos.y < 0.5) pos.y = 0.5;
-}
+    // Collision occurs if distance is less than sphere radius squared
+    return squaredDistance < (sphere.radius * sphere.radius);
+  }
+
+  /**
+   * Handle collision with any object
+   */
+  handleObjectCollision(playerPos, objectPos, objectType) {
+    console.log(`COLLISION DETECTED with ${objectType}: Pushing ship back`);
+    
+    // Push player away from obstacle
+    const pushDir = new THREE.Vector3()
+      .subVectors(playerPos, objectPos)
+      .normalize();
+      
+    // Adjust push force based on object type
+    let pushForce = 0.7; // Default push force
+    let damageAmount = 5; // Default damage
+    
+    // Customize collision response based on type
+    switch(objectType) {
+      case 'rocks':
+        pushForce = 0.85; // Rocks push strongly
+        damageAmount = 8;
+        break;
+      case 'specialObjects':
+      case 'groundFeatures':
+        pushForce = 0.75; // Ground features push medium
+        damageAmount = 6;
+        break;
+      case 'mountains':
+        pushForce = 1.0; // Mountains push very strongly
+        damageAmount = 10;
+        break;
+      case 'crystals':
+        pushForce = 0.7; // Crystals push medium but with special effect
+        damageAmount = 7;
+        
+        // Add special crystal collision effect
+        this.createCrystalCollisionEffect(objectPos);
+        break;
+      case 'centerpiece':
+        pushForce = 0.9; // Centerpiece pushes strongly
+        damageAmount = 9;
+        
+        // Add special centerpiece collision effect
+        this.createCrystalCollisionEffect(objectPos, true);
+        break;
+      case 'flora':
+        pushForce = 0.6; // Flora pushes gently
+        damageAmount = 3;
+        break;
+      default:
+        // Use default values
+        break;
+    }
+    
+    // Apply the push force
+    this.playerShip.position.addScaledVector(pushDir, pushForce);
+    
+    // Flash collision warning
+    this.flashCollisionWarning();
+    
+    // Apply damage if the function exists
+    if (typeof this.applyDamage === 'function') {
+      this.applyDamage(damageAmount);
+    }
+    
+    // Play appropriate collision sound based on object type
+    let soundToPlay = 'collision';
+    
+    if (objectType === 'specialObjects') {
+      // Crystal-like sounds for special objects
+      soundToPlay = 'crystalHit';
+    } else if (objectType === 'mountains') {
+      // Heavy impact for mountains
+      soundToPlay = 'heavyImpact';
+    }
+    
+    // Play the sound if it exists, otherwise fall back to default collision
+    if (this.playSound) {
+      try {
+        this.playSound(soundToPlay);
+      } catch (e) {
+        // Fall back to default if sound doesn't exist
+        try {
+          this.playSound('collision');
+        } catch (e2) {
+          // No sound available
+        }
+      }
+    }
+  }
+
+  /**
+   * Check collision between player (sphere) and obstacle (oriented box)
+   */
+  checkBoxCollision(playerPos, playerRadius, box, rotation) {
+    // Get box center
+    const boxCenter = new THREE.Vector3(
+      (box.min.x + box.max.x) / 2,
+      (box.min.y + box.max.y) / 2,
+      (box.min.z + box.max.z) / 2
+    );
+    
+    // Calculate half extents of box
+    const halfExtents = new THREE.Vector3(
+      (box.max.x - box.min.x) / 2,
+      (box.max.y - box.min.y) / 2,
+      (box.max.z - box.min.z) / 2
+    );
+    
+    // Vector from box center to player
+    const toPlayer = new THREE.Vector3().subVectors(playerPos, boxCenter);
+    
+    // If we have rotation, apply inverse rotation to convert to box space
+    if (rotation) {
+      // Create rotation matrix for the box (negative rotation to invert)
+      const rotMatrix = new THREE.Matrix4().makeRotationY(-rotation);
+      toPlayer.applyMatrix4(rotMatrix);
+    }
+    
+    // Find closest point on the box to the player in box space
+    const closestPoint = new THREE.Vector3(
+      Math.max(-halfExtents.x, Math.min(halfExtents.x, toPlayer.x)),
+      Math.max(-halfExtents.y, Math.min(halfExtents.y, toPlayer.y)),
+      Math.max(-halfExtents.z, Math.min(halfExtents.z, toPlayer.z))
+    );
+    
+    // If using rotation, convert closest point back to world space
+    let worldClosestPoint;
+    if (rotation) {
+      // Create rotation matrix for the box
+      const rotMatrix = new THREE.Matrix4().makeRotationY(rotation);
+      worldClosestPoint = closestPoint.clone().applyMatrix4(rotMatrix).add(boxCenter);
+    } else {
+      worldClosestPoint = closestPoint.clone().add(boxCenter);
+    }
+    
+    // Calculate squared distance from closest point to player center
+    const squaredDistance = playerPos.distanceToSquared(worldClosestPoint);
+    
+    // Collision occurs if distance is less than player radius squared
+    return squaredDistance < (playerRadius * playerRadius);
+  }
   
   updateCamera() {
     // Define the camera offset from the player
@@ -2589,44 +3434,47 @@ selectWeapon(weaponType) {
     }
     
     const mouse = new THREE.Vector2(
-      (event.clientX / window.innerWidth) * 2 - 1,
-      -(event.clientY / window.innerHeight) * 2 + 1
+        (event.clientX / window.innerWidth) * 2 - 1,
+        -(event.clientY / window.innerHeight) * 2 + 1
     );
     
     // Raycasting to get the point on the floor
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, this.camera);
     
-    // Only consider the floor for targeting
-    const intersects = raycaster.intersectObject(this.floor);
+    // Use raycastFloor for consistent targeting
+    const intersects = raycaster.intersectObject(this.raycastFloor);
     
     if (intersects.length > 0) {
-      const targetPoint = intersects[0].point;
-      
-      // Check if the target is within maximum range
-      const maxRange = 20;
-      const shipPosition = this.playerShip.position.clone();
-      shipPosition.y = 0; // Project to ground plane
-      
-      // Vector from ship to target
-      const toTarget = targetPoint.clone().sub(shipPosition);
-      const distance = toTarget.length();
-      
-      // Update indicator color based on range
-      if (distance > maxRange) {
-        this.grenadeTargetIndicator.material.color.set(0xff0000); // Red for out of range
-      } else {
-        this.grenadeTargetIndicator.material.color.set(0x00ff00); // Green for valid
-      }
-      
-      // Position the targeting indicator
-      this.grenadeTargetIndicator.position.copy(targetPoint);
-      this.grenadeTargetIndicator.position.y = 0.1; // Slightly above floor
-      
-      // Pulse animation
-      this.grenadeTargetIndicator.pulse += 0.1;
-      const scale = 1 + 0.2 * Math.sin(this.grenadeTargetIndicator.pulse);
-      this.grenadeTargetIndicator.scale.set(scale, scale, scale);
+        const targetPoint = intersects[0].point;
+        
+        // Check if the target is within maximum range
+        const maxRange = 20;
+        const shipPosition = this.playerShip.position.clone();
+        shipPosition.y = 0; // Project to ground plane
+        
+        // Vector from ship to target
+        const toTarget = targetPoint.clone().sub(shipPosition);
+        const distance = toTarget.length();
+        
+        // Update indicator color based on range
+        if (distance > maxRange) {
+          this.grenadeTargetIndicator.material.color.set(0xff0000); // Red for out of range
+        } else {
+          this.grenadeTargetIndicator.material.color.set(0x00ff00); // Green for valid
+        }
+        
+        // Position the targeting indicator
+        this.grenadeTargetIndicator.position.copy(targetPoint);
+        this.grenadeTargetIndicator.position.y = 0.1; // Slightly above floor
+        
+        // Pulse animation
+        this.grenadeTargetIndicator.pulse += 0.1;
+        const scale = 1 + 0.2 * Math.sin(this.grenadeTargetIndicator.pulse);
+        this.grenadeTargetIndicator.scale.set(scale, scale, scale);
+        
+        // Store target point for launching
+        this.grenadeTargetPoint = targetPoint.clone();
     }
   }
   
@@ -2667,8 +3515,8 @@ selectWeapon(weaponType) {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, this.camera);
     
-    // Only consider the floor for targeting
-    const intersects = raycaster.intersectObject(this.floor);
+    // Use raycastFloor for consistent targeting
+    const intersects = raycaster.intersectObject(this.raycastFloor);
     
     if (intersects.length > 0) {
         const targetPoint = intersects[0].point;
@@ -2701,7 +3549,7 @@ selectWeapon(weaponType) {
         // Create and launch the grenade
         this.launchGrenade(targetPoint);
     }
-}
+  }
   
   launchGrenade(targetPoint) {
     // Create grenade mesh
@@ -2770,49 +3618,64 @@ selectWeapon(weaponType) {
         return;
     }
     this.lastIndicatorUpdate = Date.now();
-    
+
     // Get the mouse position in normalized device coordinates
     const mouse = new THREE.Vector2(
         (event.clientX / window.innerWidth) * 2 - 1,
         -(event.clientY / window.innerHeight) * 2 + 1
     );
     
+    // Log the normalized mouse position occasionally
+    if (Math.random() < 0.01) {
+      console.log('Mouse normalized position:', mouse);
+    }
+    
     // Use raycasting to determine the point in 3D space
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, this.camera);
     
-    // Check for intersection with the floor
-    const intersects = raycaster.intersectObject(this.floor);
+    // Check for intersection with the raycastFloor
+    const intersects = raycaster.intersectObject(this.raycastFloor);
+    
+    // Log raycasting results occasionally for debugging
+    if (Math.random() < 0.01) {
+      console.log('Raycast results:', { 
+        intersections: intersects.length, 
+        raycastFloorExists: !!this.raycastFloor,
+        raycastFloorPosition: this.raycastFloor ? this.raycastFloor.position.y : 'N/A'
+      });
+    }
     
     if (intersects.length > 0) {
         const targetPoint = intersects[0].point;
         
         // Create or update targeting indicator
         if (!this.targetingIndicator) {
+            console.log('Creating new targeting indicator');
             // Create a more efficient indicator using a single geometry
             const geometry = new THREE.Group();
             
-            // Outer ring with fewer segments
-            const outerRing = new THREE.RingGeometry(0.4, 0.5, 16);
+            // Outer ring with fewer segments - MAKE LARGER
+            const outerRing = new THREE.RingGeometry(0.8, 1.0, 16);
             const material = new THREE.MeshBasicMaterial({
                 color: 0x00ffff,
                 transparent: true,
-                opacity: 0.6,
+                opacity: 0.8, // Increased opacity
                 side: THREE.DoubleSide
             });
             const outer = new THREE.Mesh(outerRing, material);
             
-            // Inner ring with fewer segments
-            const innerRing = new THREE.RingGeometry(0.1, 0.2, 16);
+            // Inner ring with fewer segments - MAKE LARGER
+            const innerRing = new THREE.RingGeometry(0.2, 0.4, 16);
             const inner = new THREE.Mesh(innerRing, material.clone());
             
-            // Simplified crosshair
+            // Simplified crosshair - MAKE LARGER
             const lineGeometry = new THREE.BufferGeometry();
             const lineVertices = new Float32Array([
-                -0.3, 0, 0,
-                0.3, 0, 0,
-                0, -0.3, 0,
-                0, 0.3, 0
+                -0.6, 0, 0,
+                0.6, 0, 0,
+                0, -0.6, 0,
+                0, 0.6, 0
             ]);
             lineGeometry.setAttribute('position', new THREE.BufferAttribute(lineVertices, 3));
             const lines = new THREE.LineSegments(lineGeometry, material.clone());
@@ -2826,9 +3689,9 @@ selectWeapon(weaponType) {
             this.scene.add(this.targetingIndicator);
         }
         
-        // Update position
+        // Update position - INCREASE HEIGHT
         this.targetingIndicator.position.copy(targetPoint);
-        this.targetingIndicator.position.y = 0.05;
+        this.targetingIndicator.position.y = 0.5; // Much higher above the terrain
         
         // Update color based on weapon type
         const colors = {
@@ -2868,6 +3731,14 @@ selectWeapon(weaponType) {
                 this.targetingIndicator.visible = false;
             }
         }, 1000);
+        
+        // Extract target direction for firing
+        const direction = new THREE.Vector3()
+            .subVectors(targetPoint, this.playerShip.position)
+            .normalize();
+        
+        // Store direction for firing
+        this.targetDirection = direction;
     }
   }
   
@@ -3222,32 +4093,39 @@ exitToMainMenu() {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, this.camera);
 
-    // Check for intersection with the floor
-    const intersects = raycaster.intersectObject(this.floor);
+    // Check for intersection with an invisible plane at ship's height
+    const planeNormal = new THREE.Vector3(0, 1, 0);
+    const shipHeight = this.playerShip.position.y;
+    const plane = new THREE.Plane(planeNormal, -shipHeight);
+    
+    const targetPoint = new THREE.Vector3();
+    raycaster.ray.intersectPlane(plane, targetPoint);
 
-    if (intersects.length > 0) {
-        const targetPoint = intersects[0].point;
-
+    if (targetPoint) {
         // Calculate direction from ship to target
         const direction = targetPoint.clone().sub(this.playerShip.position).normalize();
         direction.y = 0; // Keep shots parallel to ground
 
-        // Store original rotation
-        const originalRotation = this.playerShip.rotation.clone();
+        // Get the ship's current forward direction
+        const shipForward = new THREE.Vector3(0, 0, 1);
+        shipForward.applyQuaternion(this.playerShip.quaternion);
+        shipForward.y = 0;
+        shipForward.normalize();
 
-        // Temporarily rotate ship to face target for accurate firing
-        const shipPosition = this.playerShip.position.clone();
-        this.playerShip.lookAt(shipPosition.clone().add(direction));
-
-        // Fire weapon
-        this.fireCurrentWeapon(direction);
-
-        // Restore original rotation
-        this.playerShip.rotation.copy(originalRotation);
+        // Calculate the angle between ship's forward direction and target direction
+        const angle = shipForward.angleTo(direction);
+        
+        // Only fire if the target is within a reasonable angle (e.g., 60 degrees) from ship's forward direction
+        const maxFiringAngle = Math.PI / 3; // 60 degrees
+        
+        if (angle <= maxFiringAngle) {
+            // Fire weapon in the calculated direction
+            this.fireCurrentWeapon(direction);
+        }
     }
-}
+  }
 
-fireCurrentWeapon(direction) {
+  fireCurrentWeapon(direction) {
     // Check weapon cooldown
     const now = Date.now();
     const weaponCooldown = this.weaponCooldowns.get(this.currentWeapon) || 0;
@@ -3285,19 +4163,34 @@ fireCurrentWeapon(direction) {
         this.ui.updateEnergy(this.energy, this.maxEnergy);
     }
 
+    // Use target direction if available, otherwise use ship orientation
+    let firingDirection;
+    
+    // If we have a targetDirection from mouse, use that instead of ship orientation
+    if (this.targetDirection && (this.currentWeapon === 'LASER' || this.currentWeapon === 'BOUNCE')) {
+        firingDirection = this.targetDirection.clone();
+        console.log('Using mouse targeting direction:', firingDirection);
+    } else {
+        // Fall back to ship orientation if no target direction
+        firingDirection = direction || new THREE.Vector3(0, 0, 1).applyQuaternion(this.playerShip.quaternion);
+        console.log('Using ship orientation direction:', firingDirection);
+    }
+    
+    // Ensure direction is normalized
+    firingDirection.normalize();
+    
     // Get firing position (slightly in front of ship)
-    const shipDirection = direction || new THREE.Vector3(0, 0, 1).applyQuaternion(this.playerShip.quaternion);
-    const position = this.playerShip.position.clone().add(shipDirection.multiplyScalar(1.5));
+    const position = this.playerShip.position.clone().add(firingDirection.clone().multiplyScalar(1.5));
     position.y = 0.5; // Set height
 
     // Create weapon effect based on type
     switch (this.currentWeapon) {
         case 'LASER':
-            this.fireLaser(position, shipDirection.normalize());
+            this.fireLaser(position, firingDirection);
             this.playSound('laser');
             break;
         case 'BOUNCE':
-            this.fireBouncingLaser(position, shipDirection.normalize());
+            this.fireBouncingLaser(position, firingDirection);
             this.playSound('laser-bounce');
             break;
         case 'GRENADE':
@@ -3306,42 +4199,57 @@ fireCurrentWeapon(direction) {
     }
 
     // Visual feedback for firing
-    this.createMuzzleFlash(position, shipDirection);
+    this.createMuzzleFlash(position, firingDirection);
 
     // Log energy state for debugging
     console.log(`Weapon fired: ${this.currentWeapon}, Energy remaining: ${this.energy}/${this.maxEnergy}`);
 }
 
 createMuzzleFlash(position, direction) {
-    // Create a quick flash effect at the firing position
-    const flashGeometry = new THREE.CircleGeometry(0.3, 16);
-    const flashMaterial = new THREE.MeshBasicMaterial({
-        color: this.currentWeapon === 'BOUNCE' ? 0x00ff99 : 0x00ffff,
-        transparent: true,
-        opacity: 0.8,
-        side: THREE.DoubleSide
-    });
-
-    const flash = new THREE.Mesh(flashGeometry, flashMaterial);
-    flash.position.copy(position);
-    flash.lookAt(position.clone().add(direction));
-
-    this.scene.add(flash);
-
-    // Animate the flash
-    let frame = 0;
-    const animate = () => {
-        frame++;
-        flash.scale.addScalar(0.2);
-        flashMaterial.opacity *= 0.8;
-
-        if (frame < 10) {
-            requestAnimationFrame(animate);
-        } else {
-            this.scene.remove(flash);
-        }
-    };
-    animate();
+  // Create a quick flash effect at the firing position
+  const flashGeometry = new THREE.CircleGeometry(0.3, 16);
+  const flashMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00ffff,
+    transparent: true,
+    opacity: 1,
+    side: THREE.DoubleSide
+  });
+  
+  const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+  
+  // Position flash at the weapon position, oriented to face the camera
+  flash.position.copy(position);
+  flash.position.y += 0.1; // Slightly above ship
+  
+  // Update flash to always face camera
+  flash.lookAt(this.camera.position);
+  
+  // Add to scene
+  this.scene.add(flash);
+  
+  // Create flash animation with subtle scaling
+  let scale = 1;
+  const animate = () => {
+    scale += 0.2;
+    flash.scale.set(scale, scale, scale);
+    
+    // Reduce opacity as flash grows
+    if (flash.material) {
+      flash.material.opacity = Math.max(0, 1 - (scale - 1) / 2);
+      
+      // Remove when fully transparent
+      if (flash.material.opacity <= 0) {
+        this.scene.remove(flash);
+        if (flash.material) flash.material.dispose();
+        if (flash.geometry) flash.geometry.dispose();
+        return;
+      }
+    }
+    
+    // Continue animation
+    requestAnimationFrame(animate);
+  };
+  animate();
 }
 
   fireLaser(position, direction) {
@@ -3678,6 +4586,496 @@ createMuzzleFlash(position, direction) {
     
     // Show the ship selection UI
     this.shipSelection.show();
+  }
+
+  /**
+   * Calculate proper ground offset for an object based on its type and geometry
+   */
+  calculateGroundOffset(model, category, scale) {
+    // Get the bounding box
+    const bbox = new THREE.Box3().setFromObject(model);
+    const size = bbox.getSize(new THREE.Vector3());
+    
+    // Calculate the distance from the object's pivot to its bottom
+    const pivotToBottom = bbox.min.y;
+    
+    // The base offset is the distance needed to move the object so its bottom touches the ground
+    let groundOffset = -pivotToBottom;
+    
+    // Add category-specific adjustments with more refined values
+    switch(category) {
+      case 'rocks':
+        // Rocks typically need to be slightly embedded in the ground
+        groundOffset += size.y * 0.08;
+        break;
+      case 'flora':
+        // Flora should be firmly planted in the ground
+        groundOffset += size.y * 0.03;
+        break;
+      case 'groundFeatures':
+        // Ground features should be partially embedded, varying by model
+        if (model.name && model.name.includes('Ground02')) {
+          groundOffset += size.y * 0.15; // SP_Ground02 needs more embedding
+        } else if (model.name && model.name.includes('Ground05')) {
+          groundOffset += size.y * 0.05; // SP_Ground05 needs less embedding
+        } else {
+          groundOffset += size.y * 0.1; // Default for other ground features
+        }
+        break;
+      case 'crystals':
+        // Crystals should appear to be growing from the ground
+        groundOffset += size.y * 0.15;
+        break;
+      case 'mountains':
+        // Mountains need to be firmly embedded with varying depths
+        const mountainDepth = 0.08 + (Math.random() * 0.05); // Random depth between 8-13%
+        groundOffset += size.y * mountainDepth;
+        break;
+      case 'centerpiece':
+        // Centerpiece gets special treatment
+        groundOffset += size.y * 0.12;
+        break;
+      default:
+        // Default adjustment for unknown types
+        groundOffset += 0;
+    }
+    
+    // Scale the offset according to the object's scale
+    // Add a small global offset to prevent z-fighting
+    return (groundOffset * scale) + 0.01;
+  }
+
+  /**
+   * Create a special centerpiece for the landscape
+   */
+  createCenterpiece() {
+    // Create a special formation at a designated spot
+    const centerpiece = {
+      position: new THREE.Vector3(0, 0, -35), // Prominent position
+      models: [
+        { path: 'assets/models/objects/SP_Crystal01.glb', scale: 2.5, offset: new THREE.Vector3(0, 0, 0), rotation: 0 },
+        { path: 'assets/models/objects/SP_Crystal01.glb', scale: 1.8, offset: new THREE.Vector3(2, 0, 1), rotation: Math.PI/4 },
+        { path: 'assets/models/objects/SP_Crystal01.glb', scale: 1.6, offset: new THREE.Vector3(-1.5, 0, -1), rotation: -Math.PI/5 },
+        { path: 'assets/models/objects/SP_Ground05.glb', scale: 2.0, offset: new THREE.Vector3(0, -0.5, 0), rotation: 0 },
+        { path: 'assets/models/objects/SP_Stone01.glb', scale: 1.2, offset: new THREE.Vector3(2.5, 0, -1.5), rotation: Math.PI/3 }
+      ]
+    };
+    
+    // Load each model in the centerpiece
+    centerpiece.models.forEach((model, index) => {
+      const loader = new GLTFLoader();
+      loader.load(
+        model.path,
+        (gltf) => {
+          const object = gltf.scene;
+          
+          // Apply scale
+          object.scale.set(model.scale, model.scale, model.scale);
+          
+          // Position relative to centerpiece
+          object.position.copy(centerpiece.position.clone().add(model.offset));
+          
+          // Apply rotation
+          object.rotation.y = model.rotation;
+          
+          // Add special glow effect for crystals
+          if (model.path.includes('Crystal')) {
+            object.traverse(node => {
+              if (node.isMesh && node.material) {
+                node.material.emissive = new THREE.Color(0xff00ff);
+                node.material.emissiveIntensity = 0.5;
+                
+                // Add a point light for extra effect
+                const light = new THREE.PointLight(0xff00ff, 2, 10);
+                light.position.set(0, 2 * model.scale, 0);
+                object.add(light);
+              }
+            });
+          }
+          
+          // Add to scene
+          this.scene.add(object);
+          
+          // Create collision data
+          const bbox = new THREE.Box3().setFromObject(object);
+          const size = bbox.getSize(new THREE.Vector3());
+          
+          // Use improved ground placement
+          const groundY = this.calculateGroundOffset(object, 'centerpiece', model.scale);
+          object.position.y = groundY + model.offset.y; // Add the intentional offset for composition
+          
+          // Generate compound collision shapes
+          const collisionShapes = this.generateCompoundCollisionShapes(object, 'centerpiece', model.scale);
+          
+          // Add to obstacles
+          this.obstacles.push({
+            mesh: object,
+            type: 'centerpiece',
+            collisionShape: 'compound',
+            compoundShapes: collisionShapes.map(shape => {
+              // Transform shape centers to world coordinates
+              const worldCenter = shape.center.clone();
+              worldCenter.add(object.position);
+              
+              return {
+                ...shape,
+                center: worldCenter,
+                worldRotation: object.rotation.y + (shape.rotation || 0)
+              };
+            }),
+            boundingBox: {
+              min: new THREE.Vector3(
+                object.position.x - (size.x * model.scale / 2),
+                object.position.y - (size.y * model.scale / 2),
+                object.position.z - (size.z * model.scale / 2)
+              ),
+              max: new THREE.Vector3(
+                object.position.x + (size.x * model.scale / 2),
+                object.position.y + (size.y * model.scale / 2),
+                object.position.z + (size.z * model.scale / 2)
+              ),
+              size: size.clone().multiplyScalar(model.scale),
+              rotation: object.rotation.y
+            },
+            size: Math.max(size.x, size.z) * model.scale * 0.5,
+            position: object.position.clone()
+          });
+          
+          console.log(`Centerpiece: Added ${model.path.split('/').pop()} at position [${object.position.x.toFixed(1)}, ${object.position.y.toFixed(1)}, ${object.position.z.toFixed(1)}]`);
+        },
+        undefined,
+        (error) => {
+          console.error(`Error loading centerpiece model ${model.path}:`, error);
+        }
+      );
+    });
+  }
+
+  /**
+   * Create a special effect when colliding with crystals
+   */
+  createCrystalCollisionEffect(position, isSpecial = false) {
+    // Create particles for crystal collision
+    const particleCount = isSpecial ? 30 : 15;
+    const color = isSpecial ? 0xff00ff : 0x00ffff;
+    
+    for (let i = 0; i < particleCount; i++) {
+      // Create a small glowing cube
+      const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+      const material = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.8
+      });
+      
+      const particle = new THREE.Mesh(geometry, material);
+      
+      // Position at collision point
+      particle.position.copy(position);
+      
+      // Add small random offset
+      particle.position.x += (Math.random() - 0.5) * 2;
+      particle.position.y += Math.random() * 3;
+      particle.position.z += (Math.random() - 0.5) * 2;
+      
+      // Add to scene
+      this.scene.add(particle);
+      
+      // Create velocity for particle
+      const velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 0.2,
+        Math.random() * 0.2 + 0.1,
+        (Math.random() - 0.5) * 0.2
+      );
+      
+      // Animate the particle
+      const startTime = Date.now();
+      const duration = 1000 + Math.random() * 1000; // 1-2 seconds
+      
+      const animate = () => {
+        const elapsed = Date.now() - startTime;
+        const progress = elapsed / duration;
+        
+        if (progress >= 1) {
+          // Remove particle when animation completes
+          this.scene.remove(particle);
+          particle.geometry.dispose();
+          particle.material.dispose();
+          return;
+        }
+        
+        // Update position
+        particle.position.add(velocity);
+        
+        // Slow down over time
+        velocity.multiplyScalar(0.98);
+        
+        // Fade out
+        particle.material.opacity = 0.8 * (1 - progress);
+        
+        // Continue animation
+        requestAnimationFrame(animate);
+      };
+      
+      // Start animation
+      animate();
+    }
+  }
+
+  /**
+   * Generate compound collision shapes for more accurate collision detection
+   */
+  generateCompoundCollisionShapes(model, category, scale) {
+    // Generate a compound collision shape based on model geometry and category
+    const shapes = [];
+    const bbox = new THREE.Box3().setFromObject(model);
+    
+    // Helper function to add a box shape
+    const addBoxShape = (center, size, rotation = 0) => {
+      shapes.push({
+        type: 'box',
+        center: center.clone(),
+        halfExtents: size.clone().multiplyScalar(0.5),
+        rotation: rotation
+      });
+    };
+    
+    // Helper function to add a sphere shape
+    const addSphereShape = (center, radius) => {
+      shapes.push({
+        type: 'sphere',
+        center: center.clone(),
+        radius: radius
+      });
+    };
+    
+    // Different collision shape strategies based on category
+    switch(category) {
+      case 'rocks':
+        // For rocks, use 1-3 overlapping boxes based on size
+        const rockSize = bbox.getSize(new THREE.Vector3());
+        const rockCenter = new THREE.Vector3();
+        bbox.getCenter(rockCenter);
+        
+        // Main box
+        addBoxShape(rockCenter, rockSize);
+        
+        // For larger rocks, add 1-2 more boxes at slight offsets for better shape approximation
+        if (rockSize.x > 1.5 * scale || rockSize.z > 1.5 * scale) {
+          // Add a second box, slightly offset and rotated
+          const offset = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.3 * rockSize.x,
+            0,
+            (Math.random() - 0.5) * 0.3 * rockSize.z
+          );
+          
+          const secondSize = new THREE.Vector3(
+            rockSize.x * (0.7 + Math.random() * 0.3),
+            rockSize.y * 0.9,
+            rockSize.z * (0.7 + Math.random() * 0.3)
+          );
+          
+          addBoxShape(rockCenter.clone().add(offset), secondSize, Math.PI * 0.25);
+          
+          // For very large rocks, add a third box
+          if (rockSize.x > 2.5 * scale || rockSize.z > 2.5 * scale) {
+            const thirdOffset = new THREE.Vector3(
+              (Math.random() - 0.5) * 0.4 * rockSize.x,
+              rockSize.y * 0.2,
+              (Math.random() - 0.5) * 0.4 * rockSize.z
+            );
+            
+            const thirdSize = new THREE.Vector3(
+              rockSize.x * (0.6 + Math.random() * 0.2),
+              rockSize.y * 0.7,
+              rockSize.z * (0.6 + Math.random() * 0.2)
+            );
+            
+            addBoxShape(rockCenter.clone().add(thirdOffset), thirdSize, Math.PI * 0.125);
+          }
+        }
+        break;
+        
+      case 'flora':
+        // For flora, use a smaller box for the base and a sphere for the top
+        const floraSize = bbox.getSize(new THREE.Vector3());
+        const floraCenter = new THREE.Vector3();
+        bbox.getCenter(floraCenter);
+        
+        // Box for the base/stem
+        const stemSize = new THREE.Vector3(
+          floraSize.x * 0.2,
+          floraSize.y * 0.6,
+          floraSize.z * 0.2
+        );
+        
+        const stemCenter = new THREE.Vector3(
+          floraCenter.x,
+          bbox.min.y + (stemSize.y / 2),
+          floraCenter.z
+        );
+        
+        addBoxShape(stemCenter, stemSize);
+        
+        // Sphere for the top/foliage
+        const foliageCenter = new THREE.Vector3(
+          floraCenter.x,
+          bbox.min.y + (floraSize.y * 0.7),
+          floraCenter.z
+        );
+        
+        const foliageRadius = Math.max(floraSize.x, floraSize.z) * 0.5;
+        addSphereShape(foliageCenter, foliageRadius);
+        break;
+        
+      case 'mountains':
+        // For mountains, use a pyramid-like composition of boxes
+        const mountainSize = bbox.getSize(new THREE.Vector3());
+        const mountainCenter = new THREE.Vector3();
+        bbox.getCenter(mountainCenter);
+        
+        // Base box (wider)
+        const baseSize = new THREE.Vector3(
+          mountainSize.x,
+          mountainSize.y * 0.3,
+          mountainSize.z
+        );
+        
+        const baseCenter = new THREE.Vector3(
+          mountainCenter.x,
+          bbox.min.y + (baseSize.y / 2),
+          mountainCenter.z
+        );
+        
+        addBoxShape(baseCenter, baseSize);
+        
+        // Middle box (narrower)
+        const middleSize = new THREE.Vector3(
+          mountainSize.x * 0.8,
+          mountainSize.y * 0.4,
+          mountainSize.z * 0.8
+        );
+        
+        const middleCenter = new THREE.Vector3(
+          mountainCenter.x,
+          bbox.min.y + baseSize.y + (middleSize.y / 2),
+          mountainCenter.z
+        );
+        
+        addBoxShape(middleCenter, middleSize);
+        
+        // Top box (narrowest)
+        const topSize = new THREE.Vector3(
+          mountainSize.x * 0.5,
+          mountainSize.y * 0.3,
+          mountainSize.z * 0.5
+        );
+        
+        const topCenter = new THREE.Vector3(
+          mountainCenter.x,
+          bbox.min.y + baseSize.y + middleSize.y + (topSize.y / 2),
+          mountainCenter.z
+        );
+        
+        addBoxShape(topCenter, topSize);
+        break;
+        
+      case 'crystals':
+        // For crystals, use a combination of boxes at different angles
+        const crystalSize = bbox.getSize(new THREE.Vector3());
+        const crystalCenter = new THREE.Vector3();
+        bbox.getCenter(crystalCenter);
+        
+        // Calculate a better fitting box size (narrower)
+        const mainCrystalSize = new THREE.Vector3(
+          crystalSize.x * 0.7,
+          crystalSize.y,
+          crystalSize.z * 0.7
+        );
+        
+        // Add the main crystal shape
+        addBoxShape(crystalCenter, mainCrystalSize, model.rotation.y);
+        
+        // For larger crystals, add some angled shards
+        if (crystalSize.y > 1.0 * scale) {
+          // Add up to 3 additional shards
+          const shardCount = 1 + Math.floor(Math.random() * 3);
+          
+          for (let i = 0; i < shardCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = crystalSize.x * 0.3;
+            
+            const offset = new THREE.Vector3(
+              Math.cos(angle) * distance,
+              crystalSize.y * (Math.random() * 0.2),
+              Math.sin(angle) * distance
+            );
+            
+            const shardSize = new THREE.Vector3(
+              crystalSize.x * (0.2 + Math.random() * 0.3),
+              crystalSize.y * (0.4 + Math.random() * 0.4),
+              crystalSize.z * (0.2 + Math.random() * 0.3)
+            );
+            
+            const shardRotation = Math.random() * Math.PI;
+            addBoxShape(crystalCenter.clone().add(offset), shardSize, shardRotation);
+          }
+        }
+        break;
+        
+      case 'groundFeatures':
+        // For ground features, use a more accurate horizontal shape with the right height
+        const groundSize = bbox.getSize(new THREE.Vector3());
+        const groundCenter = new THREE.Vector3();
+        bbox.getCenter(groundCenter);
+        
+        // Just use a single box but with better proportions
+        const adjustedSize = new THREE.Vector3(
+          groundSize.x,
+          groundSize.y * 0.7, // Lower height to prevent floating
+          groundSize.z
+        );
+        
+        // Center it properly on the ground
+        const adjustedCenter = new THREE.Vector3(
+          groundCenter.x,
+          bbox.min.y + (adjustedSize.y / 2),
+          groundCenter.z
+        );
+        
+        addBoxShape(adjustedCenter, adjustedSize, model.rotation.y);
+        break;
+        
+      case 'centerpiece':
+        // For centerpiece, create a custom multi-part shape
+        const centerpieceSize = bbox.getSize(new THREE.Vector3());
+        const centerpieceCenter = new THREE.Vector3();
+        bbox.getCenter(centerpieceCenter);
+        
+        // Main box
+        addBoxShape(centerpieceCenter, centerpieceSize);
+        
+        // Add a sphere on top for the crystal parts
+        const sphereCenter = new THREE.Vector3(
+          centerpieceCenter.x,
+          centerpieceCenter.y + (centerpieceSize.y * 0.2),
+          centerpieceCenter.z
+        );
+        
+        const sphereRadius = Math.max(centerpieceSize.x, centerpieceSize.z) * 0.6;
+        addSphereShape(sphereCenter, sphereRadius);
+        break;
+        
+      default:
+        // Default: just use a box based on the bounding box
+        const size = bbox.getSize(new THREE.Vector3());
+        const center = new THREE.Vector3();
+        bbox.getCenter(center);
+        addBoxShape(center, size);
+        break;
+    }
+    
+    return shapes;
   }
 }
 

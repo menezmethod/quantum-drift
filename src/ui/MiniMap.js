@@ -24,7 +24,6 @@ export class MiniMap {
    * Create the mini-map UI
    */
   createMiniMap() {
-    // Create container
     this.container = document.createElement('div');
     this.container.className = 'mini-map-container';
     document.body.appendChild(this.container);
@@ -68,11 +67,8 @@ export class MiniMap {
     // Draw grid lines
     this.drawGridLines();
     
-    // Draw boundaries
-    this.drawBoundaries();
-    
-    // Draw obstacles
-    this.drawObstacles();
+    // Draw objects from infinite map
+    this.drawObjects();
     
     // Draw player
     this.drawPlayer();
@@ -97,7 +93,6 @@ export class MiniMap {
     const playerX = this.game.playerShip.position.x;
     const playerZ = this.game.playerShip.position.z;
     
-    // Calculate grid starting positions
     const startX = Math.floor(playerX / gridSize) * gridSize - (gridLines * gridSize / 2);
     const startZ = Math.floor(playerZ / gridSize) * gridSize - (gridLines * gridSize / 2);
     
@@ -125,68 +120,47 @@ export class MiniMap {
   }
   
   /**
-   * Draw game boundaries on mini-map
+   * Draw objects from infinite map chunks
    */
-  drawBoundaries() {
-    if (!this.game.boundarySize) return;
+  drawObjects() {
+    if (!this.game.infiniteMap) return;
     
-    const halfSize = this.game.boundarySize / 2;
+    // Get nearby chunks
+    const playerPos = this.game.playerShip.position;
+    const currentKey = this.game.infiniteMap.getChunkKey(playerPos.x, playerPos.z);
+    const nearbyChunks = this.game.infiniteMap.getNearbyChunks(currentKey);
     
-    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-    this.ctx.lineWidth = 2;
-    
-    // Get player position
-    const playerX = this.game.playerShip.position.x;
-    const playerZ = this.game.playerShip.position.z;
-    
-    // Calculate boundary rectangle on mini-map
-    const minX = this.worldToMapX(-halfSize);
-    const maxX = this.worldToMapX(halfSize);
-    const minY = this.worldToMapY(-halfSize);
-    const maxY = this.worldToMapY(halfSize);
-    
-    // Draw rectangle
-    this.ctx.beginPath();
-    this.ctx.rect(minX, minY, maxX - minX, maxY - minY);
-    this.ctx.stroke();
-  }
-  
-  /**
-   * Draw obstacles on mini-map
-   */
-  drawObstacles() {
-    if (!this.game.obstacles) return;
-    
-    this.ctx.fillStyle = 'rgba(255, 69, 0, 0.7)';
-    
-    for (const obstacle of this.game.obstacles) {
-      // Get position
-      const x = obstacle.position.x;
-      const z = obstacle.position.z;
-      
-      // Convert to mini-map coordinates
-      const mapX = this.worldToMapX(x);
-      const mapY = this.worldToMapY(z);
-      
-      // Determine size based on obstacle type
-      let size = 4;
-      if (obstacle.geometry) {
-        if (obstacle.geometry.type === 'SphereGeometry') {
-          size = obstacle.geometry.parameters.radius * this.scale;
-        } else if (obstacle.geometry.type === 'CylinderGeometry') {
-          size = obstacle.geometry.parameters.radiusTop * this.scale;
-        } else if (obstacle.geometry.type === 'BoxGeometry') {
-          size = Math.max(
-            obstacle.geometry.parameters.width,
-            obstacle.geometry.parameters.depth
-          ) * this.scale / 2;
+    // Draw objects from each chunk
+    for (const chunk of nearbyChunks) {
+      for (const object of chunk.objects) {
+        // Get object position
+        const x = object.position.x;
+        const z = object.position.z;
+        
+        // Convert to mini-map coordinates
+        const mapX = this.worldToMapX(x);
+        const mapY = this.worldToMapY(z);
+        
+        // Set color based on object type
+        switch (object.type) {
+          case 'flora':
+            this.ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+            break;
+          case 'rocks':
+            this.ctx.fillStyle = 'rgba(128, 128, 128, 0.7)';
+            break;
+          case 'objects':
+            this.ctx.fillStyle = 'rgba(255, 69, 0, 0.7)';
+            break;
+          default:
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         }
+        
+        // Draw object dot
+        this.ctx.beginPath();
+        this.ctx.arc(mapX, mapY, object.radius * this.scale, 0, Math.PI * 2);
+        this.ctx.fill();
       }
-      
-      // Draw obstacle
-      this.ctx.beginPath();
-      this.ctx.arc(mapX, mapY, size, 0, Math.PI * 2);
-      this.ctx.fill();
     }
   }
   
