@@ -8,6 +8,7 @@ export class NetworkManager extends EventEmitter {
     this.playerId = null;
     this.connected = false;
     this.players = new Map();
+    this.enemies = new Map(); // Track enemy data
     this.lastUpdateTime = 0;
     this.updateInterval = 50; // 20 updates per second
   }
@@ -73,6 +74,37 @@ export class NetworkManager extends EventEmitter {
         this.emit('laser_shot', data);
       }
     });
+    
+    // Handle incoming damage events
+    this.socket.on('player_damaged', (data) => {
+      console.log(`Received damage: ${data.amount} from player ${data.sourceId}`);
+      this.emit('player_damaged', data);
+    });
+    
+    // Handle player hit visual effects
+    this.socket.on('player_hit', (data) => {
+      console.log(`Player hit event for: ${data.playerId}`);
+      this.emit('player_hit', data);
+    });
+
+    // Handle enemy updates
+    this.socket.on('enemy_update', (data) => {
+      // If from another player, process the enemy update
+      if (data.senderId !== this.playerId) {
+        // Store enemy data
+        const enemy = this.enemies.get(data.id);
+        if (enemy) {
+          // Update existing enemy
+          Object.assign(enemy, data);
+        } else {
+          // Add new enemy
+          this.enemies.set(data.id, data);
+        }
+        
+        // Emit event for game to handle
+        this.emit('enemy_update', data);
+      }
+    });
 
     // Handle initial player list
     this.socket.on('players', (players) => {
@@ -98,6 +130,7 @@ export class NetworkManager extends EventEmitter {
       this.playerId = null;
       this.connected = false;
       this.players.clear();
+      this.enemies.clear();
     }
   }
 
@@ -125,6 +158,24 @@ export class NetworkManager extends EventEmitter {
     });
   }
 
+  /**
+   * Send enemy update to all clients
+   * @param {object} enemy - Enemy data to sync
+   */
+  sendEnemyUpdate(enemy) {
+    if (!this.connected || !this.socket) return;
+    
+    // Only send essential data to reduce bandwidth
+    this.socket.emit('enemy_update', {
+      id: enemy.id,
+      position: enemy.mesh.position.clone(),
+      health: enemy.health,
+      maxHealth: enemy.maxHealth,
+      type: enemy.options.type,
+      senderId: this.playerId
+    });
+  }
+
   updatePlayerInfo(name, shipType) {
     if (!this.connected || !this.socket) return;
     
@@ -140,11 +191,31 @@ export class NetworkManager extends EventEmitter {
     return Array.from(this.players.values());
   }
 
+  // Get all tracked enemies 
+  getEnemies() {
+    return Array.from(this.enemies.values());
+  }
+
   isConnected() {
     return this.connected;
   }
 
   getPlayerId() {
     return this.playerId;
+  }
+
+  /**
+   * Send damage event to a specific player
+   * @param {string} targetId - ID of the player to damage
+   * @param {number} amount - Amount of damage to apply
+   */
+  sendDamageEvent(targetId, amount) {
+    if (!this.connected || !this.socket) return;
+    
+    this.socket.emit('player_damage', {
+      sourceId: this.playerId,
+      targetId: targetId,
+      amount: amount
+    });
   }
 } 

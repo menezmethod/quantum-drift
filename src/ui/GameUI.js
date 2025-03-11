@@ -64,7 +64,7 @@ export class GameUI {
 
     const energyLabel = document.createElement('div');
     energyLabel.className = 'bar-label';
-    energyLabel.innerHTML = '⚡'; // Lightning emoji for energy
+    energyLabel.innerHTML = '⚡'; 
     energyBarContainer.appendChild(energyLabel);
 
     const energyBarOuter = document.createElement('div');
@@ -124,46 +124,44 @@ export class GameUI {
 
   /**
    * Update health bar
-   * @param {number} health - Current health value
+   * @param {number} currentHealth - Current health value
    * @param {number} maxHealth - Maximum health value
    */
-  updateHealth(health, maxHealth) {
-    const percentage = (health / maxHealth) * 100;
-    this.healthBar.style.width = `${percentage}%`;
-
-    // Change color based on health level
-    if (percentage < 30) {
-      this.healthBar.classList.add('critical');
-    } else if (percentage < 60) {
-      this.healthBar.classList.remove('critical');
-      this.healthBar.classList.add('warning');
-    } else {
-      this.healthBar.classList.remove('critical', 'warning');
+  updateHealth(currentHealth, maxHealth) {
+    if (this.healthBar) {
+      const healthPercent = Math.max(0, Math.min(100, (currentHealth / maxHealth) * 100));
+      this.healthBar.style.width = `${healthPercent}%`;
+      this.healthPercentage.textContent = `${Math.round(healthPercent)}%`;
+      
+      // Update color based on health percentage
+      if (healthPercent < 25) {
+        this.healthBar.style.backgroundColor = '#ff0000'; // Red for critical
+      } else if (healthPercent < 50) {
+        this.healthBar.style.backgroundColor = '#ffaa00'; // Orange for low
+      } else {
+        this.healthBar.style.backgroundColor = '#00ff00'; // Green for healthy
+      }
     }
-
-    this.healthPercentage.textContent = `${percentage.toFixed(0)}%`;
   }
 
   /**
    * Update energy bar
-   * @param {number} energy - Current energy value
+   * @param {number} currentEnergy - Current energy value
    * @param {number} maxEnergy - Maximum energy value
    */
-  updateEnergy(energy, maxEnergy) {
-    const percentage = (energy / maxEnergy) * 100;
-    this.energyBar.style.width = `${percentage}%`;
-
-    // Change color based on energy level
-    if (percentage < 30) {
-      this.energyBar.classList.add('critical');
-    } else if (percentage < 60) {
-      this.energyBar.classList.remove('critical');
-      this.energyBar.classList.add('warning');
-    } else {
-      this.energyBar.classList.remove('critical', 'warning');
+  updateEnergy(currentEnergy, maxEnergy) {
+    if (this.energyBar) {
+      const energyPercent = Math.max(0, Math.min(100, (currentEnergy / maxEnergy) * 100));
+      this.energyBar.style.width = `${energyPercent}%`;
+      this.energyPercentage.textContent = `${Math.round(energyPercent)}%`;
+      
+      // Update color based on energy percentage
+      if (energyPercent < 25) {
+        this.energyBar.style.backgroundColor = '#ccccff'; // Light blue for low energy
+      } else {
+        this.energyBar.style.backgroundColor = '#0088ff'; // Bright blue for normal energy
+      }
     }
-
-    this.energyPercentage.textContent = `${percentage.toFixed(0)}%`;
   }
 
   /**

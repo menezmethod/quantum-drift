@@ -356,6 +356,11 @@ export class GameEngine {
     // Render scene
     this.renderer.render(this.scene, this.camera);
     
+    // Render enemy health bars
+    if (this.enemyManager) {
+      this.enemyManager.render(this.camera);
+    }
+    
     // Continue the game loop
     requestAnimationFrame(this.gameLoop.bind(this));
   }

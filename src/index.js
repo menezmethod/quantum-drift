@@ -182,7 +182,7 @@ class SimpleGame {
     // Create Three.js Scene
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a0a1f); // Dark blue background
-    
+
     // Setup WebGL renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -191,6 +191,14 @@ class SimpleGame {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('game-container').appendChild(this.renderer.domElement);
     
+    // Setup CSS2D renderer for labels
+    this.labelRenderer = new CSS2DRenderer();
+    this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    this.labelRenderer.domElement.style.position = 'absolute';
+    this.labelRenderer.domElement.style.top = '0';
+    this.labelRenderer.domElement.style.pointerEvents = 'none';
+    document.getElementById('game-container').appendChild(this.labelRenderer.domElement);
+
     // Create camera
     this.camera = new THREE.PerspectiveCamera(
       60, // FOV
@@ -202,7 +210,7 @@ class SimpleGame {
     // Position camera
     this.camera.position.set(0, 7, 15); // Slightly above and behind player
     this.camera.lookAt(0, 0, 0);
-    
+
     // Attach audio listener to camera
     if (this.soundManager) {
       this.camera.add(this.soundManager.getListener());
@@ -1929,106 +1937,61 @@ selectWeapon(weaponType) {
   }
   
   animate() {
-    // Call animationFrame with this instance as context
-    requestAnimationFrame(this.animate.bind(this));
+    // Request next frame
+    this.animationFrameId = requestAnimationFrame(this.animate.bind(this));
     
-    try {
-      // Calculate delta time
-      const now = performance.now();
-      const deltaTime = (now - this.lastTime) / 1000; // in seconds
-      this.lastTime = now;
-      
-      // Update frame counter
-      this.frameCount++;
-      
-      // Limit update rate
-      if (this.frameCount % 2 === 0) { // Reduce update frequency
-        // Only update gameplay if the player ship exists
-        if (this.playerShip) {
-          // Update player
-          if (typeof this.updatePlayer === 'function') {
-            this.updatePlayer(deltaTime);
-          }
-          
-          // Update other elements - only if they exist
-          if (typeof this.updateLasers === 'function') {
-            this.updateLasers();
-          }
-          
-          if (typeof this.updateEnergy === 'function') {
-            this.updateEnergy(deltaTime);
-          }
-          
-          if (typeof this.updateCamera === 'function') {
-            this.updateCamera();
-          }
-          
-          // Update collision detection
-          if (typeof this.checkObstacleCollisions === 'function') {
-            this.checkObstacleCollisions();
-          }
-          
-          // Update thruster effects
-          if (typeof this.updateThrusterEffects === 'function') {
-            this.updateThrusterEffects();
-          }
-          
-          // Check if boost is active and update energy consumption
-          if (this.keys && this.keys.boost && this.energy > 0) {
-            this.energy = Math.max(0, this.energy - 30 * deltaTime); // Boost drains energy
-            if (this.ui) {
-              this.ui.updateEnergy(this.energy, this.maxEnergy);
-            }
-          }
-        }
-        
-        // Update bounceLasers if they exist
-        if (this.bouncingLasers && this.bouncingLasers.length > 0 && 
-            typeof this.updateBouncingLasers === 'function') {
-          this.updateBouncingLasers();
-        }
-        
-        // Update grenades if they exist
-        if (this.grenades && this.grenades.length > 0 && 
-            typeof this.updateGrenades === 'function') {
-          this.updateGrenades();
-        }
-        
-        // Update multiplayer
-        if (this.multiplayerEnabled && this.networkManager) {
-          // Send our position and rotation to server
-          if (this.playerShip) {
-            this.networkManager.sendPlayerUpdate({
-              position: {
-                x: this.playerShip.position.x,
-                y: this.playerShip.position.y,
-                z: this.playerShip.position.z
-              },
-              rotation: this.playerShip.rotation.y,
-              name: this.playerName,
-              shipType: this.currentShipType || 'default'
-            });
-          }
-          
-          // Update other players
-          if (typeof this.updateOtherPlayers === 'function') {
-            this.updateOtherPlayers();
-          }
-        }
-      }
-      
-      // Render the scene
-      if (this.renderer && this.scene && this.camera) {
-        this.renderer.render(this.scene, this.camera);
-        
-        // Render CSS2D elements if renderer exists
-        if (this.labelRenderer) {
-          this.labelRenderer.render(this.scene, this.camera);
-        }
-      }
-    } catch (error) {
-      console.error("Error in animate loop:", error);
-      // Don't rethrow, we want to keep the animation loop running
+    // Calculate delta time
+    const currentTime = performance.now();
+    const deltaTime = Math.min((currentTime - this.lastTime) / 1000, 0.1); // Cap at 100ms
+    this.lastTime = currentTime;
+    
+    // Skip animation if game is paused
+    if (this.paused) return;
+    
+    // Update physics
+    if (this.player) this.updatePlayer(deltaTime);
+    
+    // Network updates
+    if (this.networkManager && this.multiplayerEnabled) {
+      this.sendPlayerPositionUpdate();
+    }
+    
+    // Update other players if they exist
+    if (typeof this.updateOtherPlayers === 'function') {
+      this.updateOtherPlayers();
+    }
+    
+    // Update lasers
+    this.updateLasers(deltaTime);
+    
+    // Update bouncing lasers if available
+    if (typeof this.updateBouncingLasers === 'function') {
+      this.updateBouncingLasers();
+    }
+    
+    // Update grenades if there are any
+    if (this.grenades && this.grenades.length > 0) {
+      this.updateGrenades(deltaTime);
+    }
+    
+    // Check for collisions
+    this.checkObstacleCollisions();
+    
+    // Update camera
+    this.updateCamera();
+    
+    // Update energy
+    this.updateEnergy(deltaTime);
+    
+    // Update thruster effects for player ship
+    this.updateThrusterEffects(deltaTime);
+    
+    // Render scene
+    this.renderer.render(this.scene, this.camera);
+    
+    // Render CSS2D labels
+    if (this.labelRenderer) {
+      this.labelRenderer.render(this.scene, this.camera);
     }
   }
   
@@ -2096,7 +2059,7 @@ selectWeapon(weaponType) {
     }
   }
   
-  updateLasers() {
+  updateLasers(deltaTime) {
     if (!this.lasers) return;
     
     for (let i = this.lasers.length - 1; i >= 0; i--) {
@@ -2154,6 +2117,71 @@ selectWeapon(weaponType) {
           this.scene.remove(laser.trail);
           this.lasers.splice(i, 1);
           break;
+        }
+      }
+      
+      // Check for collisions with other players
+      let hitOtherPlayer = false;
+      if (this.otherPlayerObjects && laser.ownerId !== this.networkManager?.playerId) {
+        for (const playerId in this.otherPlayerObjects) {
+          const playerObject = this.otherPlayerObjects[playerId];
+          if (!playerObject || !playerObject.ship) continue;
+          
+          const playerPos = playerObject.ship.position.clone();
+          playerPos.y = 0.5; // Adjust to match laser height
+          
+          // Check collision with remote player
+          const hitDistance = 1.0; // Collision distance for player hits
+          if (laser.mesh.position.distanceTo(playerPos) < hitDistance) {
+            console.log(`Laser hit remote player: ${playerId}`);
+            
+            // Create hit effect at player position
+            this.createEnhancedHitEffect(playerPos, laser.direction.clone());
+            
+            // Apply damage to remote player (25 damage for regular laser)
+            if (this.networkManager) {
+              this.networkManager.sendDamageEvent(playerId, 25);
+            }
+            
+            // Remove laser after hit
+            this.scene.remove(laser.mesh);
+            this.scene.remove(laser.trail);
+            this.lasers.splice(i, 1);
+            
+            hitOtherPlayer = true;
+            break;
+          }
+        }
+        
+        if (hitOtherPlayer) continue;
+      }
+      
+      // Check for collisions with enemies
+      if (this.enemyManager && this.enemyManager.enemies.length > 0) {
+        for (let j = this.enemyManager.enemies.length - 1; j >= 0; j--) {
+          const enemy = this.enemyManager.enemies[j];
+          if (!enemy.isActive) continue;
+          
+          const enemyPos = enemy.mesh.position.clone();
+          enemyPos.y = 0.5; // Adjust to match laser height
+          
+          // Check if the laser hit the enemy
+          const hitDistance = 0.7; // Collision distance for enemy hits
+          if (laser.mesh.position.distanceTo(enemyPos) < hitDistance) {
+            console.log(`Laser hit enemy ${enemy.id}`);
+            
+            // Apply damage to the enemy (25 damage for regular laser)
+            enemy.takeDamage(25);
+            
+            // Create hit effect
+            this.createHitEffect(enemyPos);
+            
+            // Remove laser after hit
+            this.scene.remove(laser.mesh);
+            this.scene.remove(laser.trail);
+            this.lasers.splice(i, 1);
+            break;
+          }
         }
       }
     }
@@ -2567,7 +2595,7 @@ selectWeapon(weaponType) {
     this.camera.lookAt(this.cameraTargetLookAt);
   }
   
-  updateThrusterEffects() {
+  updateThrusterEffects(deltaTime) {
     // Skip if ship model isn't loaded
     if (!this.shipModel || !this.thruster || !this.thrusterLight) return;
     
@@ -2676,7 +2704,7 @@ selectWeapon(weaponType) {
     }
   }
   
-  updateGrenades() {
+  updateGrenades(deltaTime) {
     if (!this.grenades || this.grenades.length === 0) return;
     
     for (let i = this.grenades.length - 1; i >= 0; i--) {
@@ -2768,8 +2796,8 @@ selectWeapon(weaponType) {
     
     // Calculate damage radius
     const explosionCenter = grenade.mesh.position.clone();
-    const maxDamage = 50; // Maximum damage at center - 50% of health
-    const damageRadius = grenade.explosionRadius || 4; // Default radius of 4 units
+    const maxDamage = 100; // Maximum damage at center
+    const damageRadius = grenade.explosionRadius || 10; // Default radius of 10 units
     
     // Check for obstacle hits in explosion radius
     for (const obstacle of this.obstacles) {
@@ -2781,6 +2809,31 @@ selectWeapon(weaponType) {
           explosionCenter.clone().sub(obstacle.position).normalize().multiplyScalar(distance * 0.8)
         );
         this.createHitEffect(hitPoint);
+      }
+    }
+    
+    // Check for enemy damage
+    if (this.enemyManager && this.enemyManager.enemies.length > 0) {
+      for (const enemy of this.enemyManager.enemies) {
+        if (!enemy.isActive) continue;
+        
+        const enemyPosition = enemy.mesh.position.clone();
+        enemyPosition.y = 0; // Project to ground plane
+        const grenadePosition = explosionCenter.clone();
+        grenadePosition.y = 0; // Project to ground plane
+        
+        const enemyDistance = enemyPosition.distanceTo(grenadePosition);
+        if (enemyDistance < damageRadius) {
+          // Calculate damage with distance falloff
+          const damagePercent = 1 - (enemyDistance / damageRadius);
+          const damage = Math.floor(maxDamage * damagePercent);
+          
+          // Apply damage to enemy
+          enemy.takeDamage(damage);
+          
+          // Visual feedback
+          this.createHitEffect(enemyPosition);
+        }
       }
     }
     
@@ -2957,7 +3010,7 @@ selectWeapon(weaponType) {
           const hitDistance = 0.7; // Collision distance for enemy hits
           if (laser.mesh.position.distanceTo(enemyPos) < hitDistance) {
             // Enemy hit
-            enemy.takeDamage(10); // Damage the enemy
+            enemy.takeDamage(50); // Damage the enemy
             
             // Create hit effect
             this.createHitEffect(enemyPos);
@@ -3595,6 +3648,9 @@ selectWeapon(weaponType) {
     
     // First apply the ship selection
     this.applyShipSelection(shipSelection);
+    
+    // Add player name label above the ship
+    this.addPlayerNameLabel();
     
     // Set game as running (if this property exists)
     this.isRunning = true;
@@ -4883,11 +4939,18 @@ createMuzzleFlash(position, direction) {
   
       if (!playerObject) {
         console.log('Creating new player representation for:', playerData.id);
-        const shipType = (playerData.shipType || 'STANDARD').toUpperCase();
-        const shipModel = this.assetLoader.getOpponentShipModel(shipType);
-  
+        let shipType = (playerData.shipType || 'STANDARD').toUpperCase();
+        let shipModel = this.assetLoader.getOpponentShipModel(shipType);
+        
+        // Try fallback to STANDARD if the ship type wasn't found
+        if (!shipModel && shipType !== 'STANDARD') {
+          console.log(`Falling back to STANDARD ship model for player ${playerData.id}`);
+          shipType = 'STANDARD';
+          shipModel = this.assetLoader.getOpponentShipModel(shipType);
+        }
+
         if (!shipModel) {
-          console.warn(`No model found for ship type: ${shipType}, falling back to default`);
+          console.warn(`No model found for ship type: ${shipType}, creating basic geometry`);
           // Fallback geometry if model fails
           const geometry = new THREE.ConeGeometry(0.5, 1.0, 8);
           geometry.rotateX(Math.PI / 2);
@@ -4916,6 +4979,14 @@ createMuzzleFlash(position, direction) {
         const nameDiv = document.createElement('div');
         nameDiv.className = 'player-label';
         nameDiv.textContent = playerData.name || `Player-${playerData.id.substring(0, 4)}`;
+        // Add styling to make the label more visible
+        nameDiv.style.color = '#ffcc00';
+        nameDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        nameDiv.style.padding = '2px 6px';
+        nameDiv.style.borderRadius = '4px';
+        nameDiv.style.fontSize = '14px';
+        nameDiv.style.fontWeight = 'bold';
+        nameDiv.style.textShadow = '1px 1px 2px rgba(0,0,0,0.8)';
         const nameLabel = new CSS2DObject(nameDiv);
         nameLabel.position.set(0, 1.8, 0);
         playerObject.ship.add(nameLabel);
@@ -5011,9 +5082,44 @@ createMuzzleFlash(position, direction) {
     if (this.playerShip && this.scene) {
       this.playerShip.position.set(0, 0.5, 0);
       this.scene.add(this.playerShip);
+      
+      // Add player name label above the ship
+      this.addPlayerNameLabel();
     }
     
     return this.playerShip;
+  }
+  
+  // Add player name label above the player's ship
+  addPlayerNameLabel() {
+    // Only proceed if we have a valid player ship
+    if (!this.playerShip) return;
+
+    // Remove existing label if any
+    if (this.playerNameLabel && this.playerNameLabel.parent) {
+      this.playerNameLabel.parent.remove(this.playerNameLabel);
+      this.playerNameLabel = null;
+    }
+    
+    // Create player name div
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'player-label own-player';
+    nameDiv.textContent = this.playerName || 'You';
+    
+    // Add styling to make the label more visible
+    nameDiv.style.color = '#88ff88';
+    nameDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    nameDiv.style.padding = '2px 6px';
+    nameDiv.style.borderRadius = '4px';
+    nameDiv.style.fontSize = '14px';
+    nameDiv.style.fontWeight = 'bold';
+    nameDiv.style.textShadow = '1px 1px 2px rgba(0,0,0,0.8)';
+    
+    // Create CSS2D object for player name
+    const nameLabel = new CSS2DObject(nameDiv);
+    nameLabel.position.set(0, 2.0, 0); // Position above ship
+    this.playerShip.add(nameLabel);
+    this.playerNameLabel = nameLabel;
   }
 
   /**

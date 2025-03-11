@@ -7,6 +7,7 @@ export class Enemy extends Ship {
     const enemyOptions = {
       type: 'BASIC',
       health: 30,
+      maxHealth: 30,
       speed: 0.005,
       size: 0.6,
       detectionRadius: 10,
@@ -17,6 +18,10 @@ export class Enemy extends Ship {
     
     super(scene, position, enemyOptions);
     
+    // Generate unique ID for enemy (for health bar tracking and network sync)
+    this.id = 'enemy_' + Math.random().toString(36).substr(2, 9);
+    this.maxHealth = this.options.maxHealth; // Store max health
+    
     // Enemy-specific properties
     this.targetPosition = null;
     this.lastDirectionChange = 0;
@@ -24,6 +29,24 @@ export class Enemy extends Ship {
     this.currentTarget = null;
     this.lastAttackTime = 0;
     this.attackCooldown = 1000;
+    
+    // Sync with network
+    this.syncWithNetwork = false;
+    this.lastSyncTime = 0;
+    this.syncInterval = 200; // Sync every 200ms to reduce bandwidth
+  }
+  
+  // Override takeDamage to include network sync
+  takeDamage(amount) {
+    const oldHealth = this.health;
+    
+    // Call parent method to handle basic damage logic
+    super.takeDamage(amount);
+    
+    // If the health changed, sync with network
+    if (oldHealth !== this.health && this.syncWithNetwork && this.scene.networkManager) {
+      this.scene.networkManager.sendEnemyUpdate(this);
+    }
   }
   
   update(deltaTime, players, wallSegments) {
@@ -43,6 +66,15 @@ export class Enemy extends Ship {
       default:
         this.updateBasic(deltaTime, players, wallSegments);
         break;
+    }
+    
+    // Sync position and state with network occasionally
+    if (this.syncWithNetwork && this.scene.networkManager) {
+      const now = Date.now();
+      if (now - this.lastSyncTime > this.syncInterval) {
+        this.lastSyncTime = now;
+        this.scene.networkManager.sendEnemyUpdate(this);
+      }
     }
   }
   

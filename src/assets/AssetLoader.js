@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from '@three/examples/loaders/GLTFLoader';
 
+// Enable THREE.Cache for asset caching
+THREE.Cache.enabled = true;
+
 class AssetLoader {
     constructor() {
         this.loadingState = {
@@ -63,9 +66,12 @@ class AssetLoader {
                         if (model === 'ships/ALTSPACE1.glb') {
                             this.assets.models.set('FIGHTER', this.assets.models.get(model));
                             this.assets.models.set('SCOUT', this.assets.models.get(model));
+                            this.assets.models.set('STANDARD', this.assets.models.get(model));
+                            this.assets.models.set('DEFAULT', this.assets.models.get(model));
                         } else if (model === 'ships/ALTSPACE2.glb') {
                             this.assets.models.set('INTERCEPTOR', this.assets.models.get(model));
                             this.assets.models.set('EXPERIMENTAL', this.assets.models.get(model));
+                            this.assets.models.set('HEAVY', this.assets.models.get(model));
                         }
                     }
                 } catch (error) {
@@ -273,9 +279,10 @@ class AssetLoader {
             // If still not found, try aliases
             if (!model) {
                 console.log(`Trying to find model by alias: ${key}`);
-                if (key === 'FIGHTER' || key === 'SCOUT') {
+                if (key === 'FIGHTER' || key === 'SCOUT' || key === 'STANDARD' || key === 'DEFAULT') {
+                    // Use ALTSPACE1 as the default/standard ship model
                     model = this.assets.models.get('ships/ALTSPACE1.glb');
-                } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL') {
+                } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL' || key === 'HEAVY') {
                     model = this.assets.models.get('ships/ALTSPACE2.glb');
                 }
             }
@@ -378,9 +385,12 @@ class AssetLoader {
                     if (model === 'ships/ALTSPACE1.glb') {
                         this.assets.models.set('FIGHTER', this.assets.models.get(model));
                         this.assets.models.set('SCOUT', this.assets.models.get(model));
+                        this.assets.models.set('STANDARD', this.assets.models.get(model));
+                        this.assets.models.set('DEFAULT', this.assets.models.get(model));
                     } else if (model === 'ships/ALTSPACE2.glb') {
                         this.assets.models.set('INTERCEPTOR', this.assets.models.get(model));
                         this.assets.models.set('EXPERIMENTAL', this.assets.models.get(model));
+                        this.assets.models.set('HEAVY', this.assets.models.get(model));
                     }
                 }
             } catch (error) {

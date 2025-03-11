@@ -78,6 +78,37 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('laser_shot', data);
   });
   
+  // Handle player damage events
+  socket.on('player_damage', (data) => {
+    // Validate required fields
+    if (!data.sourceId || !data.targetId || typeof data.amount !== 'number') {
+      return;
+    }
+    
+    // Find the target player
+    const targetPlayer = Array.from(players.values()).find(p => p.id === data.targetId);
+    if (!targetPlayer) {
+      return;
+    }
+    
+    // Get target socket ID
+    const targetSocketId = targetPlayer.socketId;
+    
+    // Forward damage event to target player
+    socket.to(targetSocketId).emit('player_damaged', {
+      sourceId: data.sourceId,
+      amount: data.amount
+    });
+    
+    // Also broadcast to other players for visual effects
+    socket.broadcast.emit('player_hit', {
+      playerId: data.targetId,
+      position: targetPlayer.position
+    });
+    
+    console.log(`Player ${data.sourceId} dealt ${data.amount} damage to player ${data.targetId}`);
+  });
+  
   // Handle player info update
   socket.on('player_info', (data) => {
     const player = players.get(data.id);
@@ -98,6 +129,12 @@ io.on('connection', (socket) => {
         shipType: player.shipType
       });
     }
+  });
+  
+  // Handle enemy updates
+  socket.on('enemy_update', (data) => {
+    // Forward to all other clients
+    socket.broadcast.emit('enemy_update', data);
   });
   
   // Handle disconnect

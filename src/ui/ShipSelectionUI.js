@@ -285,7 +285,17 @@ export class ShipSelectionUI {
         }
 
         // Convert selectedShip to the format expected by AssetLoader
-        const modelKey = this.selectedShip.toUpperCase();
+        // Map 'scout' to FIGHTER and 'interceptor' to INTERCEPTOR to ensure different models
+        let modelKey;
+        if (this.selectedShip === 'scout') {
+            modelKey = 'FIGHTER';  // Maps to ALTSPACE1.glb
+        } else if (this.selectedShip === 'interceptor') {
+            modelKey = 'INTERCEPTOR';  // Maps to ALTSPACE2.glb
+        } else {
+            modelKey = this.selectedShip.toUpperCase();
+        }
+        
+        console.log(`Ship selection: Mapping ${this.selectedShip} to model key ${modelKey}`);
         
         // Get the model from AssetLoader and clone it
         const model = this.assetLoader.getShipModel(modelKey);
@@ -449,12 +459,24 @@ export class ShipSelectionUI {
         if (this.selectedShip && this.options.onShipSelect) {
             console.log(`Launching with ship: ${this.selectedShip}`);
             
+            // Map ship types consistently with updatePreview method
+            let modelType;
+            if (this.selectedShip === 'scout') {
+                modelType = 'FIGHTER';  // Maps to ALTSPACE1.glb
+            } else if (this.selectedShip === 'interceptor') {
+                modelType = 'INTERCEPTOR';  // Maps to ALTSPACE2.glb
+            } else {
+                modelType = this.selectedShip.toUpperCase();
+            }
+            
             // Create selection data in the format the game expects
             const selectionData = {
-                type: this.selectedShip.toUpperCase(),
+                type: modelType,
                 color: this.selectedColor,
                 config: this.getShipConfig()
             };
+            
+            console.log(`Launching with mapped ship type: ${modelType}`);
             
             // Hide UI before calling the callback
             this.hide();

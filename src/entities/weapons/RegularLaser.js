@@ -7,17 +7,23 @@ import { Laser } from './Laser';
 export class RegularLaser extends Laser {
   constructor(weaponSystem) {
     super(weaponSystem.scene, null, null, {
-      damage: 10, range: 50, speed: 50, color: 0x00ffff
+      damage: 25, range: 50, speed: 50, color: 0x00ffff
     });
     this.weaponSystem = weaponSystem;
     this.cooldown = 0.2;
+    this.currentCooldown = 0;
+    this.energyCost = 5;
   }
   
   /**
-   * Update cooldown timer
+   * Update cooldown timer and laser position
    * @param {number} deltaTime - Time since last frame in seconds
    */
   update(deltaTime) {
+    // Call parent update to handle movement and range checking
+    super.update(deltaTime);
+    
+    // Handle cooldown timer
     if (this.currentCooldown > 0) {
       this.currentCooldown -= deltaTime;
     }

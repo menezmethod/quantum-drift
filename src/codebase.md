@@ -113,6 +113,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Drift</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles/main.css">
+    <link rel="stylesheet" href="./styles/controls.css">
 </head>
 <body>
     <div id="loading-screen">
@@ -158,6 +160,7 @@
         <p>Avoid the colored obstacles!</p>
     </div>
 </body>
+<script type="module" src="./index.js"></script>
 </html> 
 ### ./index.html END ###
 
@@ -273,6 +276,8 @@ import { InfiniteMap } from './core/InfiniteMap';
 import { NetworkManager } from './core/NetworkManager';
 import { CSS2DRenderer, CSS2DObject } from '@three/examples/renderers/CSS2DRenderer';
 import { GAME_CONFIG } from './config/GameConfig';
+import { Player } from './entities/player/Player';
+import { SoundManager } from './assets/SoundManager';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -281,27 +286,20 @@ class SimpleGame {
     // Player information
     this.playerName = 'Pilot';  // Default player name
     
-    // Sound management
-    this.audioListener = new THREE.AudioListener();
-    this.soundPools = new Map();
-    this.loadedSounds = new Map();
-    this.soundLoadPromises = new Map();
-
     // Create the asset loader
     this.assetLoader = new AssetLoader().setCallbacks(
       (message) => this.updateLoadingUI(message),
       (type, error) => this.handleLoadError(type, error)
     );
     
+    // Initialize SoundManager
+    this.soundManager = new SoundManager();
+    
     // Asset loading state
     this.loadingState = {
       started: false,
       completed: false,
-      errors: [],
-      timeouts: new Map(),
-      retryCount: new Map(),
-      maxRetries: 3,
-      loadingPromises: new Map()
+      errors: []
     };
     
     // Track assets loading
@@ -333,6 +331,17 @@ class SimpleGame {
     
     // Create game UI
     this.ui = new GameUI();
+    
+    // Create player after scene setup (as specified in Task 8)
+    this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+      type: 'PLAYER',
+      shipModel: 'STANDARD',
+      teamColor: 0x00ffff
+    });
+    this.scene.add(this.player.mesh);
+    
+    // For backward compatibility with existing code
+    this.playerShip = this.player.mesh;
     
     // Game properties
     this.boundarySize = 100; // Size of the playable area
@@ -372,6 +381,10 @@ class SimpleGame {
     
     // Initialize NetworkManager
     this.networkManager = new NetworkManager();
+    
+    // Initialize remotePlayers map for multiplayer
+    this.remotePlayers = new Map();
+    
     this.networkManager.on('connected', () => {
       console.log('Connected to game server!');
       document.getElementById('connection-status').textContent = 'Connected';
@@ -392,8 +405,20 @@ class SimpleGame {
     
     this.networkManager.on('player_left', (id) => {
       console.log('Player left:', id);
+      // Remove player mesh if it exists
+      const player = this.remotePlayers.get(id);
+      if (player) {
+        this.scene.remove(player);
+        this.remotePlayers.delete(id);
+        console.log(`Removed remote player: ${id}`);
+      }
       // Update player count
       this.updatePlayerCount();
+    });
+    
+    // Add player update handling
+    this.networkManager.on('player_update', (data) => {
+      this.updateRemotePlayer(data.id, data.position, data.rotation);
     });
     
     // Add laser shot handling
@@ -419,28 +444,35 @@ class SimpleGame {
   }
   
   setupScene() {
-    // Create scene, camera, and renderer
+    // Create Three.js Scene
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0a1f); // Dark blue background
     
-    // Set up isometric camera
-    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.camera.position.set(10, 10, 10);
-    this.camera.lookAt(0, 0, 0);
-    
-    // Create WebGL renderer
+    // Setup WebGL renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('game-container').appendChild(this.renderer.domElement);
     
-    // Add CSS2D renderer for player name labels
-    this.labelRenderer = new CSS2DRenderer();
-    this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
-    this.labelRenderer.domElement.style.position = 'absolute';
-    this.labelRenderer.domElement.style.top = '0';
-    this.labelRenderer.domElement.style.pointerEvents = 'none';
-    document.body.appendChild(this.labelRenderer.domElement);
+    // Create camera
+    this.camera = new THREE.PerspectiveCamera(
+      60, // FOV
+      window.innerWidth / window.innerHeight, // Aspect ratio
+      0.1, // Near
+      1000 // Far
+    );
+    
+    // Position camera
+    this.camera.position.set(0, 7, 15); // Slightly above and behind player
+    this.camera.lookAt(0, 0, 0);
+    
+    // Attach audio listener to camera
+    if (this.soundManager) {
+      this.camera.add(this.soundManager.getListener());
+      console.log('Audio listener attached to camera');
+    }
     
     // Add lighting
     const ambientLight = new THREE.AmbientLight(0x404040);
@@ -457,378 +489,36 @@ class SimpleGame {
     this.createObstacles();
   }
   
-  loadAssets() {
+  async loadAssets() {
     if (this.loadingState.started) {
-      console.warn('🔍 Asset loading already in progress');
-      return;
+        console.warn('🔍 Asset loading already in progress');
+        return;
     }
     
-    console.log('🔍 Starting asset loading process');
-    console.log('Current loading state:', JSON.stringify(this.loadingState, null, 2));
-    
-    this.loadingState.started = true;
-    this.loadingState.completed = false;
-    this.loadingState.errors = [];
-    
-    // Show loading message
     this.updateLoadingUI('Loading game assets...');
     
-    // Create placeholder ship until model loads
-    this.createDefaultShip();
-    
-    // Load assets in parallel with proper error handling
-    Promise.all([
-      this.loadSounds().catch(error => {
-        console.error('🔍 Sound loading failed:', error);
-        this.handleLoadError('sounds', error);
-        return null;
-      }),
-      this.loadAssetsWithLoader().catch(error => {
-        console.error('🔍 Asset loading failed:', error);
-        this.handleLoadError('assets', error);
-        return null;
-      })
-    ]).then(() => {
-      console.log('🔍 All asset loading promises completed');
-      // Check loading progress even if some assets failed
-      this.checkLoadingProgress();
-    }).catch(error => {
-      console.error('🔍 Critical error loading assets:', error);
-      this.handleLoadError('critical', error);
-    });
-  }
-  
-  async loadAssetsWithLoader() {
-    console.log('🟢🟢🟢 Loading assets with AssetLoader...');
-    
-    // Use AssetLoader to load all assets including ship models
-    await this.assetLoader.loadAll();
-    this.shipModelLoaded = true;
-    console.log('✅ All assets loaded successfully via AssetLoader');
-    
-    return true;
-  }
-  
-  loadSounds() {
-    // AudioListener should already be initialized in constructor
-    if (!this.camera) {
-      console.error('Camera not initialized when trying to load sounds');
-      return Promise.reject(new Error('Camera not initialized'));
-    }
-
-    // Add listener to camera if not already added
-    if (!this.camera.children.includes(this.audioListener)) {
-      this.camera.add(this.audioListener);
-    }
-    
-    // Define sounds to load
-    const soundsToLoad = [
-      { name: 'laser', path: 'assets/sounds/laser.mp3', poolSize: 5 },
-      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3', poolSize: 3 },
-      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3', poolSize: 2 },
-      { name: 'bounce', path: 'assets/sounds/bounce.mp3', poolSize: 3 },
-      { name: 'weapon-switch', path: 'assets/sounds/weapon-switch.mp3', poolSize: 2 },
-      { name: 'weapon-charging', path: 'assets/sounds/weapon-charging.mp3', poolSize: 1, volume: 0.2 }  // Lower volume for background effect
-    ];
-    
-    // Create a pool of sounds for frequently played effects
-    const audioLoader = new THREE.AudioLoader();
-    
-    // Load each sound only if not already loaded
-    soundsToLoad.forEach(soundInfo => {
-      if (!this.loadedSounds.has(soundInfo.name)) {
-        const loadPromise = new Promise((resolve, reject) => {
-          // Set a timeout for loading
-          const timeoutId = setTimeout(() => {
-            reject(new Error(`Sound loading timeout: ${soundInfo.name}`));
-          }, 10000); // 10 second timeout
-          
-          audioLoader.load(
-            soundInfo.path,
-            buffer => {
-              clearTimeout(timeoutId);
-              
-              // Create sound pool
-              const pool = [];
-              for (let i = 0; i < soundInfo.poolSize; i++) {
-                const sound = new THREE.Audio(this.audioListener);
-                sound.setBuffer(buffer);
-                sound.setVolume(soundInfo.volume || 0.5); // Use specified volume or default to 0.5
-                pool.push({ sound, inUse: false, lastUsed: 0 });
-              }
-              
-              this.soundPools.set(soundInfo.name, pool);
-              this.loadedSounds.set(soundInfo.name, buffer);
-              console.log(`Loaded sound: ${soundInfo.name} (${soundInfo.poolSize} instances)`);
-              resolve();
-            },
-            xhr => {
-              console.log(`${soundInfo.name} ${(xhr.loaded / xhr.total * 100)}% loaded`);
-            },
-            error => {
-              clearTimeout(timeoutId);
-              console.error(`Error loading sound ${soundInfo.name}:`, error);
-              reject(error);
-            }
-          );
-        });
-        
-        this.soundLoadPromises.set(soundInfo.name, loadPromise);
-      }
-    });
-    
-    // Return a promise that resolves when all sounds are loaded
-    return Promise.all(Array.from(this.soundLoadPromises.values()))
-      .then(() => {
-        console.log('All sounds loaded successfully');
-      })
-      .catch(error => {
-        console.error('Error loading sounds:', error);
-        // Continue without sounds rather than breaking the game
-      });
-  }
-  
-  playSound(name) {
-    const pool = this.soundPools.get(name);
-    if (!pool || pool.length === 0) {
-      console.warn(`Sound "${name}" not found or not loaded yet.`);
-      return;
-    }
-    
     try {
-      const now = Date.now();
-      
-      // Find available sound that hasn't been used recently
-      let soundWrapper = pool.find(wrapper => 
-        !wrapper.inUse && (now - wrapper.lastUsed > 50) // 50ms minimum delay between same sound
-      );
-      
-      // If no sound available, find the oldest one
-      if (!soundWrapper) {
-        soundWrapper = pool.reduce((oldest, current) => 
-          (!oldest || current.lastUsed < oldest.lastUsed) ? current : oldest
-        );
-        
-        // If the oldest sound was used too recently, skip playing
-        if (now - soundWrapper.lastUsed < 50) {
-          return;
+        // Create initial player with default ship
+        if (!this.player) {
+            this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+                type: 'PLAYER',
+                shipModel: 'STANDARD',
+                teamColor: 0x00ffff
+            });
+            this.playerShip = this.player.mesh; // For backward compatibility
         }
         
-        soundWrapper.sound.stop(); // Stop it if it's playing
-      }
-      
-      // Mark as in use and update timestamp
-      soundWrapper.inUse = true;
-      soundWrapper.lastUsed = now;
-      
-      // Play the sound
-      soundWrapper.sound.play();
-      
-      // Set up callback to release back to the pool
-      soundWrapper.sound.onEnded = () => {
-        soundWrapper.inUse = false;
-      };
+        // Load all assets through AssetLoader
+        await this.assetLoader.loadAll();
+        this.assetsLoaded = true;
+        this.shipModelLoaded = true;
+        
+        console.log('✅ All assets loaded successfully');
+        this.checkLoadingProgress();
     } catch (error) {
-      console.warn(`Error playing sound "${name}":`, error);
+        console.error('🔍 Critical error loading assets:', error);
+        this.handleLoadError('critical', error);
     }
-  }
-  
-  createDefaultShip() {
-    // Create a simple ship geometry as placeholder
-    const geometry = new THREE.ConeGeometry(0.5, 1, 8);
-    geometry.rotateX(Math.PI / 2);
-    
-    // Create glowing material
-    const material = new THREE.MeshPhongMaterial({
-      color: 0x00ffff,
-      emissive: 0x006666,
-      shininess: 100
-    });
-    
-    // Create ship mesh
-    this.playerShip = new THREE.Mesh(geometry, material);
-    this.playerShip.position.set(0, 0.5, 0);
-    this.scene.add(this.playerShip);
-    
-    // Add a point light to the ship to make it glow
-    const light = new THREE.PointLight(0x00ffff, 1, 2);
-    light.position.set(0, 0, 0);
-    this.playerShip.add(light);
-    
-    // Add ship properties
-    this.shipSpeed = 0.1;
-    this.rotationSpeed = 0.05;
-  }
-  
-  setShipModel(type) {
-    console.log('🔍 Setting ship model:', type);
-    
-    // Get the ship model from assets
-    let model = this.assetLoader.getShipModel(type);
-    
-    // If model is null or undefined, create fallback model
-    if (!model) {
-      console.warn('⚠️ Using fallback ship model');
-      if (this.debugging) {
-        console.trace('Stack trace for fallback ship model');
-      }
-      
-      if (!THREE.BoxGeometry) {
-        console.error('THREE.BoxGeometry not available for fallback ship');
-        return;
-      }
-      
-      try {
-        console.log('📦 Creating simple fallback model');
-        // Create a simple fallback model (box)
-        const geometry = new THREE.BoxGeometry(1, 0.5, 2);
-        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
-        model = new THREE.Mesh(geometry, material);
-      } catch (error) {
-        console.error('Error creating fallback model:', error);
-        return;
-      }
-    }
-    
-    // Make all ships smaller (50-60% smaller)
-    const scaleFactor = 0.45; // About 55% smaller
-    model.scale.set(scaleFactor, scaleFactor, scaleFactor);
-    console.log(`DIAGNOSTIC: Applied reduced scale: [${model.scale.x}, ${model.scale.y}, ${model.scale.z}]`);
-    
-    // Log ship model information
-    console.log('🔍 Using ship model:', {
-      children: model.children?.length || 0,
-      position: model.position,
-      rotation: model.rotation,
-      scale: model.scale
-    });
-
-    // Store the model reference for thruster effects
-    this.shipModel = model;
-
-    // Add the model to the player ship group
-    this.playerShip.add(model);
-    
-    // Position the ship
-    this.playerShip.position.set(0, 0.5, 0);
-    
-    // Add to scene
-    this.scene.add(this.playerShip);
-    
-    // Add thruster effects
-    this.addThrusterGlow();
-    
-    // Add player name label above the ship
-    this.addPlayerNameLabel();
-    
-    console.log('✅ Ship model set successfully');
-    
-    // Set a fixed collision radius that works with the reduced ship size
-    const fixedCollisionRadius = 0.35; // Reduced radius to match smaller ship size
-    this.playerShip.userData.collisionRadius = fixedCollisionRadius;
-    console.log(`DIAGNOSTIC: Set ship collision radius: ${this.playerShip.userData.collisionRadius}`);
-  }
-  
-  // Function to add a player name label above the ship
-  addPlayerNameLabel() {
-    // Remove any existing name label
-    if (this.playerNameLabel) {
-      this.playerShip.remove(this.playerNameLabel);
-      this.playerNameLabel = null;
-    }
-    
-    // Create a canvas for the player name
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 512;
-    canvas.height = 128;
-    
-    // Set canvas background transparent
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Create gradient for the text
-    const gradient = context.createLinearGradient(0, 0, canvas.width, 0);
-    gradient.addColorStop(0, '#00c3ff');    // Cyan blue
-    gradient.addColorStop(0.5, '#80ffff');  // Light cyan
-    gradient.addColorStop(1, '#00c3ff');    // Cyan blue
-    
-    // Draw player name on canvas
-    context.font = 'bold 40px Orbitron';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    
-    // Add shadow/glow effect
-    context.shadowColor = '#0062ff';
-    context.shadowBlur = 15;
-    
-    // Draw stroke
-    context.strokeStyle = '#000';
-    context.lineWidth = 6;
-    context.strokeText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Fill with gradient
-    context.fillStyle = gradient;
-    context.fillText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Add a subtle underline
-    context.beginPath();
-    context.moveTo(canvas.width / 2 - context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.lineTo(canvas.width / 2 + context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.strokeStyle = '#00c3ff';
-    context.lineWidth = 2;
-    context.stroke();
-    
-    // Add a mini rank/icon before the name
-    const icon = this.getPlayerIcon();
-    const iconSize = 30;
-    context.font = 'bold 20px Orbitron';
-    context.fillStyle = '#ffcc00';
-    context.strokeStyle = '#000';
-    context.lineWidth = 3;
-    const iconX = canvas.width / 2 - context.measureText(this.playerName).width / 2 - iconSize - 10;
-    const iconY = canvas.height / 2;
-    context.strokeText(icon, iconX, iconY);
-    context.fillText(icon, iconX, iconY);
-    
-    // Create texture from canvas
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    
-    // Create sprite material
-    const material = new THREE.SpriteMaterial({ 
-      map: texture,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    });
-    
-    // Create sprite
-    const sprite = new THREE.Sprite(material);
-    sprite.scale.set(3, 0.8, 1);
-    sprite.position.set(0, 1.8, 0); // Position above the ship
-    
-    // Store reference and add to ship
-    this.playerNameLabel = sprite;
-    this.playerShip.add(this.playerNameLabel);
-    
-    console.log(`Added enhanced name label for player: ${this.playerName}`);
-  }
-  
-  // Helper function to get player icon based on name
-  getPlayerIcon() {
-    // Simple hash function to determine icon
-    let hash = 0;
-    for (let i = 0; i < this.playerName.length; i++) {
-      hash = ((hash << 5) - hash) + this.playerName.charCodeAt(i);
-      hash |= 0; // Convert to 32bit integer
-    }
-    
-    // Array of possible icons
-    const icons = ['⚡', '✦', '★', '♦', '◆', '⬢', '⚔️', '⚜️', '☄️', '⚪'];
-    
-    // Use hash to select icon
-    const iconIndex = Math.abs(hash) % icons.length;
-    return icons[iconIndex];
   }
   
   handleLoadError(assetType, error) {
@@ -873,11 +563,7 @@ class SimpleGame {
         this.loadingState = {
           started: false,
           completed: false,
-          errors: [],
-          timeouts: new Map(),
-          retryCount: new Map(),
-          maxRetries: 3,
-          loadingPromises: new Map()
+          errors: []
         };
         this.loadAssets();
       };
@@ -895,46 +581,37 @@ class SimpleGame {
   
   checkLoadingProgress() {
     console.log('🔍 Checking loading progress...');
-    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
-    console.log('Sound pools size:', this.soundPools.size);
-    console.log('Ship model loaded:', this.shipModelLoaded);
     
-    // Define what constitutes a fully loaded game
+    // Log loading state
+    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
+    
+    // Define what's required for a fully loaded game
     const requiredAssets = {
       shipModel: this.shipModelLoaded,
-      sounds: this.soundPools.size > 0
+      assetsLoaded: this.assetLoader.loadingState.completed
     };
     
     // Check if all required assets are loaded
-    const allAssetsLoaded = Object.entries(requiredAssets).every(([name, loaded]) => {
-      if (!loaded) {
-        console.log(`🔍 Asset "${name}" not loaded yet`);
-      }
+    const allAssetsLoaded = Object.entries(requiredAssets).every(([key, loaded]) => {
+      console.log(`🔍 ${key}: ${loaded ? '✅' : '❌'}`);
       return loaded;
     });
     
     if (allAssetsLoaded) {
-      console.log('✅ All required assets loaded successfully!');
+      console.log('✅ All required assets loaded!');
       this.loadingState.completed = true;
-      
-      // Clear any remaining timeouts
-      this.loadingState.timeouts.forEach(timeoutId => {
-        clearTimeout(timeoutId);
-      });
-      this.loadingState.timeouts.clear();
-      
-      // Show start screen
       this.showStartScreen();
     } else {
-      // Show which assets are still loading
+      // Log which assets are still pending
       const pendingAssets = Object.entries(requiredAssets)
-        .filter(([name, loaded]) => !loaded)
-        .map(([name]) => name);
+        .filter(([_, loaded]) => !loaded)
+        .map(([key]) => key);
+      console.log('⏳ Still waiting for:', pendingAssets);
       
-      console.log(`🔍 Still loading: ${pendingAssets.join(', ')}`);
-      this.updateLoadingUI(`Loading: ${pendingAssets.join(', ')}...`);
+      // Update loading UI
+      this.updateLoadingUI(`Loading... (${pendingAssets.join(', ')})`);
       
-      // Check again in 1 second if not all assets are loaded
+      // Check again after a delay
       setTimeout(() => this.checkLoadingProgress(), 1000);
     }
   }
@@ -976,6 +653,12 @@ class SimpleGame {
   }
   
   addThrusterGlow() {
+    // Check if player and player mesh exist
+    if (!this.player || !this.player.mesh) {
+      console.warn('Cannot add thruster glow: Player or player mesh is not initialized');
+      return;
+    }
+    
     // Create a single, efficient thruster glow effect
     // Use instanced mesh for better performance if you have multiple thrusters
     
@@ -992,6 +675,9 @@ class SimpleGame {
     thruster.position.set(0, 0, -0.7); // Position at the back of the ship
     thruster.rotation.x = Math.PI / 2;
     thruster.name = 'thruster'; // Name it for easier reference later
+    
+    // Add thruster to player mesh
+    this.player.mesh.add(thruster);
     
     // Add point light for the thruster
     const thrusterLight = new THREE.PointLight(0x00ffff, 1, 3);
@@ -1051,134 +737,101 @@ class SimpleGame {
     
     // Load texture first
     const textureLoader = new THREE.TextureLoader();
-    const terrainTexture = textureLoader.load('assets/models/textures/Colors3.png', 
-      // Success callback
-      (texture) => {
-        console.log('Terrain texture (Colors3.png) loaded successfully');
-        // Configure texture 
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(8, 8); // Repeat the texture more times for better detail
-        
-        // Now load the Terrain.glb model
-        loadTerrainModel(texture);
-      },
-      // Progress callback
-      undefined,
-      // Error callback
-      (error) => {
-        console.error('Error loading Colors3.png texture:', error);
-        // Try fallback to original texture
-        textureLoader.load('assets/models/textures/tex.png', 
-          fallbackTexture => {
-            console.log('Fallback texture loaded');
-            fallbackTexture.wrapS = THREE.RepeatWrapping;
-            fallbackTexture.wrapT = THREE.RepeatWrapping;
-            fallbackTexture.repeat.set(5, 5);
-            loadTerrainModel(fallbackTexture);
-          },
-          undefined,
-          fallbackError => {
-            console.error('Error loading fallback texture:', fallbackError);
-            // Load model anyway without texture
-            loadTerrainModel(null);
-          }
-        );
-      }
-    );
-    
-    // Function to load terrain model with texture
-    const loadTerrainModel = (texture) => {
-      const terrainPath = 'assets/models/terrain/Terrain.glb';
-      
-      // Use GLTFLoader properly imported at the top
-      const loader = new GLTFLoader();
-      loader.load(
-        terrainPath,
-        (gltf) => {
-          console.log('Terrain model loaded successfully');
-          
-          // Remove the temporary floor
-          if (this.floor) {
-            this.scene.remove(this.floor);
-            this.floor.geometry.dispose();
-            this.floor.material.dispose();
-          }
-          
-          // Set up the terrain model
-          const terrain = gltf.scene;
-          
-          // Scale the terrain appropriately
-          const terrainScale = 100; // Adjust this value to change the overall size
-          terrain.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
-          
-          // Position terrain at center and slightly below zero to avoid z-fighting
-          terrain.position.set(0, -0.2, 0);
-          
-          // Set up materials with texture
-          terrain.traverse((node) => {
-            if (node.isMesh) {
-              // Enable shadows
-              node.castShadow = false; // We don't want the floor to cast shadows
-              node.receiveShadow = true; // But we do want it to receive shadows
-              
-              // Apply texture if available
-              if (node.material && texture) {
-                // Store original colors for blending
-                const originalColor = node.material.color ? node.material.color.clone() : new THREE.Color(0xffffff);
-                
-                // Apply texture
-                node.material.map = texture;
-                
-                // Make the terrain slightly emissive for a subtle glow
-                node.material.emissive = new THREE.Color(0x006688);
-                node.material.emissiveIntensity = 0.2;
-                
-                // Add more vibrant color variation for Colors3 texture
-                if (texture.source.data.src.includes('Colors3')) {
-                  // More vibrant color blend for the new texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x99ccff), 0.4);
-                  // Increase the contrast and saturation
-                  node.material.roughness = 0.6;
-                  node.material.metalness = 0.3;
-                } else {
-                  // Original settings for fallback texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x88aaff), 0.3);
-                  node.material.roughness = 0.8;
-                  node.material.metalness = 0.2;
-                }
-                
-                // Make sure textures are used
-                node.material.needsUpdate = true;
-              }
+    const texturePromise = new Promise((resolve, reject) => {
+      textureLoader.load(
+        'assets/models/textures/Colors3.png', 
+        texture => {
+          console.log('Terrain texture (Colors3.png) loaded successfully');
+          // Configure texture 
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.repeat.set(8, 8); // Repeat the texture more times for better detail
+          resolve(texture);
+        },
+        undefined,
+        error => {
+          console.error('Error loading Colors3.png texture:', error);
+          // Try fallback texture
+          textureLoader.load(
+            'assets/models/textures/tex.png', 
+            fallbackTexture => {
+              console.log('Fallback texture loaded');
+              fallbackTexture.wrapS = THREE.RepeatWrapping;
+              fallbackTexture.wrapT = THREE.RepeatWrapping;
+              fallbackTexture.repeat.set(5, 5);
+              resolve(fallbackTexture);
+            },
+            undefined,
+            fallbackError => {
+              console.error('Error loading fallback texture:', fallbackError);
+              resolve(null); // Resolve with null to continue without texture
             }
-          });
-          
-          // Store reference and add to scene
-          this.floor = terrain;
-          this.scene.add(terrain);
-          
-          // Add a circular highlight around the player's position
-          this.createPlayerHighlight();
-        },
-        (xhr) => {
-          // Progress callback
-          console.log(`Loading terrain: ${(xhr.loaded / xhr.total * 100).toFixed(2)}%`);
-        },
-        (error) => {
-          // Error callback
-          console.error('Error loading terrain model:', error);
-          console.log('Falling back to default floor');
-          
-          // Create grid as a fallback
-          const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
-          this.scene.add(gridHelper);
-          
-          // Add player highlight anyway
-          this.createPlayerHighlight();
+          );
         }
       );
-    };
+    });
+    
+    // When texture is loaded (or failed), get the terrain model from AssetLoader
+    texturePromise.then(texture => {
+      // Get terrain model from AssetLoader
+      const terrain = this.assetLoader.getModel('terrain/Terrain.glb');
+      
+      if (terrain) {
+        console.log('Using terrain model from AssetLoader');
+        
+        // Remove the temporary floor
+        if (this.floor) {
+          this.scene.remove(this.floor);
+          this.floor.geometry.dispose();
+          this.floor.material.dispose();
+        }
+        
+        // Clone the model to avoid modifying the original
+        const terrainClone = terrain.clone();
+        
+        // Scale the terrain appropriately
+        const terrainScale = 100; // Adjust this value to change the overall size
+        terrainClone.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
+        
+        // Position terrain at center and slightly below zero to avoid z-fighting
+        terrainClone.position.set(0, -0.2, 0);
+        
+        // Apply texture if available
+        if (texture) {
+          terrainClone.traverse((node) => {
+            if (node.isMesh) {
+              node.material = node.material.clone(); // Clone material to avoid affecting other instances
+              node.material.map = texture;
+              node.material.needsUpdate = true;
+              
+              // Enable shadows
+              node.castShadow = true;
+              node.receiveShadow = true;
+            }
+          });
+        }
+        
+        // Add to scene
+        this.scene.add(terrainClone);
+        this.terrain = terrainClone;
+        
+        console.log('Terrain model added to scene');
+        
+        // Add a circular highlight around the player's position
+        this.createPlayerHighlight();
+      } else {
+        console.warn('Terrain model not found in AssetLoader, using fallback grid');
+        
+        // Create a grid as fallback
+        const grid = new THREE.GridHelper(100, 100, 0x0000ff, 0x000044);
+        grid.position.y = 0;
+        this.scene.add(grid);
+        this.terrain = grid;
+        
+        // Add player highlight anyway
+        this.createPlayerHighlight();
+      }
+    });
   }
 
   // Separate method for player highlight to avoid code duplication
@@ -5585,6 +5238,111 @@ createMuzzleFlash(position, direction) {
     
     // Send the update to the network manager
     this.networkManager.sendPlayerUpdate(playerData);
+  }
+
+  // Add the missing setShipModel function
+  setShipModel(type) {
+    console.log('🔍 Setting ship model:', type);
+    
+    // Get the ship model from assets
+    let model = this.assetLoader.getShipModel(type);
+    
+    // If model is null or undefined, create fallback model
+    if (!model) {
+      console.warn('⚠️ Using fallback ship model for type:', type);
+      
+      // Create a simple geometric shape as fallback
+      const geometry = new THREE.BoxGeometry(1, 0.5, 2);
+      const material = new THREE.MeshPhongMaterial({ 
+        color: 0x00ffff, 
+        specular: 0x111111, 
+        shininess: 30 
+      });
+      model = new THREE.Mesh(geometry, material);
+    }
+    
+    // Clear existing player ship if it exists
+    if (this.playerShip) {
+      if (this.scene) {
+        this.scene.remove(this.playerShip);
+      }
+      this.playerShip = null;
+    }
+    
+    // Set the new ship model
+    this.playerShip = model;
+    
+    // Position the ship appropriately
+    if (this.playerShip && this.scene) {
+      this.playerShip.position.set(0, 0.5, 0);
+      this.scene.add(this.playerShip);
+    }
+    
+    return this.playerShip;
+  }
+
+  /**
+   * Play a sound by name
+   * @param {string} name - Name of the sound to play
+   * @param {THREE.Vector3} position - Optional position for 3D audio
+   */
+  playSound(name, position = null) {
+    if (this.soundManager) {
+      console.log(`Playing sound: ${name}`);
+      this.soundManager.playSound(name, position);
+    } else {
+      console.warn(`Cannot play sound '${name}': SoundManager not initialized`);
+    }
+  }
+
+  /**
+   * Update a remote player's position and rotation
+   * @param {string} id - Player ID
+   * @param {Object} position - Position coordinates
+   * @param {Object} rotation - Rotation coordinates
+   */
+  updateRemotePlayer(id, position, rotation) {
+    // Get existing player or create a new one
+    let player = this.remotePlayers.get(id);
+    
+    if (!player) {
+      // Create a new player mesh if this is the first update
+      player = this.createRemotePlayerMesh();
+      this.remotePlayers.set(id, player);
+      this.scene.add(player);
+      console.log(`Created new remote player: ${id}`);
+    }
+    
+    // Update player position and rotation
+    if (position) {
+      player.position.set(position.x, position.y, position.z);
+    }
+    
+    if (rotation) {
+      player.rotation.set(rotation.x, rotation.y, rotation.z);
+    }
+  }
+  
+  /**
+   * Create a mesh for a remote player
+   * @returns {THREE.Object3D} Player mesh
+   */
+  createRemotePlayerMesh() {
+    // For simplicity, we'll use a simple colored box for remote players
+    const geometry = new THREE.BoxGeometry(1, 1, 2);
+    const material = new THREE.MeshLambertMaterial({ color: 0xff0000 }); // Red for other players
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    // Add name label
+    const nameLabel = document.createElement('div');
+    nameLabel.className = 'player-label';
+    nameLabel.textContent = 'Player';
+    
+    const playerLabel = new CSS2DObject(nameLabel);
+    playerLabel.position.set(0, 1.5, 0);
+    mesh.add(playerLabel);
+    
+    return mesh;
   }
 }
 
@@ -5727,6 +5485,8 @@ document.addEventListener('DOMContentLoaded', () => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Drift</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles/main.css">
+    <link rel="stylesheet" href="./styles/controls.css">
 </head>
 <body>
     <div id="loading-screen">
@@ -5772,6 +5532,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <p>Avoid the colored obstacles!</p>
     </div>
 </body>
+<script type="module" src="./index.js"></script>
 </html> 
 ### ./index.html END ###
 
@@ -5887,6 +5648,8 @@ import { InfiniteMap } from './core/InfiniteMap';
 import { NetworkManager } from './core/NetworkManager';
 import { CSS2DRenderer, CSS2DObject } from '@three/examples/renderers/CSS2DRenderer';
 import { GAME_CONFIG } from './config/GameConfig';
+import { Player } from './entities/player/Player';
+import { SoundManager } from './assets/SoundManager';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -5895,27 +5658,20 @@ class SimpleGame {
     // Player information
     this.playerName = 'Pilot';  // Default player name
     
-    // Sound management
-    this.audioListener = new THREE.AudioListener();
-    this.soundPools = new Map();
-    this.loadedSounds = new Map();
-    this.soundLoadPromises = new Map();
-
     // Create the asset loader
     this.assetLoader = new AssetLoader().setCallbacks(
       (message) => this.updateLoadingUI(message),
       (type, error) => this.handleLoadError(type, error)
     );
     
+    // Initialize SoundManager
+    this.soundManager = new SoundManager();
+    
     // Asset loading state
     this.loadingState = {
       started: false,
       completed: false,
-      errors: [],
-      timeouts: new Map(),
-      retryCount: new Map(),
-      maxRetries: 3,
-      loadingPromises: new Map()
+      errors: []
     };
     
     // Track assets loading
@@ -5947,6 +5703,17 @@ class SimpleGame {
     
     // Create game UI
     this.ui = new GameUI();
+    
+    // Create player after scene setup (as specified in Task 8)
+    this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+      type: 'PLAYER',
+      shipModel: 'STANDARD',
+      teamColor: 0x00ffff
+    });
+    this.scene.add(this.player.mesh);
+    
+    // For backward compatibility with existing code
+    this.playerShip = this.player.mesh;
     
     // Game properties
     this.boundarySize = 100; // Size of the playable area
@@ -5986,6 +5753,10 @@ class SimpleGame {
     
     // Initialize NetworkManager
     this.networkManager = new NetworkManager();
+    
+    // Initialize remotePlayers map for multiplayer
+    this.remotePlayers = new Map();
+    
     this.networkManager.on('connected', () => {
       console.log('Connected to game server!');
       document.getElementById('connection-status').textContent = 'Connected';
@@ -6006,8 +5777,20 @@ class SimpleGame {
     
     this.networkManager.on('player_left', (id) => {
       console.log('Player left:', id);
+      // Remove player mesh if it exists
+      const player = this.remotePlayers.get(id);
+      if (player) {
+        this.scene.remove(player);
+        this.remotePlayers.delete(id);
+        console.log(`Removed remote player: ${id}`);
+      }
       // Update player count
       this.updatePlayerCount();
+    });
+    
+    // Add player update handling
+    this.networkManager.on('player_update', (data) => {
+      this.updateRemotePlayer(data.id, data.position, data.rotation);
     });
     
     // Add laser shot handling
@@ -6033,28 +5816,35 @@ class SimpleGame {
   }
   
   setupScene() {
-    // Create scene, camera, and renderer
+    // Create Three.js Scene
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0a1f); // Dark blue background
     
-    // Set up isometric camera
-    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.camera.position.set(10, 10, 10);
-    this.camera.lookAt(0, 0, 0);
-    
-    // Create WebGL renderer
+    // Setup WebGL renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('game-container').appendChild(this.renderer.domElement);
     
-    // Add CSS2D renderer for player name labels
-    this.labelRenderer = new CSS2DRenderer();
-    this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
-    this.labelRenderer.domElement.style.position = 'absolute';
-    this.labelRenderer.domElement.style.top = '0';
-    this.labelRenderer.domElement.style.pointerEvents = 'none';
-    document.body.appendChild(this.labelRenderer.domElement);
+    // Create camera
+    this.camera = new THREE.PerspectiveCamera(
+      60, // FOV
+      window.innerWidth / window.innerHeight, // Aspect ratio
+      0.1, // Near
+      1000 // Far
+    );
+    
+    // Position camera
+    this.camera.position.set(0, 7, 15); // Slightly above and behind player
+    this.camera.lookAt(0, 0, 0);
+    
+    // Attach audio listener to camera
+    if (this.soundManager) {
+      this.camera.add(this.soundManager.getListener());
+      console.log('Audio listener attached to camera');
+    }
     
     // Add lighting
     const ambientLight = new THREE.AmbientLight(0x404040);
@@ -6071,378 +5861,36 @@ class SimpleGame {
     this.createObstacles();
   }
   
-  loadAssets() {
+  async loadAssets() {
     if (this.loadingState.started) {
-      console.warn('🔍 Asset loading already in progress');
-      return;
+        console.warn('🔍 Asset loading already in progress');
+        return;
     }
     
-    console.log('🔍 Starting asset loading process');
-    console.log('Current loading state:', JSON.stringify(this.loadingState, null, 2));
-    
-    this.loadingState.started = true;
-    this.loadingState.completed = false;
-    this.loadingState.errors = [];
-    
-    // Show loading message
     this.updateLoadingUI('Loading game assets...');
     
-    // Create placeholder ship until model loads
-    this.createDefaultShip();
-    
-    // Load assets in parallel with proper error handling
-    Promise.all([
-      this.loadSounds().catch(error => {
-        console.error('🔍 Sound loading failed:', error);
-        this.handleLoadError('sounds', error);
-        return null;
-      }),
-      this.loadAssetsWithLoader().catch(error => {
-        console.error('🔍 Asset loading failed:', error);
-        this.handleLoadError('assets', error);
-        return null;
-      })
-    ]).then(() => {
-      console.log('🔍 All asset loading promises completed');
-      // Check loading progress even if some assets failed
-      this.checkLoadingProgress();
-    }).catch(error => {
-      console.error('🔍 Critical error loading assets:', error);
-      this.handleLoadError('critical', error);
-    });
-  }
-  
-  async loadAssetsWithLoader() {
-    console.log('🟢🟢🟢 Loading assets with AssetLoader...');
-    
-    // Use AssetLoader to load all assets including ship models
-    await this.assetLoader.loadAll();
-    this.shipModelLoaded = true;
-    console.log('✅ All assets loaded successfully via AssetLoader');
-    
-    return true;
-  }
-  
-  loadSounds() {
-    // AudioListener should already be initialized in constructor
-    if (!this.camera) {
-      console.error('Camera not initialized when trying to load sounds');
-      return Promise.reject(new Error('Camera not initialized'));
-    }
-
-    // Add listener to camera if not already added
-    if (!this.camera.children.includes(this.audioListener)) {
-      this.camera.add(this.audioListener);
-    }
-    
-    // Define sounds to load
-    const soundsToLoad = [
-      { name: 'laser', path: 'assets/sounds/laser.mp3', poolSize: 5 },
-      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3', poolSize: 3 },
-      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3', poolSize: 2 },
-      { name: 'bounce', path: 'assets/sounds/bounce.mp3', poolSize: 3 },
-      { name: 'weapon-switch', path: 'assets/sounds/weapon-switch.mp3', poolSize: 2 },
-      { name: 'weapon-charging', path: 'assets/sounds/weapon-charging.mp3', poolSize: 1, volume: 0.2 }  // Lower volume for background effect
-    ];
-    
-    // Create a pool of sounds for frequently played effects
-    const audioLoader = new THREE.AudioLoader();
-    
-    // Load each sound only if not already loaded
-    soundsToLoad.forEach(soundInfo => {
-      if (!this.loadedSounds.has(soundInfo.name)) {
-        const loadPromise = new Promise((resolve, reject) => {
-          // Set a timeout for loading
-          const timeoutId = setTimeout(() => {
-            reject(new Error(`Sound loading timeout: ${soundInfo.name}`));
-          }, 10000); // 10 second timeout
-          
-          audioLoader.load(
-            soundInfo.path,
-            buffer => {
-              clearTimeout(timeoutId);
-              
-              // Create sound pool
-              const pool = [];
-              for (let i = 0; i < soundInfo.poolSize; i++) {
-                const sound = new THREE.Audio(this.audioListener);
-                sound.setBuffer(buffer);
-                sound.setVolume(soundInfo.volume || 0.5); // Use specified volume or default to 0.5
-                pool.push({ sound, inUse: false, lastUsed: 0 });
-              }
-              
-              this.soundPools.set(soundInfo.name, pool);
-              this.loadedSounds.set(soundInfo.name, buffer);
-              console.log(`Loaded sound: ${soundInfo.name} (${soundInfo.poolSize} instances)`);
-              resolve();
-            },
-            xhr => {
-              console.log(`${soundInfo.name} ${(xhr.loaded / xhr.total * 100)}% loaded`);
-            },
-            error => {
-              clearTimeout(timeoutId);
-              console.error(`Error loading sound ${soundInfo.name}:`, error);
-              reject(error);
-            }
-          );
-        });
-        
-        this.soundLoadPromises.set(soundInfo.name, loadPromise);
-      }
-    });
-    
-    // Return a promise that resolves when all sounds are loaded
-    return Promise.all(Array.from(this.soundLoadPromises.values()))
-      .then(() => {
-        console.log('All sounds loaded successfully');
-      })
-      .catch(error => {
-        console.error('Error loading sounds:', error);
-        // Continue without sounds rather than breaking the game
-      });
-  }
-  
-  playSound(name) {
-    const pool = this.soundPools.get(name);
-    if (!pool || pool.length === 0) {
-      console.warn(`Sound "${name}" not found or not loaded yet.`);
-      return;
-    }
-    
     try {
-      const now = Date.now();
-      
-      // Find available sound that hasn't been used recently
-      let soundWrapper = pool.find(wrapper => 
-        !wrapper.inUse && (now - wrapper.lastUsed > 50) // 50ms minimum delay between same sound
-      );
-      
-      // If no sound available, find the oldest one
-      if (!soundWrapper) {
-        soundWrapper = pool.reduce((oldest, current) => 
-          (!oldest || current.lastUsed < oldest.lastUsed) ? current : oldest
-        );
-        
-        // If the oldest sound was used too recently, skip playing
-        if (now - soundWrapper.lastUsed < 50) {
-          return;
+        // Create initial player with default ship
+        if (!this.player) {
+            this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+                type: 'PLAYER',
+                shipModel: 'STANDARD',
+                teamColor: 0x00ffff
+            });
+            this.playerShip = this.player.mesh; // For backward compatibility
         }
         
-        soundWrapper.sound.stop(); // Stop it if it's playing
-      }
-      
-      // Mark as in use and update timestamp
-      soundWrapper.inUse = true;
-      soundWrapper.lastUsed = now;
-      
-      // Play the sound
-      soundWrapper.sound.play();
-      
-      // Set up callback to release back to the pool
-      soundWrapper.sound.onEnded = () => {
-        soundWrapper.inUse = false;
-      };
+        // Load all assets through AssetLoader
+        await this.assetLoader.loadAll();
+        this.assetsLoaded = true;
+        this.shipModelLoaded = true;
+        
+        console.log('✅ All assets loaded successfully');
+        this.checkLoadingProgress();
     } catch (error) {
-      console.warn(`Error playing sound "${name}":`, error);
+        console.error('🔍 Critical error loading assets:', error);
+        this.handleLoadError('critical', error);
     }
-  }
-  
-  createDefaultShip() {
-    // Create a simple ship geometry as placeholder
-    const geometry = new THREE.ConeGeometry(0.5, 1, 8);
-    geometry.rotateX(Math.PI / 2);
-    
-    // Create glowing material
-    const material = new THREE.MeshPhongMaterial({
-      color: 0x00ffff,
-      emissive: 0x006666,
-      shininess: 100
-    });
-    
-    // Create ship mesh
-    this.playerShip = new THREE.Mesh(geometry, material);
-    this.playerShip.position.set(0, 0.5, 0);
-    this.scene.add(this.playerShip);
-    
-    // Add a point light to the ship to make it glow
-    const light = new THREE.PointLight(0x00ffff, 1, 2);
-    light.position.set(0, 0, 0);
-    this.playerShip.add(light);
-    
-    // Add ship properties
-    this.shipSpeed = 0.1;
-    this.rotationSpeed = 0.05;
-  }
-  
-  setShipModel(type) {
-    console.log('🔍 Setting ship model:', type);
-    
-    // Get the ship model from assets
-    let model = this.assetLoader.getShipModel(type);
-    
-    // If model is null or undefined, create fallback model
-    if (!model) {
-      console.warn('⚠️ Using fallback ship model');
-      if (this.debugging) {
-        console.trace('Stack trace for fallback ship model');
-      }
-      
-      if (!THREE.BoxGeometry) {
-        console.error('THREE.BoxGeometry not available for fallback ship');
-        return;
-      }
-      
-      try {
-        console.log('📦 Creating simple fallback model');
-        // Create a simple fallback model (box)
-        const geometry = new THREE.BoxGeometry(1, 0.5, 2);
-        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
-        model = new THREE.Mesh(geometry, material);
-      } catch (error) {
-        console.error('Error creating fallback model:', error);
-        return;
-      }
-    }
-    
-    // Make all ships smaller (50-60% smaller)
-    const scaleFactor = 0.45; // About 55% smaller
-    model.scale.set(scaleFactor, scaleFactor, scaleFactor);
-    console.log(`DIAGNOSTIC: Applied reduced scale: [${model.scale.x}, ${model.scale.y}, ${model.scale.z}]`);
-    
-    // Log ship model information
-    console.log('🔍 Using ship model:', {
-      children: model.children?.length || 0,
-      position: model.position,
-      rotation: model.rotation,
-      scale: model.scale
-    });
-
-    // Store the model reference for thruster effects
-    this.shipModel = model;
-
-    // Add the model to the player ship group
-    this.playerShip.add(model);
-    
-    // Position the ship
-    this.playerShip.position.set(0, 0.5, 0);
-    
-    // Add to scene
-    this.scene.add(this.playerShip);
-    
-    // Add thruster effects
-    this.addThrusterGlow();
-    
-    // Add player name label above the ship
-    this.addPlayerNameLabel();
-    
-    console.log('✅ Ship model set successfully');
-    
-    // Set a fixed collision radius that works with the reduced ship size
-    const fixedCollisionRadius = 0.35; // Reduced radius to match smaller ship size
-    this.playerShip.userData.collisionRadius = fixedCollisionRadius;
-    console.log(`DIAGNOSTIC: Set ship collision radius: ${this.playerShip.userData.collisionRadius}`);
-  }
-  
-  // Function to add a player name label above the ship
-  addPlayerNameLabel() {
-    // Remove any existing name label
-    if (this.playerNameLabel) {
-      this.playerShip.remove(this.playerNameLabel);
-      this.playerNameLabel = null;
-    }
-    
-    // Create a canvas for the player name
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 512;
-    canvas.height = 128;
-    
-    // Set canvas background transparent
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Create gradient for the text
-    const gradient = context.createLinearGradient(0, 0, canvas.width, 0);
-    gradient.addColorStop(0, '#00c3ff');    // Cyan blue
-    gradient.addColorStop(0.5, '#80ffff');  // Light cyan
-    gradient.addColorStop(1, '#00c3ff');    // Cyan blue
-    
-    // Draw player name on canvas
-    context.font = 'bold 40px Orbitron';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    
-    // Add shadow/glow effect
-    context.shadowColor = '#0062ff';
-    context.shadowBlur = 15;
-    
-    // Draw stroke
-    context.strokeStyle = '#000';
-    context.lineWidth = 6;
-    context.strokeText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Fill with gradient
-    context.fillStyle = gradient;
-    context.fillText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Add a subtle underline
-    context.beginPath();
-    context.moveTo(canvas.width / 2 - context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.lineTo(canvas.width / 2 + context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.strokeStyle = '#00c3ff';
-    context.lineWidth = 2;
-    context.stroke();
-    
-    // Add a mini rank/icon before the name
-    const icon = this.getPlayerIcon();
-    const iconSize = 30;
-    context.font = 'bold 20px Orbitron';
-    context.fillStyle = '#ffcc00';
-    context.strokeStyle = '#000';
-    context.lineWidth = 3;
-    const iconX = canvas.width / 2 - context.measureText(this.playerName).width / 2 - iconSize - 10;
-    const iconY = canvas.height / 2;
-    context.strokeText(icon, iconX, iconY);
-    context.fillText(icon, iconX, iconY);
-    
-    // Create texture from canvas
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    
-    // Create sprite material
-    const material = new THREE.SpriteMaterial({ 
-      map: texture,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    });
-    
-    // Create sprite
-    const sprite = new THREE.Sprite(material);
-    sprite.scale.set(3, 0.8, 1);
-    sprite.position.set(0, 1.8, 0); // Position above the ship
-    
-    // Store reference and add to ship
-    this.playerNameLabel = sprite;
-    this.playerShip.add(this.playerNameLabel);
-    
-    console.log(`Added enhanced name label for player: ${this.playerName}`);
-  }
-  
-  // Helper function to get player icon based on name
-  getPlayerIcon() {
-    // Simple hash function to determine icon
-    let hash = 0;
-    for (let i = 0; i < this.playerName.length; i++) {
-      hash = ((hash << 5) - hash) + this.playerName.charCodeAt(i);
-      hash |= 0; // Convert to 32bit integer
-    }
-    
-    // Array of possible icons
-    const icons = ['⚡', '✦', '★', '♦', '◆', '⬢', '⚔️', '⚜️', '☄️', '⚪'];
-    
-    // Use hash to select icon
-    const iconIndex = Math.abs(hash) % icons.length;
-    return icons[iconIndex];
   }
   
   handleLoadError(assetType, error) {
@@ -6487,11 +5935,7 @@ class SimpleGame {
         this.loadingState = {
           started: false,
           completed: false,
-          errors: [],
-          timeouts: new Map(),
-          retryCount: new Map(),
-          maxRetries: 3,
-          loadingPromises: new Map()
+          errors: []
         };
         this.loadAssets();
       };
@@ -6509,46 +5953,37 @@ class SimpleGame {
   
   checkLoadingProgress() {
     console.log('🔍 Checking loading progress...');
-    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
-    console.log('Sound pools size:', this.soundPools.size);
-    console.log('Ship model loaded:', this.shipModelLoaded);
     
-    // Define what constitutes a fully loaded game
+    // Log loading state
+    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
+    
+    // Define what's required for a fully loaded game
     const requiredAssets = {
       shipModel: this.shipModelLoaded,
-      sounds: this.soundPools.size > 0
+      assetsLoaded: this.assetLoader.loadingState.completed
     };
     
     // Check if all required assets are loaded
-    const allAssetsLoaded = Object.entries(requiredAssets).every(([name, loaded]) => {
-      if (!loaded) {
-        console.log(`🔍 Asset "${name}" not loaded yet`);
-      }
+    const allAssetsLoaded = Object.entries(requiredAssets).every(([key, loaded]) => {
+      console.log(`🔍 ${key}: ${loaded ? '✅' : '❌'}`);
       return loaded;
     });
     
     if (allAssetsLoaded) {
-      console.log('✅ All required assets loaded successfully!');
+      console.log('✅ All required assets loaded!');
       this.loadingState.completed = true;
-      
-      // Clear any remaining timeouts
-      this.loadingState.timeouts.forEach(timeoutId => {
-        clearTimeout(timeoutId);
-      });
-      this.loadingState.timeouts.clear();
-      
-      // Show start screen
       this.showStartScreen();
     } else {
-      // Show which assets are still loading
+      // Log which assets are still pending
       const pendingAssets = Object.entries(requiredAssets)
-        .filter(([name, loaded]) => !loaded)
-        .map(([name]) => name);
+        .filter(([_, loaded]) => !loaded)
+        .map(([key]) => key);
+      console.log('⏳ Still waiting for:', pendingAssets);
       
-      console.log(`🔍 Still loading: ${pendingAssets.join(', ')}`);
-      this.updateLoadingUI(`Loading: ${pendingAssets.join(', ')}...`);
+      // Update loading UI
+      this.updateLoadingUI(`Loading... (${pendingAssets.join(', ')})`);
       
-      // Check again in 1 second if not all assets are loaded
+      // Check again after a delay
       setTimeout(() => this.checkLoadingProgress(), 1000);
     }
   }
@@ -6590,6 +6025,12 @@ class SimpleGame {
   }
   
   addThrusterGlow() {
+    // Check if player and player mesh exist
+    if (!this.player || !this.player.mesh) {
+      console.warn('Cannot add thruster glow: Player or player mesh is not initialized');
+      return;
+    }
+    
     // Create a single, efficient thruster glow effect
     // Use instanced mesh for better performance if you have multiple thrusters
     
@@ -6606,6 +6047,9 @@ class SimpleGame {
     thruster.position.set(0, 0, -0.7); // Position at the back of the ship
     thruster.rotation.x = Math.PI / 2;
     thruster.name = 'thruster'; // Name it for easier reference later
+    
+    // Add thruster to player mesh
+    this.player.mesh.add(thruster);
     
     // Add point light for the thruster
     const thrusterLight = new THREE.PointLight(0x00ffff, 1, 3);
@@ -6665,134 +6109,101 @@ class SimpleGame {
     
     // Load texture first
     const textureLoader = new THREE.TextureLoader();
-    const terrainTexture = textureLoader.load('assets/models/textures/Colors3.png', 
-      // Success callback
-      (texture) => {
-        console.log('Terrain texture (Colors3.png) loaded successfully');
-        // Configure texture 
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(8, 8); // Repeat the texture more times for better detail
-        
-        // Now load the Terrain.glb model
-        loadTerrainModel(texture);
-      },
-      // Progress callback
-      undefined,
-      // Error callback
-      (error) => {
-        console.error('Error loading Colors3.png texture:', error);
-        // Try fallback to original texture
-        textureLoader.load('assets/models/textures/tex.png', 
-          fallbackTexture => {
-            console.log('Fallback texture loaded');
-            fallbackTexture.wrapS = THREE.RepeatWrapping;
-            fallbackTexture.wrapT = THREE.RepeatWrapping;
-            fallbackTexture.repeat.set(5, 5);
-            loadTerrainModel(fallbackTexture);
-          },
-          undefined,
-          fallbackError => {
-            console.error('Error loading fallback texture:', fallbackError);
-            // Load model anyway without texture
-            loadTerrainModel(null);
-          }
-        );
-      }
-    );
-    
-    // Function to load terrain model with texture
-    const loadTerrainModel = (texture) => {
-      const terrainPath = 'assets/models/terrain/Terrain.glb';
-      
-      // Use GLTFLoader properly imported at the top
-      const loader = new GLTFLoader();
-      loader.load(
-        terrainPath,
-        (gltf) => {
-          console.log('Terrain model loaded successfully');
-          
-          // Remove the temporary floor
-          if (this.floor) {
-            this.scene.remove(this.floor);
-            this.floor.geometry.dispose();
-            this.floor.material.dispose();
-          }
-          
-          // Set up the terrain model
-          const terrain = gltf.scene;
-          
-          // Scale the terrain appropriately
-          const terrainScale = 100; // Adjust this value to change the overall size
-          terrain.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
-          
-          // Position terrain at center and slightly below zero to avoid z-fighting
-          terrain.position.set(0, -0.2, 0);
-          
-          // Set up materials with texture
-          terrain.traverse((node) => {
-            if (node.isMesh) {
-              // Enable shadows
-              node.castShadow = false; // We don't want the floor to cast shadows
-              node.receiveShadow = true; // But we do want it to receive shadows
-              
-              // Apply texture if available
-              if (node.material && texture) {
-                // Store original colors for blending
-                const originalColor = node.material.color ? node.material.color.clone() : new THREE.Color(0xffffff);
-                
-                // Apply texture
-                node.material.map = texture;
-                
-                // Make the terrain slightly emissive for a subtle glow
-                node.material.emissive = new THREE.Color(0x006688);
-                node.material.emissiveIntensity = 0.2;
-                
-                // Add more vibrant color variation for Colors3 texture
-                if (texture.source.data.src.includes('Colors3')) {
-                  // More vibrant color blend for the new texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x99ccff), 0.4);
-                  // Increase the contrast and saturation
-                  node.material.roughness = 0.6;
-                  node.material.metalness = 0.3;
-                } else {
-                  // Original settings for fallback texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x88aaff), 0.3);
-                  node.material.roughness = 0.8;
-                  node.material.metalness = 0.2;
-                }
-                
-                // Make sure textures are used
-                node.material.needsUpdate = true;
-              }
+    const texturePromise = new Promise((resolve, reject) => {
+      textureLoader.load(
+        'assets/models/textures/Colors3.png', 
+        texture => {
+          console.log('Terrain texture (Colors3.png) loaded successfully');
+          // Configure texture 
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.repeat.set(8, 8); // Repeat the texture more times for better detail
+          resolve(texture);
+        },
+        undefined,
+        error => {
+          console.error('Error loading Colors3.png texture:', error);
+          // Try fallback texture
+          textureLoader.load(
+            'assets/models/textures/tex.png', 
+            fallbackTexture => {
+              console.log('Fallback texture loaded');
+              fallbackTexture.wrapS = THREE.RepeatWrapping;
+              fallbackTexture.wrapT = THREE.RepeatWrapping;
+              fallbackTexture.repeat.set(5, 5);
+              resolve(fallbackTexture);
+            },
+            undefined,
+            fallbackError => {
+              console.error('Error loading fallback texture:', fallbackError);
+              resolve(null); // Resolve with null to continue without texture
             }
-          });
-          
-          // Store reference and add to scene
-          this.floor = terrain;
-          this.scene.add(terrain);
-          
-          // Add a circular highlight around the player's position
-          this.createPlayerHighlight();
-        },
-        (xhr) => {
-          // Progress callback
-          console.log(`Loading terrain: ${(xhr.loaded / xhr.total * 100).toFixed(2)}%`);
-        },
-        (error) => {
-          // Error callback
-          console.error('Error loading terrain model:', error);
-          console.log('Falling back to default floor');
-          
-          // Create grid as a fallback
-          const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
-          this.scene.add(gridHelper);
-          
-          // Add player highlight anyway
-          this.createPlayerHighlight();
+          );
         }
       );
-    };
+    });
+    
+    // When texture is loaded (or failed), get the terrain model from AssetLoader
+    texturePromise.then(texture => {
+      // Get terrain model from AssetLoader
+      const terrain = this.assetLoader.getModel('terrain/Terrain.glb');
+      
+      if (terrain) {
+        console.log('Using terrain model from AssetLoader');
+        
+        // Remove the temporary floor
+        if (this.floor) {
+          this.scene.remove(this.floor);
+          this.floor.geometry.dispose();
+          this.floor.material.dispose();
+        }
+        
+        // Clone the model to avoid modifying the original
+        const terrainClone = terrain.clone();
+        
+        // Scale the terrain appropriately
+        const terrainScale = 100; // Adjust this value to change the overall size
+        terrainClone.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
+        
+        // Position terrain at center and slightly below zero to avoid z-fighting
+        terrainClone.position.set(0, -0.2, 0);
+        
+        // Apply texture if available
+        if (texture) {
+          terrainClone.traverse((node) => {
+            if (node.isMesh) {
+              node.material = node.material.clone(); // Clone material to avoid affecting other instances
+              node.material.map = texture;
+              node.material.needsUpdate = true;
+              
+              // Enable shadows
+              node.castShadow = true;
+              node.receiveShadow = true;
+            }
+          });
+        }
+        
+        // Add to scene
+        this.scene.add(terrainClone);
+        this.terrain = terrainClone;
+        
+        console.log('Terrain model added to scene');
+        
+        // Add a circular highlight around the player's position
+        this.createPlayerHighlight();
+      } else {
+        console.warn('Terrain model not found in AssetLoader, using fallback grid');
+        
+        // Create a grid as fallback
+        const grid = new THREE.GridHelper(100, 100, 0x0000ff, 0x000044);
+        grid.position.y = 0;
+        this.scene.add(grid);
+        this.terrain = grid;
+        
+        // Add player highlight anyway
+        this.createPlayerHighlight();
+      }
+    });
   }
 
   // Separate method for player highlight to avoid code duplication
@@ -11199,6 +10610,111 @@ createMuzzleFlash(position, direction) {
     
     // Send the update to the network manager
     this.networkManager.sendPlayerUpdate(playerData);
+  }
+
+  // Add the missing setShipModel function
+  setShipModel(type) {
+    console.log('🔍 Setting ship model:', type);
+    
+    // Get the ship model from assets
+    let model = this.assetLoader.getShipModel(type);
+    
+    // If model is null or undefined, create fallback model
+    if (!model) {
+      console.warn('⚠️ Using fallback ship model for type:', type);
+      
+      // Create a simple geometric shape as fallback
+      const geometry = new THREE.BoxGeometry(1, 0.5, 2);
+      const material = new THREE.MeshPhongMaterial({ 
+        color: 0x00ffff, 
+        specular: 0x111111, 
+        shininess: 30 
+      });
+      model = new THREE.Mesh(geometry, material);
+    }
+    
+    // Clear existing player ship if it exists
+    if (this.playerShip) {
+      if (this.scene) {
+        this.scene.remove(this.playerShip);
+      }
+      this.playerShip = null;
+    }
+    
+    // Set the new ship model
+    this.playerShip = model;
+    
+    // Position the ship appropriately
+    if (this.playerShip && this.scene) {
+      this.playerShip.position.set(0, 0.5, 0);
+      this.scene.add(this.playerShip);
+    }
+    
+    return this.playerShip;
+  }
+
+  /**
+   * Play a sound by name
+   * @param {string} name - Name of the sound to play
+   * @param {THREE.Vector3} position - Optional position for 3D audio
+   */
+  playSound(name, position = null) {
+    if (this.soundManager) {
+      console.log(`Playing sound: ${name}`);
+      this.soundManager.playSound(name, position);
+    } else {
+      console.warn(`Cannot play sound '${name}': SoundManager not initialized`);
+    }
+  }
+
+  /**
+   * Update a remote player's position and rotation
+   * @param {string} id - Player ID
+   * @param {Object} position - Position coordinates
+   * @param {Object} rotation - Rotation coordinates
+   */
+  updateRemotePlayer(id, position, rotation) {
+    // Get existing player or create a new one
+    let player = this.remotePlayers.get(id);
+    
+    if (!player) {
+      // Create a new player mesh if this is the first update
+      player = this.createRemotePlayerMesh();
+      this.remotePlayers.set(id, player);
+      this.scene.add(player);
+      console.log(`Created new remote player: ${id}`);
+    }
+    
+    // Update player position and rotation
+    if (position) {
+      player.position.set(position.x, position.y, position.z);
+    }
+    
+    if (rotation) {
+      player.rotation.set(rotation.x, rotation.y, rotation.z);
+    }
+  }
+  
+  /**
+   * Create a mesh for a remote player
+   * @returns {THREE.Object3D} Player mesh
+   */
+  createRemotePlayerMesh() {
+    // For simplicity, we'll use a simple colored box for remote players
+    const geometry = new THREE.BoxGeometry(1, 1, 2);
+    const material = new THREE.MeshLambertMaterial({ color: 0xff0000 }); // Red for other players
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    // Add name label
+    const nameLabel = document.createElement('div');
+    nameLabel.className = 'player-label';
+    nameLabel.textContent = 'Player';
+    
+    const playerLabel = new CSS2DObject(nameLabel);
+    playerLabel.position.set(0, 1.5, 0);
+    mesh.add(playerLabel);
+    
+    return mesh;
   }
 }
 
@@ -17425,6 +16941,8 @@ export class ModelLoader {
 ### ./assets/ModelLoader.js END ###
 
 ### ./assets/SoundManager.js BEGIN ###
+import * as THREE from 'three';
+
 /**
  * SoundManager class for managing game audio
  */
@@ -17454,13 +16972,20 @@ export class SoundManager {
     // Create a sound loader
     const audioLoader = new THREE.AudioLoader();
     
-    // Define common sounds to preload
+    // Define common sounds to preload with updated paths
     const soundsToLoad = [
-      { name: 'laser', path: 'sounds/laser.mp3' },
-      { name: 'explosion', path: 'sounds/explosion.mp3' },
-      { name: 'hit', path: 'sounds/hit.mp3' },
-      { name: 'powerup', path: 'sounds/powerup.mp3' },
-      { name: 'engine', path: 'sounds/engine.mp3', loop: true }
+      { name: 'laser', path: 'assets/sounds/laser.mp3' },
+      { name: 'explosion', path: 'assets/sounds/explosion.mp3' },
+      { name: 'hit', path: 'assets/sounds/hit.mp3' },
+      { name: 'powerup', path: 'assets/sounds/powerup.mp3' },
+      { name: 'engine', path: 'assets/sounds/engine.mp3', loop: true },
+      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3' },
+      { name: 'weapon-switch', path: 'assets/sounds/weapon-switch.mp3' },
+      { name: 'collision', path: 'assets/sounds/collision.mp3' },
+      { name: 'weapon-charging', path: 'assets/sounds/weapon-charging.mp3' },
+      { name: 'bounce', path: 'assets/sounds/bounce.mp3' },
+      { name: 'weapon-armor-hit', path: 'assets/sounds/weapon-armor-hit.mp3' },
+      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3' }
     ];
     
     // Load each sound
@@ -17491,11 +17016,11 @@ export class SoundManager {
       }
     });
     
-    // Load background music
+    // Load background music with updated path
     try {
       this.music = new THREE.Audio(this.listener);
       audioLoader.load(
-        'sounds/background_music.mp3',
+        'assets/sounds/background_music.mp3',
         buffer => {
           this.music.setBuffer(buffer);
           this.music.setVolume(this.musicVolume);
@@ -17554,17 +17079,94 @@ export class SoundManager {
       return;
     }
     
-    // If sound is already playing, clone it
+    let soundToPlay = sound;
+    
+    // If sound is already playing, create a new instance
     if (sound.isPlaying) {
-      const soundClone = sound.clone();
-      soundClone.play();
-      
-      // Clean up clone after playing
-      soundClone.onEnded = () => {
-        soundClone.disconnect();
-      };
-    } else {
-      sound.play();
+      try {
+        // Create a new audio instance
+        if (position) {
+          // For positional audio
+          const soundClone = new THREE.PositionalAudio(this.listener);
+          soundClone.setBuffer(sound.buffer);
+          soundClone.setVolume(this.effectsVolume);
+          soundClone.setRefDistance(10); // Distance at which the volume is at full
+          soundToPlay = soundClone;
+        } else {
+          // For non-positional audio - create new instead of cloning
+          const soundClone = new THREE.Audio(this.listener);
+          soundClone.setBuffer(sound.buffer);
+          soundClone.setVolume(this.effectsVolume);
+          soundToPlay = soundClone;
+        }
+        
+        // Clean up clone after playing
+        soundToPlay.onEnded = () => {
+          if (soundToPlay.source) {
+            soundToPlay.disconnect();
+            soundToPlay.source = null; // Prevent memory leaks
+          }
+        };
+      } catch (error) {
+        console.error("Error creating new sound instance:", error);
+        // If cloning fails, don't play any sound rather than crashing
+        return;
+      }
+    }
+    
+    // If position is provided, make it positional
+    if (position && !sound.isPlaying) {
+      // We're using the original sound, convert it to positional if needed
+      if (!(soundToPlay instanceof THREE.PositionalAudio)) {
+        try {
+          // Create new positional audio
+          const positionalSound = new THREE.PositionalAudio(this.listener);
+          positionalSound.setBuffer(sound.buffer);
+          positionalSound.setVolume(this.effectsVolume);
+          positionalSound.setRefDistance(10);
+          soundToPlay = positionalSound;
+        } catch (error) {
+          console.error("Error creating positional audio:", error);
+          // Fall back to non-positional
+        }
+      }
+    }
+    
+    // Apply position if provided
+    if (position && soundToPlay instanceof THREE.PositionalAudio) {
+      try {
+        // Check if we need to add this to an object in the scene
+        const dummyObject = new THREE.Object3D();
+        dummyObject.position.copy(position);
+        dummyObject.add(soundToPlay);
+        
+        // Cleanup function to remove the dummy object after playing
+        soundToPlay.onEnded = () => {
+          if (dummyObject.parent) dummyObject.parent.remove(dummyObject);
+          if (soundToPlay.source) {
+            soundToPlay.disconnect();
+            soundToPlay.source = null;
+          }
+        };
+        
+        // Add to scene or listener (we assume listener is in scene)
+        if (this.listener && this.listener.parent) {
+          this.listener.parent.add(dummyObject);
+        } else {
+          console.warn('Audio listener has no parent, positional audio may not work correctly');
+          // Just play non-positional as fallback
+        }
+      } catch (error) {
+        console.error("Error setting up positional audio:", error);
+        // Fall back to just playing the sound
+      }
+    }
+    
+    // Play the sound
+    try {
+      soundToPlay.play();
+    } catch (error) {
+      console.error("Error playing sound:", error);
     }
   }
   
@@ -17696,11 +17298,39 @@ class AssetLoader {
         this.loadingState.errors = [];
 
         try {
-            await Promise.all([
-                this.loadModels(),
-                this.loadSounds(),
-                this.loadTextures()
-            ]);
+            const modelsToLoad = [
+                'ships/ALTSPACE1.glb',
+                'ships/ALTSPACE2.glb',
+                'terrain/Terrain.glb',
+                'terrain/Water.glb',
+                'objects/SP_Stone01.glb',
+                'objects/SP_Ground05.glb'
+            ];
+
+            const loader = new GLTFLoader();
+            
+            for (const model of modelsToLoad) {
+                try {
+                    const loaded = await this.loadWithRetry(() => 
+                        this.loadModel(loader, model, `assets/models/${model}`)
+                    );
+                    if (loaded) {
+                        console.log(`✅ Successfully loaded model: ${model}`);
+                        
+                        // Add aliases for ship models
+                        if (model === 'ships/ALTSPACE1.glb') {
+                            this.assets.models.set('FIGHTER', this.assets.models.get(model));
+                            this.assets.models.set('SCOUT', this.assets.models.get(model));
+                        } else if (model === 'ships/ALTSPACE2.glb') {
+                            this.assets.models.set('INTERCEPTOR', this.assets.models.get(model));
+                            this.assets.models.set('EXPERIMENTAL', this.assets.models.get(model));
+                        }
+                    }
+                } catch (error) {
+                    console.error(`⛔ Failed to load model ${model}:`, error);
+                    this.handleError('model', error);
+                }
+            }
 
             this.loadingState.completed = true;
             return true;
@@ -17708,30 +17338,6 @@ class AssetLoader {
             this.handleError('critical', error);
             return false;
         }
-    }
-
-    async loadModels() {
-        const loader = new GLTFLoader();
-        // Use absolute paths to ensure models are loaded correctly
-        const modelPaths = {
-            'FIGHTER': 'assets/models/ships/ALTSPACE1.glb',
-            'INTERCEPTOR': 'assets/models/ships/ALTSPACE2.glb',
-            // Add aliases for backward compatibility
-            'SCOUT': 'assets/models/ships/ALTSPACE1.glb',
-            'EXPERIMENTAL': 'assets/models/ships/ALTSPACE2.glb'
-        };
-
-        console.log('🚢 Starting to load ship models with paths:', modelPaths);
-
-        const loadPromises = Object.entries(modelPaths).map(([key, path]) => {
-            console.log(`🔄 Setting up loading for model: ${key} from path: ${path}`);
-            return this.loadWithRetry(() => this.loadModel(loader, key, path));
-        });
-
-        await Promise.all(loadPromises);
-        
-        // Apply consistent sizing to all ship models
-        this.normalizeShipSizes();
     }
 
     async loadModel(loader, key, path) {
@@ -17761,48 +17367,6 @@ class AssetLoader {
                     clearTimeout(timeoutId);
                     console.error(`⛔ Error loading model ${key}:`, error.message);
                     reject(new Error(`Error loading model ${key}: ${error.message}`));
-                }
-            );
-        });
-    }
-
-    async loadSounds() {
-        const audioLoader = new THREE.AudioLoader();
-        const soundPaths = {
-            'laser': 'assets/sounds/laser.mp3',
-            'laser-bounce': 'assets/sounds/laser-bounce.mp3',
-            'grenade-laser': 'assets/sounds/grenade-laser.mp3',
-            'bounce': 'assets/sounds/bounce.mp3'
-        };
-
-        const loadPromises = Object.entries(soundPaths).map(([key, path]) => {
-            return this.loadWithRetry(() => this.loadSound(audioLoader, key, path));
-        });
-
-        await Promise.all(loadPromises);
-    }
-
-    async loadSound(loader, key, path) {
-        return new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-                reject(new Error(`Sound loading timeout: ${key}`));
-            }, 10000);
-
-            loader.load(
-                path,
-                (buffer) => {
-                    clearTimeout(timeoutId);
-                    this.assets.sounds.set(key, buffer);
-                    this.onProgress?.(`Loaded sound: ${key}`);
-                    resolve();
-                },
-                (xhr) => {
-                    const percent = (xhr.loaded / xhr.total * 100);
-                    this.onProgress?.(`Loading ${key}: ${Math.round(percent)}%`);
-                },
-                (error) => {
-                    clearTimeout(timeoutId);
-                    reject(new Error(`Error loading sound ${key}: ${error.message}`));
                 }
             );
         });
@@ -17876,10 +17440,6 @@ class AssetLoader {
         return this.assets.models.get(key);
     }
 
-    getSound(key) {
-        return this.assets.sounds.get(key);
-    }
-
     getTexture(key) {
         return this.assets.textures.get(key);
     }
@@ -17911,7 +17471,6 @@ class AssetLoader {
 
         // Clear all maps
         this.assets.models.clear();
-        this.assets.sounds.clear();
         this.assets.textures.clear();
 
         // Reset loading state
@@ -17960,29 +17519,27 @@ class AssetLoader {
     getShipModel(key) {
         try {
             console.log(`Getting ship model: ${key}`);
-            const model = this.assets.models.get(key);
+            
+            // First try direct key lookup
+            let model = this.assets.models.get(key);
+            
+            // If not found, try the file path
+            if (!model) {
+                model = this.assets.models.get(`ships/${key}.glb`);
+            }
+            
+            // If still not found, try aliases
+            if (!model) {
+                console.log(`Trying to find model by alias: ${key}`);
+                if (key === 'FIGHTER' || key === 'SCOUT') {
+                    model = this.assets.models.get('ships/ALTSPACE1.glb');
+                } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL') {
+                    model = this.assets.models.get('ships/ALTSPACE2.glb');
+                }
+            }
             
             if (!model) {
                 console.warn(`Ship model with key "${key}" not found!`);
-                
-                // Try to find alternative models if aliases didn't work
-                if (key === 'FIGHTER' || key === 'SCOUT') {
-                    console.log('Trying to find FIGHTER/SCOUT alternatives');
-                    const altModel = this.assets.models.get('FIGHTER') || this.assets.models.get('SCOUT');
-                    if (altModel) {
-                        console.log('Found alternative model, cloning');
-                        return this.cloneAndPrepareModel(altModel);
-                    }
-                } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL') {
-                    console.log('Trying to find INTERCEPTOR/EXPERIMENTAL alternatives');
-                    const altModel = this.assets.models.get('INTERCEPTOR') || this.assets.models.get('EXPERIMENTAL');
-                    if (altModel) {
-                        console.log('Found alternative model, cloning');
-                        return this.cloneAndPrepareModel(altModel);
-                    }
-                }
-                
-                console.error(`No model or alternative found for key: ${key}`);
                 return null;
             }
             
@@ -18000,6 +17557,9 @@ class AssetLoader {
         
         // Clone the model
         const cloned = model.clone();
+        
+        // Apply consistent scaling as specified in Task 12
+        cloned.scale.set(0.45, 0.45, 0.45);
         
         // Ensure materials are properly cloned
         cloned.traverse(node => {
@@ -18047,6 +17607,48 @@ class AssetLoader {
             return null;
         }
     }
+
+    // Add the loadModels method used by ShipSelectionUI
+    async loadModels() {
+        console.log('Loading ship models for selection UI');
+        
+        if (this.assets.models.has('FIGHTER') && this.assets.models.has('INTERCEPTOR')) {
+            console.log('Ship models already loaded, using cached versions');
+            return true;
+        }
+        
+        const shipModels = [
+            'ships/ALTSPACE1.glb',
+            'ships/ALTSPACE2.glb'
+        ];
+        
+        const loader = new GLTFLoader();
+        
+        for (const model of shipModels) {
+            try {
+                const loaded = await this.loadWithRetry(() => 
+                    this.loadModel(loader, model, `assets/models/${model}`)
+                );
+                if (loaded) {
+                    console.log(`✅ Successfully loaded ship model: ${model} for selection UI`);
+                    
+                    // Add aliases for ship models
+                    if (model === 'ships/ALTSPACE1.glb') {
+                        this.assets.models.set('FIGHTER', this.assets.models.get(model));
+                        this.assets.models.set('SCOUT', this.assets.models.get(model));
+                    } else if (model === 'ships/ALTSPACE2.glb') {
+                        this.assets.models.set('INTERCEPTOR', this.assets.models.get(model));
+                        this.assets.models.set('EXPERIMENTAL', this.assets.models.get(model));
+                    }
+                }
+            } catch (error) {
+                console.error(`⛔ Failed to load ship model ${model}:`, error);
+                this.handleError('model', error);
+            }
+        }
+        
+        return true;
+    }
 }
 
 export default AssetLoader; 
@@ -18060,35 +17662,56 @@ export class Ship extends EventEmitter {
     constructor(scene, position, options = {}) {
         super();
         
-        this.options = {
+        this.scene = scene;
+        this.options = { 
+            health: 100, 
+            speed: 0.1,
             type: 'BASIC',
             teamId: null,
             teamColor: 0xffffff,
-            health: 100,
             maxHealth: 100,
-            speed: 0.1,
             size: 1.0,
             shipModel: 'STANDARD',
-            ...options
+            ...options 
         };
-
-        this.scene = scene;
+        
         this.health = this.options.health;
         this.maxHealth = this.options.maxHealth;
         this.isActive = true;
         this.teamId = this.options.teamId;
+        this.mesh = null;
         
-        // Create ship mesh
-        this.createMesh(position);
-        
-        // Add to scene
-        this.scene.add(this.mesh);
-        
-        // Initialize effects
-        this.initializeEffects();
+        // Initialize the ship if position is provided
+        if (position) {
+            this.createMesh(position);
+            // Add to scene if mesh was created
+            if (this.mesh) {
+                this.scene.add(this.mesh);
+            }
+            // Initialize effects
+            this.initializeEffects();
+        }
     }
 
     createMesh(position) {
+        // This is a base method that can be overridden by subclasses
+        // In the base class, implement default behavior
+        
+        const geometry = this.createGeometry();
+        const material = this.createMaterial();
+        
+        // Create mesh
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.mesh.position.copy(position || new THREE.Vector3());
+        this.mesh.position.y = this.options.size;
+        
+        // Add engine glow
+        this.addEngineGlow();
+        
+        return this.mesh;
+    }
+    
+    createGeometry() {
         // Ship models based on type
         const models = {
             STANDARD: () => new THREE.ConeGeometry(this.options.size, this.options.size * 2, 3),
@@ -18113,23 +17736,19 @@ export class Ship extends EventEmitter {
         // Get geometry based on ship model or fallback to STANDARD
         const geometry = (models[this.options.shipModel] || models.STANDARD)();
         geometry.rotateX(Math.PI / 2);
-
+        
+        return geometry;
+    }
+    
+    createMaterial() {
         // Create material with team color and effects
-        this.material = new THREE.MeshStandardMaterial({
+        return new THREE.MeshStandardMaterial({
             color: this.options.teamColor,
             emissive: this.options.teamColor,
             emissiveIntensity: 0.5,
             metalness: 0.7,
             roughness: 0.3
         });
-
-        // Create mesh
-        this.mesh = new THREE.Mesh(geometry, this.material);
-        this.mesh.position.copy(position);
-        this.mesh.position.y = this.options.size;
-
-        // Add engine glow
-        this.addEngineGlow();
     }
 
     addEngineGlow() {
@@ -18272,37 +17891,31 @@ export class Ship extends EventEmitter {
 
 ### ./entities/weapons/RegularLaser.js BEGIN ###
 import * as THREE from 'three';
+import { Laser } from './Laser';
 
 /**
  * RegularLaser weapon class
  */
-export class RegularLaser {
+export class RegularLaser extends Laser {
   constructor(weaponSystem) {
+    super(weaponSystem.scene, null, null, {
+      damage: 10, range: 50, speed: 50, color: 0x00ffff
+    });
     this.weaponSystem = weaponSystem;
-    
-    // Weapon properties
-    this.name = 'Regular Laser';
-    this.damage = 10;
-    this.range = 50;
-    this.speed = 50;
-    this.cooldown = 0.2; // seconds
-    this.energyCost = 5;
+    this.cooldown = 0.2;
     this.currentCooldown = 0;
-    
-    // Visuals
-    this.color = 0x00ffff; // Cyan color
-    this.size = { length: 0.8, width: 0.1 };
-    this.explosionSize = 0.3; // Size of hit effect
-    
-    // Sound
-    this.sound = 'laser';
+    this.energyCost = 5;
   }
   
   /**
-   * Update cooldown timer
+   * Update cooldown timer and laser position
    * @param {number} deltaTime - Time since last frame in seconds
    */
   update(deltaTime) {
+    // Call parent update to handle movement and range checking
+    super.update(deltaTime);
+    
+    // Handle cooldown timer
     if (this.currentCooldown > 0) {
       this.currentCooldown -= deltaTime;
     }
@@ -18324,25 +17937,28 @@ export class RegularLaser {
    * @param {object} player - Player object for energy management
    * @returns {boolean} - True if weapon fired successfully
    */
-  fire(position, direction, player) {
-    if (!this.canFire(player)) return false;
+  fire(position, direction, options = {}) {
+    // Position and orient the laser
+    this.mesh.position.copy(position);
+    this.direction = direction.normalize();
+    this.initialPosition = position.clone();
     
-    // Reset cooldown
-    this.currentCooldown = this.cooldown;
+    // Store initial properties
+    this.teamId = options.teamId;
     
-    // Consume energy
-    player.energy -= this.energyCost;
+    // Set color based on team
+    if (options.teamColor) {
+      if (this.mesh.material) {
+        this.mesh.material.color.set(options.teamColor);
+      }
+    }
     
-    // Create laser projectile
-    const projectile = this.createProjectile(position, direction);
+    // Play sound if available
+    if (this.weaponSystem.scene.soundManager) {
+      this.weaponSystem.scene.soundManager.playSound('laser', position);
+    }
     
-    // Add projectile to weapon system
-    this.weaponSystem.addProjectile(projectile);
-    
-    // Play sound
-    this.weaponSystem.soundManager?.playSound(this.sound);
-    
-    return true;
+    return this;
   }
   
   /**
@@ -18480,32 +18096,23 @@ export class WeaponSystem {
   }
   
   fireWeapon(weaponType, position, direction, options = {}) {
-    // Get weapon configuration
-    const weaponConfig = this.weaponTypes[weaponType];
-    if (!weaponConfig) {
-      console.error(`Unknown weapon type: ${weaponType}`);
-      return null;
-    }
+    const config = this.weaponTypes[weaponType] || this.weaponTypes['LASER'];
+    let projectile = this.createLaser(position, direction, {
+      ...config,
+      ...options
+    });
     
-    // Create projectile based on weapon type
-    let projectile;
-    
-    switch (weaponType) {
-      case 'LASER':
-        projectile = this.createLaser(position, direction, {
-          ...weaponConfig,
-          ...options
-        });
-        break;
-      // Other weapon types will be implemented later
-      default:
-        console.warn(`Weapon type ${weaponType} not yet implemented`);
-        return null;
-    }
-    
-    // Add to projectiles list for tracking
     if (projectile) {
       this.projectiles.push(projectile);
+    }
+    
+    // Network synchronization if available
+    if (this.scene.networkManager) {
+      this.scene.networkManager.emit('laser_shot', {
+        origin: position,
+        direction: direction,
+        type: weaponType
+      });
     }
     
     return projectile;
@@ -18746,95 +18353,38 @@ import * as THREE from 'three';
 
 export class Laser {
   constructor(scene, position, direction, options = {}) {
-    // Default options
-    this.options = {
-      color: 0x00ffff,
-      speed: 0.3,
-      length: 3,
-      thickness: 0.1,
-      lifetime: 2000, // milliseconds
-      ...options
-    };
-    
-    // Reference to the scene
     this.scene = scene;
-    
-    // Position and direction
-    this.position = position.clone();
-    this.direction = direction.clone().normalize();
-    
-    // Tracking
-    this.isActive = true;
-    this.creationTime = Date.now();
-    this.hasHit = false;
-    
-    // Create laser mesh
-    this.createLaser();
-    
-    // Add to scene
+    this.options = { speed: 0.3, color: 0x00ffff, ...options };
+    this.mesh = this.createMesh();
+    if (position) this.mesh.position.copy(position);
+    if (direction) this.direction = direction.normalize();
     this.scene.add(this.mesh);
+    this.isActive = true;
   }
-  
-  createLaser() {
-    // Create laser geometry
-    const geometry = new THREE.CylinderGeometry(
-      this.options.thickness, 
-      this.options.thickness, 
-      this.options.length, 
-      8
-    );
-    // Rotate geometry to align with Z-axis
+
+  createMesh() {
+    const geometry = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 8);
     geometry.rotateX(Math.PI / 2);
-    
-    // Create material with glow effect
-    this.material = new THREE.MeshStandardMaterial({
-      color: this.options.color,
-      emissive: this.options.color,
-      emissiveIntensity: 1,
-      transparent: true,
-      opacity: 0.8
-    });
-    
-    // Create mesh
-    this.mesh = new THREE.Mesh(geometry, this.material);
-    
-    // Position at starting point
-    this.mesh.position.copy(this.position);
-    
-    // Orient along direction
-    this.mesh.lookAt(this.position.clone().add(this.direction));
-    
-    // Add glow effect
-    this.addGlowEffect();
-  }
-  
-  addGlowEffect() {
-    // Create point light for glow
-    this.light = new THREE.PointLight(this.options.color, 1, 3);
-    this.light.position.copy(this.position);
-    this.scene.add(this.light);
-    
-    // Add trail particles if advanced effects are enabled
-    // (Placeholder for future particle effects)
+    const material = new THREE.MeshBasicMaterial({ color: this.options.color });
+    return new THREE.Mesh(geometry, material);
   }
   
   update(deltaTime) {
     if (!this.isActive) return;
     
-    // Move laser forward
-    const movement = this.direction.clone().multiplyScalar(this.options.speed * deltaTime);
-    this.position.add(movement);
-    this.mesh.position.copy(this.position);
-    
-    // Update light position
-    if (this.light) {
-      this.light.position.copy(this.position);
+    // Move in direction
+    if (this.direction) {
+      this.mesh.position.add(
+        this.direction.clone().multiplyScalar(this.options.speed * deltaTime)
+      );
     }
     
-    // Check lifetime
-    const age = Date.now() - this.creationTime;
-    if (age > this.options.lifetime) {
-      this.deactivate();
+    // Check if laser has exceeded its range
+    if (this.options.range) {
+      const distance = this.mesh.position.distanceTo(this.initialPosition);
+      if (distance > this.options.range) {
+        this.deactivate();
+      }
     }
   }
   
@@ -18842,21 +18392,21 @@ export class Laser {
     if (!this.isActive) return;
     
     this.isActive = false;
-    
-    // Remove from scene
-    this.scene.remove(this.mesh);
-    if (this.light) {
-      this.scene.remove(this.light);
+    if (this.mesh && this.scene) {
+      this.scene.remove(this.mesh);
     }
     
-    // Dispose of resources
-    this.mesh.geometry.dispose();
-    this.material.dispose();
-  }
-  
-  handleCollision() {
-    this.hasHit = true;
-    this.deactivate();
+    // Dispose of geometry and materials
+    if (this.mesh) {
+      if (this.mesh.geometry) this.mesh.geometry.dispose();
+      if (this.mesh.material) {
+        if (Array.isArray(this.mesh.material)) {
+          this.mesh.material.forEach(material => material.dispose());
+        } else {
+          this.mesh.material.dispose();
+        }
+      }
+    }
   }
 } 
 ### ./entities/weapons/Laser.js END ###
@@ -19346,39 +18896,18 @@ export class Enemy extends Ship {
   }
   
   checkWallCollision(wallSegments) {
-    if (!wallSegments || !Array.isArray(wallSegments) || wallSegments.length === 0) return false;
-    
-    const enemyPosition = new THREE.Vector2(this.mesh.position.x, this.mesh.position.z);
-    const enemyRadius = this.options.size;
-    
+    const pos = this.mesh.position;
     for (const segment of wallSegments) {
-      if (!segment || !segment.start || !segment.end) continue;
-      
-      const wallStart = new THREE.Vector2(segment.start.x, segment.start.z);
-      const wallEnd = new THREE.Vector2(segment.end.x, segment.end.z);
-      const wallVector = wallEnd.clone().sub(wallStart);
-      const enemyToWallStart = enemyPosition.clone().sub(wallStart);
-      
-      const wallLength = wallVector.length();
-      const wallDirection = wallVector.clone().normalize();
-      const projectionLength = enemyToWallStart.dot(wallDirection);
-      
-      let closestPoint;
-      if (projectionLength < 0) {
-        closestPoint = wallStart;
-      } else if (projectionLength > wallLength) {
-        closestPoint = wallEnd;
-      } else {
-        closestPoint = wallStart.clone().add(wallDirection.multiplyScalar(projectionLength));
-      }
-      
-      const distance = enemyPosition.distanceTo(closestPoint);
-      if (distance < enemyRadius) {
-        return true;
-      }
+      const closest = this.getClosestPoint(pos, segment.start, segment.end);
+      if (pos.distanceTo(closest) < this.options.size) return true;
     }
-    
     return false;
+  }
+
+  getClosestPoint(point, start, end) {
+    const line = end.clone().sub(start);
+    const t = Math.max(0, Math.min(1, point.clone().sub(start).dot(line) / line.lengthSq()));
+    return start.clone().add(line.multiplyScalar(t));
   }
 } 
 ### ./entities/enemies/Enemy.js END ###
@@ -19420,17 +18949,22 @@ export class Player extends Ship {
       boost: false
     };
     
+    // Bind event handler methods to preserve 'this' context
+    this.handleKeyDown = this.handleKeyDown.bind(this);
+    this.handleKeyUp = this.handleKeyUp.bind(this);
+    this.handleMouseMove = this.handleMouseMove.bind(this);
+    
     // Initialize controls
     this.setupControls();
   }
 
   setupControls() {
     // Keyboard controls
-    document.addEventListener('keydown', (event) => this.handleKeyDown(event));
-    document.addEventListener('keyup', (event) => this.handleKeyUp(event));
+    document.addEventListener('keydown', this.handleKeyDown);
+    document.addEventListener('keyup', this.handleKeyUp);
     
     // Mouse controls for aiming
-    document.addEventListener('mousemove', (event) => this.handleMouseMove(event));
+    document.addEventListener('mousemove', this.handleMouseMove);
   }
 
   handleKeyDown(event) {
@@ -19531,6 +19065,14 @@ export class Player extends Ship {
     const bounds = 50;
     this.mesh.position.x = Math.max(-bounds, Math.min(bounds, this.mesh.position.x));
     this.mesh.position.z = Math.max(-bounds, Math.min(bounds, this.mesh.position.z));
+    
+    // Broadcast position updates for multiplayer
+    if (this.networkManager) {
+      this.networkManager.emit('player_move', {
+        position: this.mesh.position,
+        rotation: this.mesh.rotation,
+      });
+    }
   }
 
   updateRotation(deltaTime) {
@@ -19687,6 +19229,8 @@ export class Player extends Ship {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Drift</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles/main.css">
+    <link rel="stylesheet" href="./styles/controls.css">
 </head>
 <body>
     <div id="loading-screen">
@@ -19732,6 +19276,7 @@ export class Player extends Ship {
         <p>Avoid the colored obstacles!</p>
     </div>
 </body>
+<script type="module" src="./index.js"></script>
 </html> 
 ### ./index.html END ###
 
@@ -19847,6 +19392,8 @@ import { InfiniteMap } from './core/InfiniteMap';
 import { NetworkManager } from './core/NetworkManager';
 import { CSS2DRenderer, CSS2DObject } from '@three/examples/renderers/CSS2DRenderer';
 import { GAME_CONFIG } from './config/GameConfig';
+import { Player } from './entities/player/Player';
+import { SoundManager } from './assets/SoundManager';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -19855,27 +19402,20 @@ class SimpleGame {
     // Player information
     this.playerName = 'Pilot';  // Default player name
     
-    // Sound management
-    this.audioListener = new THREE.AudioListener();
-    this.soundPools = new Map();
-    this.loadedSounds = new Map();
-    this.soundLoadPromises = new Map();
-
     // Create the asset loader
     this.assetLoader = new AssetLoader().setCallbacks(
       (message) => this.updateLoadingUI(message),
       (type, error) => this.handleLoadError(type, error)
     );
     
+    // Initialize SoundManager
+    this.soundManager = new SoundManager();
+    
     // Asset loading state
     this.loadingState = {
       started: false,
       completed: false,
-      errors: [],
-      timeouts: new Map(),
-      retryCount: new Map(),
-      maxRetries: 3,
-      loadingPromises: new Map()
+      errors: []
     };
     
     // Track assets loading
@@ -19907,6 +19447,17 @@ class SimpleGame {
     
     // Create game UI
     this.ui = new GameUI();
+    
+    // Create player after scene setup (as specified in Task 8)
+    this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+      type: 'PLAYER',
+      shipModel: 'STANDARD',
+      teamColor: 0x00ffff
+    });
+    this.scene.add(this.player.mesh);
+    
+    // For backward compatibility with existing code
+    this.playerShip = this.player.mesh;
     
     // Game properties
     this.boundarySize = 100; // Size of the playable area
@@ -19946,6 +19497,10 @@ class SimpleGame {
     
     // Initialize NetworkManager
     this.networkManager = new NetworkManager();
+    
+    // Initialize remotePlayers map for multiplayer
+    this.remotePlayers = new Map();
+    
     this.networkManager.on('connected', () => {
       console.log('Connected to game server!');
       document.getElementById('connection-status').textContent = 'Connected';
@@ -19966,8 +19521,20 @@ class SimpleGame {
     
     this.networkManager.on('player_left', (id) => {
       console.log('Player left:', id);
+      // Remove player mesh if it exists
+      const player = this.remotePlayers.get(id);
+      if (player) {
+        this.scene.remove(player);
+        this.remotePlayers.delete(id);
+        console.log(`Removed remote player: ${id}`);
+      }
       // Update player count
       this.updatePlayerCount();
+    });
+    
+    // Add player update handling
+    this.networkManager.on('player_update', (data) => {
+      this.updateRemotePlayer(data.id, data.position, data.rotation);
     });
     
     // Add laser shot handling
@@ -19993,28 +19560,35 @@ class SimpleGame {
   }
   
   setupScene() {
-    // Create scene, camera, and renderer
+    // Create Three.js Scene
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0a1f); // Dark blue background
     
-    // Set up isometric camera
-    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.camera.position.set(10, 10, 10);
-    this.camera.lookAt(0, 0, 0);
-    
-    // Create WebGL renderer
+    // Setup WebGL renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('game-container').appendChild(this.renderer.domElement);
     
-    // Add CSS2D renderer for player name labels
-    this.labelRenderer = new CSS2DRenderer();
-    this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
-    this.labelRenderer.domElement.style.position = 'absolute';
-    this.labelRenderer.domElement.style.top = '0';
-    this.labelRenderer.domElement.style.pointerEvents = 'none';
-    document.body.appendChild(this.labelRenderer.domElement);
+    // Create camera
+    this.camera = new THREE.PerspectiveCamera(
+      60, // FOV
+      window.innerWidth / window.innerHeight, // Aspect ratio
+      0.1, // Near
+      1000 // Far
+    );
+    
+    // Position camera
+    this.camera.position.set(0, 7, 15); // Slightly above and behind player
+    this.camera.lookAt(0, 0, 0);
+    
+    // Attach audio listener to camera
+    if (this.soundManager) {
+      this.camera.add(this.soundManager.getListener());
+      console.log('Audio listener attached to camera');
+    }
     
     // Add lighting
     const ambientLight = new THREE.AmbientLight(0x404040);
@@ -20031,378 +19605,36 @@ class SimpleGame {
     this.createObstacles();
   }
   
-  loadAssets() {
+  async loadAssets() {
     if (this.loadingState.started) {
-      console.warn('🔍 Asset loading already in progress');
-      return;
+        console.warn('🔍 Asset loading already in progress');
+        return;
     }
     
-    console.log('🔍 Starting asset loading process');
-    console.log('Current loading state:', JSON.stringify(this.loadingState, null, 2));
-    
-    this.loadingState.started = true;
-    this.loadingState.completed = false;
-    this.loadingState.errors = [];
-    
-    // Show loading message
     this.updateLoadingUI('Loading game assets...');
     
-    // Create placeholder ship until model loads
-    this.createDefaultShip();
-    
-    // Load assets in parallel with proper error handling
-    Promise.all([
-      this.loadSounds().catch(error => {
-        console.error('🔍 Sound loading failed:', error);
-        this.handleLoadError('sounds', error);
-        return null;
-      }),
-      this.loadAssetsWithLoader().catch(error => {
-        console.error('🔍 Asset loading failed:', error);
-        this.handleLoadError('assets', error);
-        return null;
-      })
-    ]).then(() => {
-      console.log('🔍 All asset loading promises completed');
-      // Check loading progress even if some assets failed
-      this.checkLoadingProgress();
-    }).catch(error => {
-      console.error('🔍 Critical error loading assets:', error);
-      this.handleLoadError('critical', error);
-    });
-  }
-  
-  async loadAssetsWithLoader() {
-    console.log('🟢🟢🟢 Loading assets with AssetLoader...');
-    
-    // Use AssetLoader to load all assets including ship models
-    await this.assetLoader.loadAll();
-    this.shipModelLoaded = true;
-    console.log('✅ All assets loaded successfully via AssetLoader');
-    
-    return true;
-  }
-  
-  loadSounds() {
-    // AudioListener should already be initialized in constructor
-    if (!this.camera) {
-      console.error('Camera not initialized when trying to load sounds');
-      return Promise.reject(new Error('Camera not initialized'));
-    }
-
-    // Add listener to camera if not already added
-    if (!this.camera.children.includes(this.audioListener)) {
-      this.camera.add(this.audioListener);
-    }
-    
-    // Define sounds to load
-    const soundsToLoad = [
-      { name: 'laser', path: 'assets/sounds/laser.mp3', poolSize: 5 },
-      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3', poolSize: 3 },
-      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3', poolSize: 2 },
-      { name: 'bounce', path: 'assets/sounds/bounce.mp3', poolSize: 3 },
-      { name: 'weapon-switch', path: 'assets/sounds/weapon-switch.mp3', poolSize: 2 },
-      { name: 'weapon-charging', path: 'assets/sounds/weapon-charging.mp3', poolSize: 1, volume: 0.2 }  // Lower volume for background effect
-    ];
-    
-    // Create a pool of sounds for frequently played effects
-    const audioLoader = new THREE.AudioLoader();
-    
-    // Load each sound only if not already loaded
-    soundsToLoad.forEach(soundInfo => {
-      if (!this.loadedSounds.has(soundInfo.name)) {
-        const loadPromise = new Promise((resolve, reject) => {
-          // Set a timeout for loading
-          const timeoutId = setTimeout(() => {
-            reject(new Error(`Sound loading timeout: ${soundInfo.name}`));
-          }, 10000); // 10 second timeout
-          
-          audioLoader.load(
-            soundInfo.path,
-            buffer => {
-              clearTimeout(timeoutId);
-              
-              // Create sound pool
-              const pool = [];
-              for (let i = 0; i < soundInfo.poolSize; i++) {
-                const sound = new THREE.Audio(this.audioListener);
-                sound.setBuffer(buffer);
-                sound.setVolume(soundInfo.volume || 0.5); // Use specified volume or default to 0.5
-                pool.push({ sound, inUse: false, lastUsed: 0 });
-              }
-              
-              this.soundPools.set(soundInfo.name, pool);
-              this.loadedSounds.set(soundInfo.name, buffer);
-              console.log(`Loaded sound: ${soundInfo.name} (${soundInfo.poolSize} instances)`);
-              resolve();
-            },
-            xhr => {
-              console.log(`${soundInfo.name} ${(xhr.loaded / xhr.total * 100)}% loaded`);
-            },
-            error => {
-              clearTimeout(timeoutId);
-              console.error(`Error loading sound ${soundInfo.name}:`, error);
-              reject(error);
-            }
-          );
-        });
-        
-        this.soundLoadPromises.set(soundInfo.name, loadPromise);
-      }
-    });
-    
-    // Return a promise that resolves when all sounds are loaded
-    return Promise.all(Array.from(this.soundLoadPromises.values()))
-      .then(() => {
-        console.log('All sounds loaded successfully');
-      })
-      .catch(error => {
-        console.error('Error loading sounds:', error);
-        // Continue without sounds rather than breaking the game
-      });
-  }
-  
-  playSound(name) {
-    const pool = this.soundPools.get(name);
-    if (!pool || pool.length === 0) {
-      console.warn(`Sound "${name}" not found or not loaded yet.`);
-      return;
-    }
-    
     try {
-      const now = Date.now();
-      
-      // Find available sound that hasn't been used recently
-      let soundWrapper = pool.find(wrapper => 
-        !wrapper.inUse && (now - wrapper.lastUsed > 50) // 50ms minimum delay between same sound
-      );
-      
-      // If no sound available, find the oldest one
-      if (!soundWrapper) {
-        soundWrapper = pool.reduce((oldest, current) => 
-          (!oldest || current.lastUsed < oldest.lastUsed) ? current : oldest
-        );
-        
-        // If the oldest sound was used too recently, skip playing
-        if (now - soundWrapper.lastUsed < 50) {
-          return;
+        // Create initial player with default ship
+        if (!this.player) {
+            this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+                type: 'PLAYER',
+                shipModel: 'STANDARD',
+                teamColor: 0x00ffff
+            });
+            this.playerShip = this.player.mesh; // For backward compatibility
         }
         
-        soundWrapper.sound.stop(); // Stop it if it's playing
-      }
-      
-      // Mark as in use and update timestamp
-      soundWrapper.inUse = true;
-      soundWrapper.lastUsed = now;
-      
-      // Play the sound
-      soundWrapper.sound.play();
-      
-      // Set up callback to release back to the pool
-      soundWrapper.sound.onEnded = () => {
-        soundWrapper.inUse = false;
-      };
+        // Load all assets through AssetLoader
+        await this.assetLoader.loadAll();
+        this.assetsLoaded = true;
+        this.shipModelLoaded = true;
+        
+        console.log('✅ All assets loaded successfully');
+        this.checkLoadingProgress();
     } catch (error) {
-      console.warn(`Error playing sound "${name}":`, error);
+        console.error('🔍 Critical error loading assets:', error);
+        this.handleLoadError('critical', error);
     }
-  }
-  
-  createDefaultShip() {
-    // Create a simple ship geometry as placeholder
-    const geometry = new THREE.ConeGeometry(0.5, 1, 8);
-    geometry.rotateX(Math.PI / 2);
-    
-    // Create glowing material
-    const material = new THREE.MeshPhongMaterial({
-      color: 0x00ffff,
-      emissive: 0x006666,
-      shininess: 100
-    });
-    
-    // Create ship mesh
-    this.playerShip = new THREE.Mesh(geometry, material);
-    this.playerShip.position.set(0, 0.5, 0);
-    this.scene.add(this.playerShip);
-    
-    // Add a point light to the ship to make it glow
-    const light = new THREE.PointLight(0x00ffff, 1, 2);
-    light.position.set(0, 0, 0);
-    this.playerShip.add(light);
-    
-    // Add ship properties
-    this.shipSpeed = 0.1;
-    this.rotationSpeed = 0.05;
-  }
-  
-  setShipModel(type) {
-    console.log('🔍 Setting ship model:', type);
-    
-    // Get the ship model from assets
-    let model = this.assetLoader.getShipModel(type);
-    
-    // If model is null or undefined, create fallback model
-    if (!model) {
-      console.warn('⚠️ Using fallback ship model');
-      if (this.debugging) {
-        console.trace('Stack trace for fallback ship model');
-      }
-      
-      if (!THREE.BoxGeometry) {
-        console.error('THREE.BoxGeometry not available for fallback ship');
-        return;
-      }
-      
-      try {
-        console.log('📦 Creating simple fallback model');
-        // Create a simple fallback model (box)
-        const geometry = new THREE.BoxGeometry(1, 0.5, 2);
-        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
-        model = new THREE.Mesh(geometry, material);
-      } catch (error) {
-        console.error('Error creating fallback model:', error);
-        return;
-      }
-    }
-    
-    // Make all ships smaller (50-60% smaller)
-    const scaleFactor = 0.45; // About 55% smaller
-    model.scale.set(scaleFactor, scaleFactor, scaleFactor);
-    console.log(`DIAGNOSTIC: Applied reduced scale: [${model.scale.x}, ${model.scale.y}, ${model.scale.z}]`);
-    
-    // Log ship model information
-    console.log('🔍 Using ship model:', {
-      children: model.children?.length || 0,
-      position: model.position,
-      rotation: model.rotation,
-      scale: model.scale
-    });
-
-    // Store the model reference for thruster effects
-    this.shipModel = model;
-
-    // Add the model to the player ship group
-    this.playerShip.add(model);
-    
-    // Position the ship
-    this.playerShip.position.set(0, 0.5, 0);
-    
-    // Add to scene
-    this.scene.add(this.playerShip);
-    
-    // Add thruster effects
-    this.addThrusterGlow();
-    
-    // Add player name label above the ship
-    this.addPlayerNameLabel();
-    
-    console.log('✅ Ship model set successfully');
-    
-    // Set a fixed collision radius that works with the reduced ship size
-    const fixedCollisionRadius = 0.35; // Reduced radius to match smaller ship size
-    this.playerShip.userData.collisionRadius = fixedCollisionRadius;
-    console.log(`DIAGNOSTIC: Set ship collision radius: ${this.playerShip.userData.collisionRadius}`);
-  }
-  
-  // Function to add a player name label above the ship
-  addPlayerNameLabel() {
-    // Remove any existing name label
-    if (this.playerNameLabel) {
-      this.playerShip.remove(this.playerNameLabel);
-      this.playerNameLabel = null;
-    }
-    
-    // Create a canvas for the player name
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 512;
-    canvas.height = 128;
-    
-    // Set canvas background transparent
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Create gradient for the text
-    const gradient = context.createLinearGradient(0, 0, canvas.width, 0);
-    gradient.addColorStop(0, '#00c3ff');    // Cyan blue
-    gradient.addColorStop(0.5, '#80ffff');  // Light cyan
-    gradient.addColorStop(1, '#00c3ff');    // Cyan blue
-    
-    // Draw player name on canvas
-    context.font = 'bold 40px Orbitron';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    
-    // Add shadow/glow effect
-    context.shadowColor = '#0062ff';
-    context.shadowBlur = 15;
-    
-    // Draw stroke
-    context.strokeStyle = '#000';
-    context.lineWidth = 6;
-    context.strokeText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Fill with gradient
-    context.fillStyle = gradient;
-    context.fillText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Add a subtle underline
-    context.beginPath();
-    context.moveTo(canvas.width / 2 - context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.lineTo(canvas.width / 2 + context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.strokeStyle = '#00c3ff';
-    context.lineWidth = 2;
-    context.stroke();
-    
-    // Add a mini rank/icon before the name
-    const icon = this.getPlayerIcon();
-    const iconSize = 30;
-    context.font = 'bold 20px Orbitron';
-    context.fillStyle = '#ffcc00';
-    context.strokeStyle = '#000';
-    context.lineWidth = 3;
-    const iconX = canvas.width / 2 - context.measureText(this.playerName).width / 2 - iconSize - 10;
-    const iconY = canvas.height / 2;
-    context.strokeText(icon, iconX, iconY);
-    context.fillText(icon, iconX, iconY);
-    
-    // Create texture from canvas
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    
-    // Create sprite material
-    const material = new THREE.SpriteMaterial({ 
-      map: texture,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    });
-    
-    // Create sprite
-    const sprite = new THREE.Sprite(material);
-    sprite.scale.set(3, 0.8, 1);
-    sprite.position.set(0, 1.8, 0); // Position above the ship
-    
-    // Store reference and add to ship
-    this.playerNameLabel = sprite;
-    this.playerShip.add(this.playerNameLabel);
-    
-    console.log(`Added enhanced name label for player: ${this.playerName}`);
-  }
-  
-  // Helper function to get player icon based on name
-  getPlayerIcon() {
-    // Simple hash function to determine icon
-    let hash = 0;
-    for (let i = 0; i < this.playerName.length; i++) {
-      hash = ((hash << 5) - hash) + this.playerName.charCodeAt(i);
-      hash |= 0; // Convert to 32bit integer
-    }
-    
-    // Array of possible icons
-    const icons = ['⚡', '✦', '★', '♦', '◆', '⬢', '⚔️', '⚜️', '☄️', '⚪'];
-    
-    // Use hash to select icon
-    const iconIndex = Math.abs(hash) % icons.length;
-    return icons[iconIndex];
   }
   
   handleLoadError(assetType, error) {
@@ -20447,11 +19679,7 @@ class SimpleGame {
         this.loadingState = {
           started: false,
           completed: false,
-          errors: [],
-          timeouts: new Map(),
-          retryCount: new Map(),
-          maxRetries: 3,
-          loadingPromises: new Map()
+          errors: []
         };
         this.loadAssets();
       };
@@ -20469,46 +19697,37 @@ class SimpleGame {
   
   checkLoadingProgress() {
     console.log('🔍 Checking loading progress...');
-    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
-    console.log('Sound pools size:', this.soundPools.size);
-    console.log('Ship model loaded:', this.shipModelLoaded);
     
-    // Define what constitutes a fully loaded game
+    // Log loading state
+    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
+    
+    // Define what's required for a fully loaded game
     const requiredAssets = {
       shipModel: this.shipModelLoaded,
-      sounds: this.soundPools.size > 0
+      assetsLoaded: this.assetLoader.loadingState.completed
     };
     
     // Check if all required assets are loaded
-    const allAssetsLoaded = Object.entries(requiredAssets).every(([name, loaded]) => {
-      if (!loaded) {
-        console.log(`🔍 Asset "${name}" not loaded yet`);
-      }
+    const allAssetsLoaded = Object.entries(requiredAssets).every(([key, loaded]) => {
+      console.log(`🔍 ${key}: ${loaded ? '✅' : '❌'}`);
       return loaded;
     });
     
     if (allAssetsLoaded) {
-      console.log('✅ All required assets loaded successfully!');
+      console.log('✅ All required assets loaded!');
       this.loadingState.completed = true;
-      
-      // Clear any remaining timeouts
-      this.loadingState.timeouts.forEach(timeoutId => {
-        clearTimeout(timeoutId);
-      });
-      this.loadingState.timeouts.clear();
-      
-      // Show start screen
       this.showStartScreen();
     } else {
-      // Show which assets are still loading
+      // Log which assets are still pending
       const pendingAssets = Object.entries(requiredAssets)
-        .filter(([name, loaded]) => !loaded)
-        .map(([name]) => name);
+        .filter(([_, loaded]) => !loaded)
+        .map(([key]) => key);
+      console.log('⏳ Still waiting for:', pendingAssets);
       
-      console.log(`🔍 Still loading: ${pendingAssets.join(', ')}`);
-      this.updateLoadingUI(`Loading: ${pendingAssets.join(', ')}...`);
+      // Update loading UI
+      this.updateLoadingUI(`Loading... (${pendingAssets.join(', ')})`);
       
-      // Check again in 1 second if not all assets are loaded
+      // Check again after a delay
       setTimeout(() => this.checkLoadingProgress(), 1000);
     }
   }
@@ -20550,6 +19769,12 @@ class SimpleGame {
   }
   
   addThrusterGlow() {
+    // Check if player and player mesh exist
+    if (!this.player || !this.player.mesh) {
+      console.warn('Cannot add thruster glow: Player or player mesh is not initialized');
+      return;
+    }
+    
     // Create a single, efficient thruster glow effect
     // Use instanced mesh for better performance if you have multiple thrusters
     
@@ -20566,6 +19791,9 @@ class SimpleGame {
     thruster.position.set(0, 0, -0.7); // Position at the back of the ship
     thruster.rotation.x = Math.PI / 2;
     thruster.name = 'thruster'; // Name it for easier reference later
+    
+    // Add thruster to player mesh
+    this.player.mesh.add(thruster);
     
     // Add point light for the thruster
     const thrusterLight = new THREE.PointLight(0x00ffff, 1, 3);
@@ -20625,134 +19853,101 @@ class SimpleGame {
     
     // Load texture first
     const textureLoader = new THREE.TextureLoader();
-    const terrainTexture = textureLoader.load('assets/models/textures/Colors3.png', 
-      // Success callback
-      (texture) => {
-        console.log('Terrain texture (Colors3.png) loaded successfully');
-        // Configure texture 
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(8, 8); // Repeat the texture more times for better detail
-        
-        // Now load the Terrain.glb model
-        loadTerrainModel(texture);
-      },
-      // Progress callback
-      undefined,
-      // Error callback
-      (error) => {
-        console.error('Error loading Colors3.png texture:', error);
-        // Try fallback to original texture
-        textureLoader.load('assets/models/textures/tex.png', 
-          fallbackTexture => {
-            console.log('Fallback texture loaded');
-            fallbackTexture.wrapS = THREE.RepeatWrapping;
-            fallbackTexture.wrapT = THREE.RepeatWrapping;
-            fallbackTexture.repeat.set(5, 5);
-            loadTerrainModel(fallbackTexture);
-          },
-          undefined,
-          fallbackError => {
-            console.error('Error loading fallback texture:', fallbackError);
-            // Load model anyway without texture
-            loadTerrainModel(null);
-          }
-        );
-      }
-    );
-    
-    // Function to load terrain model with texture
-    const loadTerrainModel = (texture) => {
-      const terrainPath = 'assets/models/terrain/Terrain.glb';
-      
-      // Use GLTFLoader properly imported at the top
-      const loader = new GLTFLoader();
-      loader.load(
-        terrainPath,
-        (gltf) => {
-          console.log('Terrain model loaded successfully');
-          
-          // Remove the temporary floor
-          if (this.floor) {
-            this.scene.remove(this.floor);
-            this.floor.geometry.dispose();
-            this.floor.material.dispose();
-          }
-          
-          // Set up the terrain model
-          const terrain = gltf.scene;
-          
-          // Scale the terrain appropriately
-          const terrainScale = 100; // Adjust this value to change the overall size
-          terrain.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
-          
-          // Position terrain at center and slightly below zero to avoid z-fighting
-          terrain.position.set(0, -0.2, 0);
-          
-          // Set up materials with texture
-          terrain.traverse((node) => {
-            if (node.isMesh) {
-              // Enable shadows
-              node.castShadow = false; // We don't want the floor to cast shadows
-              node.receiveShadow = true; // But we do want it to receive shadows
-              
-              // Apply texture if available
-              if (node.material && texture) {
-                // Store original colors for blending
-                const originalColor = node.material.color ? node.material.color.clone() : new THREE.Color(0xffffff);
-                
-                // Apply texture
-                node.material.map = texture;
-                
-                // Make the terrain slightly emissive for a subtle glow
-                node.material.emissive = new THREE.Color(0x006688);
-                node.material.emissiveIntensity = 0.2;
-                
-                // Add more vibrant color variation for Colors3 texture
-                if (texture.source.data.src.includes('Colors3')) {
-                  // More vibrant color blend for the new texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x99ccff), 0.4);
-                  // Increase the contrast and saturation
-                  node.material.roughness = 0.6;
-                  node.material.metalness = 0.3;
-                } else {
-                  // Original settings for fallback texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x88aaff), 0.3);
-                  node.material.roughness = 0.8;
-                  node.material.metalness = 0.2;
-                }
-                
-                // Make sure textures are used
-                node.material.needsUpdate = true;
-              }
+    const texturePromise = new Promise((resolve, reject) => {
+      textureLoader.load(
+        'assets/models/textures/Colors3.png', 
+        texture => {
+          console.log('Terrain texture (Colors3.png) loaded successfully');
+          // Configure texture 
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.repeat.set(8, 8); // Repeat the texture more times for better detail
+          resolve(texture);
+        },
+        undefined,
+        error => {
+          console.error('Error loading Colors3.png texture:', error);
+          // Try fallback texture
+          textureLoader.load(
+            'assets/models/textures/tex.png', 
+            fallbackTexture => {
+              console.log('Fallback texture loaded');
+              fallbackTexture.wrapS = THREE.RepeatWrapping;
+              fallbackTexture.wrapT = THREE.RepeatWrapping;
+              fallbackTexture.repeat.set(5, 5);
+              resolve(fallbackTexture);
+            },
+            undefined,
+            fallbackError => {
+              console.error('Error loading fallback texture:', fallbackError);
+              resolve(null); // Resolve with null to continue without texture
             }
-          });
-          
-          // Store reference and add to scene
-          this.floor = terrain;
-          this.scene.add(terrain);
-          
-          // Add a circular highlight around the player's position
-          this.createPlayerHighlight();
-        },
-        (xhr) => {
-          // Progress callback
-          console.log(`Loading terrain: ${(xhr.loaded / xhr.total * 100).toFixed(2)}%`);
-        },
-        (error) => {
-          // Error callback
-          console.error('Error loading terrain model:', error);
-          console.log('Falling back to default floor');
-          
-          // Create grid as a fallback
-          const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
-          this.scene.add(gridHelper);
-          
-          // Add player highlight anyway
-          this.createPlayerHighlight();
+          );
         }
       );
-    };
+    });
+    
+    // When texture is loaded (or failed), get the terrain model from AssetLoader
+    texturePromise.then(texture => {
+      // Get terrain model from AssetLoader
+      const terrain = this.assetLoader.getModel('terrain/Terrain.glb');
+      
+      if (terrain) {
+        console.log('Using terrain model from AssetLoader');
+        
+        // Remove the temporary floor
+        if (this.floor) {
+          this.scene.remove(this.floor);
+          this.floor.geometry.dispose();
+          this.floor.material.dispose();
+        }
+        
+        // Clone the model to avoid modifying the original
+        const terrainClone = terrain.clone();
+        
+        // Scale the terrain appropriately
+        const terrainScale = 100; // Adjust this value to change the overall size
+        terrainClone.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
+        
+        // Position terrain at center and slightly below zero to avoid z-fighting
+        terrainClone.position.set(0, -0.2, 0);
+        
+        // Apply texture if available
+        if (texture) {
+          terrainClone.traverse((node) => {
+            if (node.isMesh) {
+              node.material = node.material.clone(); // Clone material to avoid affecting other instances
+              node.material.map = texture;
+              node.material.needsUpdate = true;
+              
+              // Enable shadows
+              node.castShadow = true;
+              node.receiveShadow = true;
+            }
+          });
+        }
+        
+        // Add to scene
+        this.scene.add(terrainClone);
+        this.terrain = terrainClone;
+        
+        console.log('Terrain model added to scene');
+        
+        // Add a circular highlight around the player's position
+        this.createPlayerHighlight();
+      } else {
+        console.warn('Terrain model not found in AssetLoader, using fallback grid');
+        
+        // Create a grid as fallback
+        const grid = new THREE.GridHelper(100, 100, 0x0000ff, 0x000044);
+        grid.position.y = 0;
+        this.scene.add(grid);
+        this.terrain = grid;
+        
+        // Add player highlight anyway
+        this.createPlayerHighlight();
+      }
+    });
   }
 
   // Separate method for player highlight to avoid code duplication
@@ -25159,6 +24354,111 @@ createMuzzleFlash(position, direction) {
     
     // Send the update to the network manager
     this.networkManager.sendPlayerUpdate(playerData);
+  }
+
+  // Add the missing setShipModel function
+  setShipModel(type) {
+    console.log('🔍 Setting ship model:', type);
+    
+    // Get the ship model from assets
+    let model = this.assetLoader.getShipModel(type);
+    
+    // If model is null or undefined, create fallback model
+    if (!model) {
+      console.warn('⚠️ Using fallback ship model for type:', type);
+      
+      // Create a simple geometric shape as fallback
+      const geometry = new THREE.BoxGeometry(1, 0.5, 2);
+      const material = new THREE.MeshPhongMaterial({ 
+        color: 0x00ffff, 
+        specular: 0x111111, 
+        shininess: 30 
+      });
+      model = new THREE.Mesh(geometry, material);
+    }
+    
+    // Clear existing player ship if it exists
+    if (this.playerShip) {
+      if (this.scene) {
+        this.scene.remove(this.playerShip);
+      }
+      this.playerShip = null;
+    }
+    
+    // Set the new ship model
+    this.playerShip = model;
+    
+    // Position the ship appropriately
+    if (this.playerShip && this.scene) {
+      this.playerShip.position.set(0, 0.5, 0);
+      this.scene.add(this.playerShip);
+    }
+    
+    return this.playerShip;
+  }
+
+  /**
+   * Play a sound by name
+   * @param {string} name - Name of the sound to play
+   * @param {THREE.Vector3} position - Optional position for 3D audio
+   */
+  playSound(name, position = null) {
+    if (this.soundManager) {
+      console.log(`Playing sound: ${name}`);
+      this.soundManager.playSound(name, position);
+    } else {
+      console.warn(`Cannot play sound '${name}': SoundManager not initialized`);
+    }
+  }
+
+  /**
+   * Update a remote player's position and rotation
+   * @param {string} id - Player ID
+   * @param {Object} position - Position coordinates
+   * @param {Object} rotation - Rotation coordinates
+   */
+  updateRemotePlayer(id, position, rotation) {
+    // Get existing player or create a new one
+    let player = this.remotePlayers.get(id);
+    
+    if (!player) {
+      // Create a new player mesh if this is the first update
+      player = this.createRemotePlayerMesh();
+      this.remotePlayers.set(id, player);
+      this.scene.add(player);
+      console.log(`Created new remote player: ${id}`);
+    }
+    
+    // Update player position and rotation
+    if (position) {
+      player.position.set(position.x, position.y, position.z);
+    }
+    
+    if (rotation) {
+      player.rotation.set(rotation.x, rotation.y, rotation.z);
+    }
+  }
+  
+  /**
+   * Create a mesh for a remote player
+   * @returns {THREE.Object3D} Player mesh
+   */
+  createRemotePlayerMesh() {
+    // For simplicity, we'll use a simple colored box for remote players
+    const geometry = new THREE.BoxGeometry(1, 1, 2);
+    const material = new THREE.MeshLambertMaterial({ color: 0xff0000 }); // Red for other players
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    // Add name label
+    const nameLabel = document.createElement('div');
+    nameLabel.className = 'player-label';
+    nameLabel.textContent = 'Player';
+    
+    const playerLabel = new CSS2DObject(nameLabel);
+    playerLabel.position.set(0, 1.5, 0);
+    mesh.add(playerLabel);
+    
+    return mesh;
   }
 }
 
@@ -25301,6 +24601,8 @@ document.addEventListener('DOMContentLoaded', () => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Drift</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles/main.css">
+    <link rel="stylesheet" href="./styles/controls.css">
 </head>
 <body>
     <div id="loading-screen">
@@ -25346,6 +24648,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <p>Avoid the colored obstacles!</p>
     </div>
 </body>
+<script type="module" src="./index.js"></script>
 </html> 
 ### ./index.html END ###
 
@@ -25461,6 +24764,8 @@ import { InfiniteMap } from './core/InfiniteMap';
 import { NetworkManager } from './core/NetworkManager';
 import { CSS2DRenderer, CSS2DObject } from '@three/examples/renderers/CSS2DRenderer';
 import { GAME_CONFIG } from './config/GameConfig';
+import { Player } from './entities/player/Player';
+import { SoundManager } from './assets/SoundManager';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -25469,27 +24774,20 @@ class SimpleGame {
     // Player information
     this.playerName = 'Pilot';  // Default player name
     
-    // Sound management
-    this.audioListener = new THREE.AudioListener();
-    this.soundPools = new Map();
-    this.loadedSounds = new Map();
-    this.soundLoadPromises = new Map();
-
     // Create the asset loader
     this.assetLoader = new AssetLoader().setCallbacks(
       (message) => this.updateLoadingUI(message),
       (type, error) => this.handleLoadError(type, error)
     );
     
+    // Initialize SoundManager
+    this.soundManager = new SoundManager();
+    
     // Asset loading state
     this.loadingState = {
       started: false,
       completed: false,
-      errors: [],
-      timeouts: new Map(),
-      retryCount: new Map(),
-      maxRetries: 3,
-      loadingPromises: new Map()
+      errors: []
     };
     
     // Track assets loading
@@ -25521,6 +24819,17 @@ class SimpleGame {
     
     // Create game UI
     this.ui = new GameUI();
+    
+    // Create player after scene setup (as specified in Task 8)
+    this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+      type: 'PLAYER',
+      shipModel: 'STANDARD',
+      teamColor: 0x00ffff
+    });
+    this.scene.add(this.player.mesh);
+    
+    // For backward compatibility with existing code
+    this.playerShip = this.player.mesh;
     
     // Game properties
     this.boundarySize = 100; // Size of the playable area
@@ -25560,6 +24869,10 @@ class SimpleGame {
     
     // Initialize NetworkManager
     this.networkManager = new NetworkManager();
+    
+    // Initialize remotePlayers map for multiplayer
+    this.remotePlayers = new Map();
+    
     this.networkManager.on('connected', () => {
       console.log('Connected to game server!');
       document.getElementById('connection-status').textContent = 'Connected';
@@ -25580,8 +24893,20 @@ class SimpleGame {
     
     this.networkManager.on('player_left', (id) => {
       console.log('Player left:', id);
+      // Remove player mesh if it exists
+      const player = this.remotePlayers.get(id);
+      if (player) {
+        this.scene.remove(player);
+        this.remotePlayers.delete(id);
+        console.log(`Removed remote player: ${id}`);
+      }
       // Update player count
       this.updatePlayerCount();
+    });
+    
+    // Add player update handling
+    this.networkManager.on('player_update', (data) => {
+      this.updateRemotePlayer(data.id, data.position, data.rotation);
     });
     
     // Add laser shot handling
@@ -25607,28 +24932,35 @@ class SimpleGame {
   }
   
   setupScene() {
-    // Create scene, camera, and renderer
+    // Create Three.js Scene
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0a1f); // Dark blue background
     
-    // Set up isometric camera
-    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.camera.position.set(10, 10, 10);
-    this.camera.lookAt(0, 0, 0);
-    
-    // Create WebGL renderer
+    // Setup WebGL renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('game-container').appendChild(this.renderer.domElement);
     
-    // Add CSS2D renderer for player name labels
-    this.labelRenderer = new CSS2DRenderer();
-    this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
-    this.labelRenderer.domElement.style.position = 'absolute';
-    this.labelRenderer.domElement.style.top = '0';
-    this.labelRenderer.domElement.style.pointerEvents = 'none';
-    document.body.appendChild(this.labelRenderer.domElement);
+    // Create camera
+    this.camera = new THREE.PerspectiveCamera(
+      60, // FOV
+      window.innerWidth / window.innerHeight, // Aspect ratio
+      0.1, // Near
+      1000 // Far
+    );
+    
+    // Position camera
+    this.camera.position.set(0, 7, 15); // Slightly above and behind player
+    this.camera.lookAt(0, 0, 0);
+    
+    // Attach audio listener to camera
+    if (this.soundManager) {
+      this.camera.add(this.soundManager.getListener());
+      console.log('Audio listener attached to camera');
+    }
     
     // Add lighting
     const ambientLight = new THREE.AmbientLight(0x404040);
@@ -25645,378 +24977,36 @@ class SimpleGame {
     this.createObstacles();
   }
   
-  loadAssets() {
+  async loadAssets() {
     if (this.loadingState.started) {
-      console.warn('🔍 Asset loading already in progress');
-      return;
+        console.warn('🔍 Asset loading already in progress');
+        return;
     }
     
-    console.log('🔍 Starting asset loading process');
-    console.log('Current loading state:', JSON.stringify(this.loadingState, null, 2));
-    
-    this.loadingState.started = true;
-    this.loadingState.completed = false;
-    this.loadingState.errors = [];
-    
-    // Show loading message
     this.updateLoadingUI('Loading game assets...');
     
-    // Create placeholder ship until model loads
-    this.createDefaultShip();
-    
-    // Load assets in parallel with proper error handling
-    Promise.all([
-      this.loadSounds().catch(error => {
-        console.error('🔍 Sound loading failed:', error);
-        this.handleLoadError('sounds', error);
-        return null;
-      }),
-      this.loadAssetsWithLoader().catch(error => {
-        console.error('🔍 Asset loading failed:', error);
-        this.handleLoadError('assets', error);
-        return null;
-      })
-    ]).then(() => {
-      console.log('🔍 All asset loading promises completed');
-      // Check loading progress even if some assets failed
-      this.checkLoadingProgress();
-    }).catch(error => {
-      console.error('🔍 Critical error loading assets:', error);
-      this.handleLoadError('critical', error);
-    });
-  }
-  
-  async loadAssetsWithLoader() {
-    console.log('🟢🟢🟢 Loading assets with AssetLoader...');
-    
-    // Use AssetLoader to load all assets including ship models
-    await this.assetLoader.loadAll();
-    this.shipModelLoaded = true;
-    console.log('✅ All assets loaded successfully via AssetLoader');
-    
-    return true;
-  }
-  
-  loadSounds() {
-    // AudioListener should already be initialized in constructor
-    if (!this.camera) {
-      console.error('Camera not initialized when trying to load sounds');
-      return Promise.reject(new Error('Camera not initialized'));
-    }
-
-    // Add listener to camera if not already added
-    if (!this.camera.children.includes(this.audioListener)) {
-      this.camera.add(this.audioListener);
-    }
-    
-    // Define sounds to load
-    const soundsToLoad = [
-      { name: 'laser', path: 'assets/sounds/laser.mp3', poolSize: 5 },
-      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3', poolSize: 3 },
-      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3', poolSize: 2 },
-      { name: 'bounce', path: 'assets/sounds/bounce.mp3', poolSize: 3 },
-      { name: 'weapon-switch', path: 'assets/sounds/weapon-switch.mp3', poolSize: 2 },
-      { name: 'weapon-charging', path: 'assets/sounds/weapon-charging.mp3', poolSize: 1, volume: 0.2 }  // Lower volume for background effect
-    ];
-    
-    // Create a pool of sounds for frequently played effects
-    const audioLoader = new THREE.AudioLoader();
-    
-    // Load each sound only if not already loaded
-    soundsToLoad.forEach(soundInfo => {
-      if (!this.loadedSounds.has(soundInfo.name)) {
-        const loadPromise = new Promise((resolve, reject) => {
-          // Set a timeout for loading
-          const timeoutId = setTimeout(() => {
-            reject(new Error(`Sound loading timeout: ${soundInfo.name}`));
-          }, 10000); // 10 second timeout
-          
-          audioLoader.load(
-            soundInfo.path,
-            buffer => {
-              clearTimeout(timeoutId);
-              
-              // Create sound pool
-              const pool = [];
-              for (let i = 0; i < soundInfo.poolSize; i++) {
-                const sound = new THREE.Audio(this.audioListener);
-                sound.setBuffer(buffer);
-                sound.setVolume(soundInfo.volume || 0.5); // Use specified volume or default to 0.5
-                pool.push({ sound, inUse: false, lastUsed: 0 });
-              }
-              
-              this.soundPools.set(soundInfo.name, pool);
-              this.loadedSounds.set(soundInfo.name, buffer);
-              console.log(`Loaded sound: ${soundInfo.name} (${soundInfo.poolSize} instances)`);
-              resolve();
-            },
-            xhr => {
-              console.log(`${soundInfo.name} ${(xhr.loaded / xhr.total * 100)}% loaded`);
-            },
-            error => {
-              clearTimeout(timeoutId);
-              console.error(`Error loading sound ${soundInfo.name}:`, error);
-              reject(error);
-            }
-          );
-        });
-        
-        this.soundLoadPromises.set(soundInfo.name, loadPromise);
-      }
-    });
-    
-    // Return a promise that resolves when all sounds are loaded
-    return Promise.all(Array.from(this.soundLoadPromises.values()))
-      .then(() => {
-        console.log('All sounds loaded successfully');
-      })
-      .catch(error => {
-        console.error('Error loading sounds:', error);
-        // Continue without sounds rather than breaking the game
-      });
-  }
-  
-  playSound(name) {
-    const pool = this.soundPools.get(name);
-    if (!pool || pool.length === 0) {
-      console.warn(`Sound "${name}" not found or not loaded yet.`);
-      return;
-    }
-    
     try {
-      const now = Date.now();
-      
-      // Find available sound that hasn't been used recently
-      let soundWrapper = pool.find(wrapper => 
-        !wrapper.inUse && (now - wrapper.lastUsed > 50) // 50ms minimum delay between same sound
-      );
-      
-      // If no sound available, find the oldest one
-      if (!soundWrapper) {
-        soundWrapper = pool.reduce((oldest, current) => 
-          (!oldest || current.lastUsed < oldest.lastUsed) ? current : oldest
-        );
-        
-        // If the oldest sound was used too recently, skip playing
-        if (now - soundWrapper.lastUsed < 50) {
-          return;
+        // Create initial player with default ship
+        if (!this.player) {
+            this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+                type: 'PLAYER',
+                shipModel: 'STANDARD',
+                teamColor: 0x00ffff
+            });
+            this.playerShip = this.player.mesh; // For backward compatibility
         }
         
-        soundWrapper.sound.stop(); // Stop it if it's playing
-      }
-      
-      // Mark as in use and update timestamp
-      soundWrapper.inUse = true;
-      soundWrapper.lastUsed = now;
-      
-      // Play the sound
-      soundWrapper.sound.play();
-      
-      // Set up callback to release back to the pool
-      soundWrapper.sound.onEnded = () => {
-        soundWrapper.inUse = false;
-      };
+        // Load all assets through AssetLoader
+        await this.assetLoader.loadAll();
+        this.assetsLoaded = true;
+        this.shipModelLoaded = true;
+        
+        console.log('✅ All assets loaded successfully');
+        this.checkLoadingProgress();
     } catch (error) {
-      console.warn(`Error playing sound "${name}":`, error);
+        console.error('🔍 Critical error loading assets:', error);
+        this.handleLoadError('critical', error);
     }
-  }
-  
-  createDefaultShip() {
-    // Create a simple ship geometry as placeholder
-    const geometry = new THREE.ConeGeometry(0.5, 1, 8);
-    geometry.rotateX(Math.PI / 2);
-    
-    // Create glowing material
-    const material = new THREE.MeshPhongMaterial({
-      color: 0x00ffff,
-      emissive: 0x006666,
-      shininess: 100
-    });
-    
-    // Create ship mesh
-    this.playerShip = new THREE.Mesh(geometry, material);
-    this.playerShip.position.set(0, 0.5, 0);
-    this.scene.add(this.playerShip);
-    
-    // Add a point light to the ship to make it glow
-    const light = new THREE.PointLight(0x00ffff, 1, 2);
-    light.position.set(0, 0, 0);
-    this.playerShip.add(light);
-    
-    // Add ship properties
-    this.shipSpeed = 0.1;
-    this.rotationSpeed = 0.05;
-  }
-  
-  setShipModel(type) {
-    console.log('🔍 Setting ship model:', type);
-    
-    // Get the ship model from assets
-    let model = this.assetLoader.getShipModel(type);
-    
-    // If model is null or undefined, create fallback model
-    if (!model) {
-      console.warn('⚠️ Using fallback ship model');
-      if (this.debugging) {
-        console.trace('Stack trace for fallback ship model');
-      }
-      
-      if (!THREE.BoxGeometry) {
-        console.error('THREE.BoxGeometry not available for fallback ship');
-        return;
-      }
-      
-      try {
-        console.log('📦 Creating simple fallback model');
-        // Create a simple fallback model (box)
-        const geometry = new THREE.BoxGeometry(1, 0.5, 2);
-        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
-        model = new THREE.Mesh(geometry, material);
-      } catch (error) {
-        console.error('Error creating fallback model:', error);
-        return;
-      }
-    }
-    
-    // Make all ships smaller (50-60% smaller)
-    const scaleFactor = 0.45; // About 55% smaller
-    model.scale.set(scaleFactor, scaleFactor, scaleFactor);
-    console.log(`DIAGNOSTIC: Applied reduced scale: [${model.scale.x}, ${model.scale.y}, ${model.scale.z}]`);
-    
-    // Log ship model information
-    console.log('🔍 Using ship model:', {
-      children: model.children?.length || 0,
-      position: model.position,
-      rotation: model.rotation,
-      scale: model.scale
-    });
-
-    // Store the model reference for thruster effects
-    this.shipModel = model;
-
-    // Add the model to the player ship group
-    this.playerShip.add(model);
-    
-    // Position the ship
-    this.playerShip.position.set(0, 0.5, 0);
-    
-    // Add to scene
-    this.scene.add(this.playerShip);
-    
-    // Add thruster effects
-    this.addThrusterGlow();
-    
-    // Add player name label above the ship
-    this.addPlayerNameLabel();
-    
-    console.log('✅ Ship model set successfully');
-    
-    // Set a fixed collision radius that works with the reduced ship size
-    const fixedCollisionRadius = 0.35; // Reduced radius to match smaller ship size
-    this.playerShip.userData.collisionRadius = fixedCollisionRadius;
-    console.log(`DIAGNOSTIC: Set ship collision radius: ${this.playerShip.userData.collisionRadius}`);
-  }
-  
-  // Function to add a player name label above the ship
-  addPlayerNameLabel() {
-    // Remove any existing name label
-    if (this.playerNameLabel) {
-      this.playerShip.remove(this.playerNameLabel);
-      this.playerNameLabel = null;
-    }
-    
-    // Create a canvas for the player name
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 512;
-    canvas.height = 128;
-    
-    // Set canvas background transparent
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Create gradient for the text
-    const gradient = context.createLinearGradient(0, 0, canvas.width, 0);
-    gradient.addColorStop(0, '#00c3ff');    // Cyan blue
-    gradient.addColorStop(0.5, '#80ffff');  // Light cyan
-    gradient.addColorStop(1, '#00c3ff');    // Cyan blue
-    
-    // Draw player name on canvas
-    context.font = 'bold 40px Orbitron';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    
-    // Add shadow/glow effect
-    context.shadowColor = '#0062ff';
-    context.shadowBlur = 15;
-    
-    // Draw stroke
-    context.strokeStyle = '#000';
-    context.lineWidth = 6;
-    context.strokeText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Fill with gradient
-    context.fillStyle = gradient;
-    context.fillText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Add a subtle underline
-    context.beginPath();
-    context.moveTo(canvas.width / 2 - context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.lineTo(canvas.width / 2 + context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.strokeStyle = '#00c3ff';
-    context.lineWidth = 2;
-    context.stroke();
-    
-    // Add a mini rank/icon before the name
-    const icon = this.getPlayerIcon();
-    const iconSize = 30;
-    context.font = 'bold 20px Orbitron';
-    context.fillStyle = '#ffcc00';
-    context.strokeStyle = '#000';
-    context.lineWidth = 3;
-    const iconX = canvas.width / 2 - context.measureText(this.playerName).width / 2 - iconSize - 10;
-    const iconY = canvas.height / 2;
-    context.strokeText(icon, iconX, iconY);
-    context.fillText(icon, iconX, iconY);
-    
-    // Create texture from canvas
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    
-    // Create sprite material
-    const material = new THREE.SpriteMaterial({ 
-      map: texture,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    });
-    
-    // Create sprite
-    const sprite = new THREE.Sprite(material);
-    sprite.scale.set(3, 0.8, 1);
-    sprite.position.set(0, 1.8, 0); // Position above the ship
-    
-    // Store reference and add to ship
-    this.playerNameLabel = sprite;
-    this.playerShip.add(this.playerNameLabel);
-    
-    console.log(`Added enhanced name label for player: ${this.playerName}`);
-  }
-  
-  // Helper function to get player icon based on name
-  getPlayerIcon() {
-    // Simple hash function to determine icon
-    let hash = 0;
-    for (let i = 0; i < this.playerName.length; i++) {
-      hash = ((hash << 5) - hash) + this.playerName.charCodeAt(i);
-      hash |= 0; // Convert to 32bit integer
-    }
-    
-    // Array of possible icons
-    const icons = ['⚡', '✦', '★', '♦', '◆', '⬢', '⚔️', '⚜️', '☄️', '⚪'];
-    
-    // Use hash to select icon
-    const iconIndex = Math.abs(hash) % icons.length;
-    return icons[iconIndex];
   }
   
   handleLoadError(assetType, error) {
@@ -26061,11 +25051,7 @@ class SimpleGame {
         this.loadingState = {
           started: false,
           completed: false,
-          errors: [],
-          timeouts: new Map(),
-          retryCount: new Map(),
-          maxRetries: 3,
-          loadingPromises: new Map()
+          errors: []
         };
         this.loadAssets();
       };
@@ -26083,46 +25069,37 @@ class SimpleGame {
   
   checkLoadingProgress() {
     console.log('🔍 Checking loading progress...');
-    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
-    console.log('Sound pools size:', this.soundPools.size);
-    console.log('Ship model loaded:', this.shipModelLoaded);
     
-    // Define what constitutes a fully loaded game
+    // Log loading state
+    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
+    
+    // Define what's required for a fully loaded game
     const requiredAssets = {
       shipModel: this.shipModelLoaded,
-      sounds: this.soundPools.size > 0
+      assetsLoaded: this.assetLoader.loadingState.completed
     };
     
     // Check if all required assets are loaded
-    const allAssetsLoaded = Object.entries(requiredAssets).every(([name, loaded]) => {
-      if (!loaded) {
-        console.log(`🔍 Asset "${name}" not loaded yet`);
-      }
+    const allAssetsLoaded = Object.entries(requiredAssets).every(([key, loaded]) => {
+      console.log(`🔍 ${key}: ${loaded ? '✅' : '❌'}`);
       return loaded;
     });
     
     if (allAssetsLoaded) {
-      console.log('✅ All required assets loaded successfully!');
+      console.log('✅ All required assets loaded!');
       this.loadingState.completed = true;
-      
-      // Clear any remaining timeouts
-      this.loadingState.timeouts.forEach(timeoutId => {
-        clearTimeout(timeoutId);
-      });
-      this.loadingState.timeouts.clear();
-      
-      // Show start screen
       this.showStartScreen();
     } else {
-      // Show which assets are still loading
+      // Log which assets are still pending
       const pendingAssets = Object.entries(requiredAssets)
-        .filter(([name, loaded]) => !loaded)
-        .map(([name]) => name);
+        .filter(([_, loaded]) => !loaded)
+        .map(([key]) => key);
+      console.log('⏳ Still waiting for:', pendingAssets);
       
-      console.log(`🔍 Still loading: ${pendingAssets.join(', ')}`);
-      this.updateLoadingUI(`Loading: ${pendingAssets.join(', ')}...`);
+      // Update loading UI
+      this.updateLoadingUI(`Loading... (${pendingAssets.join(', ')})`);
       
-      // Check again in 1 second if not all assets are loaded
+      // Check again after a delay
       setTimeout(() => this.checkLoadingProgress(), 1000);
     }
   }
@@ -26164,6 +25141,12 @@ class SimpleGame {
   }
   
   addThrusterGlow() {
+    // Check if player and player mesh exist
+    if (!this.player || !this.player.mesh) {
+      console.warn('Cannot add thruster glow: Player or player mesh is not initialized');
+      return;
+    }
+    
     // Create a single, efficient thruster glow effect
     // Use instanced mesh for better performance if you have multiple thrusters
     
@@ -26180,6 +25163,9 @@ class SimpleGame {
     thruster.position.set(0, 0, -0.7); // Position at the back of the ship
     thruster.rotation.x = Math.PI / 2;
     thruster.name = 'thruster'; // Name it for easier reference later
+    
+    // Add thruster to player mesh
+    this.player.mesh.add(thruster);
     
     // Add point light for the thruster
     const thrusterLight = new THREE.PointLight(0x00ffff, 1, 3);
@@ -26239,134 +25225,101 @@ class SimpleGame {
     
     // Load texture first
     const textureLoader = new THREE.TextureLoader();
-    const terrainTexture = textureLoader.load('assets/models/textures/Colors3.png', 
-      // Success callback
-      (texture) => {
-        console.log('Terrain texture (Colors3.png) loaded successfully');
-        // Configure texture 
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(8, 8); // Repeat the texture more times for better detail
-        
-        // Now load the Terrain.glb model
-        loadTerrainModel(texture);
-      },
-      // Progress callback
-      undefined,
-      // Error callback
-      (error) => {
-        console.error('Error loading Colors3.png texture:', error);
-        // Try fallback to original texture
-        textureLoader.load('assets/models/textures/tex.png', 
-          fallbackTexture => {
-            console.log('Fallback texture loaded');
-            fallbackTexture.wrapS = THREE.RepeatWrapping;
-            fallbackTexture.wrapT = THREE.RepeatWrapping;
-            fallbackTexture.repeat.set(5, 5);
-            loadTerrainModel(fallbackTexture);
-          },
-          undefined,
-          fallbackError => {
-            console.error('Error loading fallback texture:', fallbackError);
-            // Load model anyway without texture
-            loadTerrainModel(null);
-          }
-        );
-      }
-    );
-    
-    // Function to load terrain model with texture
-    const loadTerrainModel = (texture) => {
-      const terrainPath = 'assets/models/terrain/Terrain.glb';
-      
-      // Use GLTFLoader properly imported at the top
-      const loader = new GLTFLoader();
-      loader.load(
-        terrainPath,
-        (gltf) => {
-          console.log('Terrain model loaded successfully');
-          
-          // Remove the temporary floor
-          if (this.floor) {
-            this.scene.remove(this.floor);
-            this.floor.geometry.dispose();
-            this.floor.material.dispose();
-          }
-          
-          // Set up the terrain model
-          const terrain = gltf.scene;
-          
-          // Scale the terrain appropriately
-          const terrainScale = 100; // Adjust this value to change the overall size
-          terrain.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
-          
-          // Position terrain at center and slightly below zero to avoid z-fighting
-          terrain.position.set(0, -0.2, 0);
-          
-          // Set up materials with texture
-          terrain.traverse((node) => {
-            if (node.isMesh) {
-              // Enable shadows
-              node.castShadow = false; // We don't want the floor to cast shadows
-              node.receiveShadow = true; // But we do want it to receive shadows
-              
-              // Apply texture if available
-              if (node.material && texture) {
-                // Store original colors for blending
-                const originalColor = node.material.color ? node.material.color.clone() : new THREE.Color(0xffffff);
-                
-                // Apply texture
-                node.material.map = texture;
-                
-                // Make the terrain slightly emissive for a subtle glow
-                node.material.emissive = new THREE.Color(0x006688);
-                node.material.emissiveIntensity = 0.2;
-                
-                // Add more vibrant color variation for Colors3 texture
-                if (texture.source.data.src.includes('Colors3')) {
-                  // More vibrant color blend for the new texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x99ccff), 0.4);
-                  // Increase the contrast and saturation
-                  node.material.roughness = 0.6;
-                  node.material.metalness = 0.3;
-                } else {
-                  // Original settings for fallback texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x88aaff), 0.3);
-                  node.material.roughness = 0.8;
-                  node.material.metalness = 0.2;
-                }
-                
-                // Make sure textures are used
-                node.material.needsUpdate = true;
-              }
+    const texturePromise = new Promise((resolve, reject) => {
+      textureLoader.load(
+        'assets/models/textures/Colors3.png', 
+        texture => {
+          console.log('Terrain texture (Colors3.png) loaded successfully');
+          // Configure texture 
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.repeat.set(8, 8); // Repeat the texture more times for better detail
+          resolve(texture);
+        },
+        undefined,
+        error => {
+          console.error('Error loading Colors3.png texture:', error);
+          // Try fallback texture
+          textureLoader.load(
+            'assets/models/textures/tex.png', 
+            fallbackTexture => {
+              console.log('Fallback texture loaded');
+              fallbackTexture.wrapS = THREE.RepeatWrapping;
+              fallbackTexture.wrapT = THREE.RepeatWrapping;
+              fallbackTexture.repeat.set(5, 5);
+              resolve(fallbackTexture);
+            },
+            undefined,
+            fallbackError => {
+              console.error('Error loading fallback texture:', fallbackError);
+              resolve(null); // Resolve with null to continue without texture
             }
-          });
-          
-          // Store reference and add to scene
-          this.floor = terrain;
-          this.scene.add(terrain);
-          
-          // Add a circular highlight around the player's position
-          this.createPlayerHighlight();
-        },
-        (xhr) => {
-          // Progress callback
-          console.log(`Loading terrain: ${(xhr.loaded / xhr.total * 100).toFixed(2)}%`);
-        },
-        (error) => {
-          // Error callback
-          console.error('Error loading terrain model:', error);
-          console.log('Falling back to default floor');
-          
-          // Create grid as a fallback
-          const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
-          this.scene.add(gridHelper);
-          
-          // Add player highlight anyway
-          this.createPlayerHighlight();
+          );
         }
       );
-    };
+    });
+    
+    // When texture is loaded (or failed), get the terrain model from AssetLoader
+    texturePromise.then(texture => {
+      // Get terrain model from AssetLoader
+      const terrain = this.assetLoader.getModel('terrain/Terrain.glb');
+      
+      if (terrain) {
+        console.log('Using terrain model from AssetLoader');
+        
+        // Remove the temporary floor
+        if (this.floor) {
+          this.scene.remove(this.floor);
+          this.floor.geometry.dispose();
+          this.floor.material.dispose();
+        }
+        
+        // Clone the model to avoid modifying the original
+        const terrainClone = terrain.clone();
+        
+        // Scale the terrain appropriately
+        const terrainScale = 100; // Adjust this value to change the overall size
+        terrainClone.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
+        
+        // Position terrain at center and slightly below zero to avoid z-fighting
+        terrainClone.position.set(0, -0.2, 0);
+        
+        // Apply texture if available
+        if (texture) {
+          terrainClone.traverse((node) => {
+            if (node.isMesh) {
+              node.material = node.material.clone(); // Clone material to avoid affecting other instances
+              node.material.map = texture;
+              node.material.needsUpdate = true;
+              
+              // Enable shadows
+              node.castShadow = true;
+              node.receiveShadow = true;
+            }
+          });
+        }
+        
+        // Add to scene
+        this.scene.add(terrainClone);
+        this.terrain = terrainClone;
+        
+        console.log('Terrain model added to scene');
+        
+        // Add a circular highlight around the player's position
+        this.createPlayerHighlight();
+      } else {
+        console.warn('Terrain model not found in AssetLoader, using fallback grid');
+        
+        // Create a grid as fallback
+        const grid = new THREE.GridHelper(100, 100, 0x0000ff, 0x000044);
+        grid.position.y = 0;
+        this.scene.add(grid);
+        this.terrain = grid;
+        
+        // Add player highlight anyway
+        this.createPlayerHighlight();
+      }
+    });
   }
 
   // Separate method for player highlight to avoid code duplication
@@ -30773,6 +29726,111 @@ createMuzzleFlash(position, direction) {
     
     // Send the update to the network manager
     this.networkManager.sendPlayerUpdate(playerData);
+  }
+
+  // Add the missing setShipModel function
+  setShipModel(type) {
+    console.log('🔍 Setting ship model:', type);
+    
+    // Get the ship model from assets
+    let model = this.assetLoader.getShipModel(type);
+    
+    // If model is null or undefined, create fallback model
+    if (!model) {
+      console.warn('⚠️ Using fallback ship model for type:', type);
+      
+      // Create a simple geometric shape as fallback
+      const geometry = new THREE.BoxGeometry(1, 0.5, 2);
+      const material = new THREE.MeshPhongMaterial({ 
+        color: 0x00ffff, 
+        specular: 0x111111, 
+        shininess: 30 
+      });
+      model = new THREE.Mesh(geometry, material);
+    }
+    
+    // Clear existing player ship if it exists
+    if (this.playerShip) {
+      if (this.scene) {
+        this.scene.remove(this.playerShip);
+      }
+      this.playerShip = null;
+    }
+    
+    // Set the new ship model
+    this.playerShip = model;
+    
+    // Position the ship appropriately
+    if (this.playerShip && this.scene) {
+      this.playerShip.position.set(0, 0.5, 0);
+      this.scene.add(this.playerShip);
+    }
+    
+    return this.playerShip;
+  }
+
+  /**
+   * Play a sound by name
+   * @param {string} name - Name of the sound to play
+   * @param {THREE.Vector3} position - Optional position for 3D audio
+   */
+  playSound(name, position = null) {
+    if (this.soundManager) {
+      console.log(`Playing sound: ${name}`);
+      this.soundManager.playSound(name, position);
+    } else {
+      console.warn(`Cannot play sound '${name}': SoundManager not initialized`);
+    }
+  }
+
+  /**
+   * Update a remote player's position and rotation
+   * @param {string} id - Player ID
+   * @param {Object} position - Position coordinates
+   * @param {Object} rotation - Rotation coordinates
+   */
+  updateRemotePlayer(id, position, rotation) {
+    // Get existing player or create a new one
+    let player = this.remotePlayers.get(id);
+    
+    if (!player) {
+      // Create a new player mesh if this is the first update
+      player = this.createRemotePlayerMesh();
+      this.remotePlayers.set(id, player);
+      this.scene.add(player);
+      console.log(`Created new remote player: ${id}`);
+    }
+    
+    // Update player position and rotation
+    if (position) {
+      player.position.set(position.x, position.y, position.z);
+    }
+    
+    if (rotation) {
+      player.rotation.set(rotation.x, rotation.y, rotation.z);
+    }
+  }
+  
+  /**
+   * Create a mesh for a remote player
+   * @returns {THREE.Object3D} Player mesh
+   */
+  createRemotePlayerMesh() {
+    // For simplicity, we'll use a simple colored box for remote players
+    const geometry = new THREE.BoxGeometry(1, 1, 2);
+    const material = new THREE.MeshLambertMaterial({ color: 0xff0000 }); // Red for other players
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    // Add name label
+    const nameLabel = document.createElement('div');
+    nameLabel.className = 'player-label';
+    nameLabel.textContent = 'Player';
+    
+    const playerLabel = new CSS2DObject(nameLabel);
+    playerLabel.position.set(0, 1.5, 0);
+    mesh.add(playerLabel);
+    
+    return mesh;
   }
 }
 
@@ -30915,6 +29973,8 @@ document.addEventListener('DOMContentLoaded', () => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Drift</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles/main.css">
+    <link rel="stylesheet" href="./styles/controls.css">
 </head>
 <body>
     <div id="loading-screen">
@@ -30960,6 +30020,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <p>Avoid the colored obstacles!</p>
     </div>
 </body>
+<script type="module" src="./index.js"></script>
 </html> 
 ### ./index.html END ###
 
@@ -31075,6 +30136,8 @@ import { InfiniteMap } from './core/InfiniteMap';
 import { NetworkManager } from './core/NetworkManager';
 import { CSS2DRenderer, CSS2DObject } from '@three/examples/renderers/CSS2DRenderer';
 import { GAME_CONFIG } from './config/GameConfig';
+import { Player } from './entities/player/Player';
+import { SoundManager } from './assets/SoundManager';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -31083,27 +30146,20 @@ class SimpleGame {
     // Player information
     this.playerName = 'Pilot';  // Default player name
     
-    // Sound management
-    this.audioListener = new THREE.AudioListener();
-    this.soundPools = new Map();
-    this.loadedSounds = new Map();
-    this.soundLoadPromises = new Map();
-
     // Create the asset loader
     this.assetLoader = new AssetLoader().setCallbacks(
       (message) => this.updateLoadingUI(message),
       (type, error) => this.handleLoadError(type, error)
     );
     
+    // Initialize SoundManager
+    this.soundManager = new SoundManager();
+    
     // Asset loading state
     this.loadingState = {
       started: false,
       completed: false,
-      errors: [],
-      timeouts: new Map(),
-      retryCount: new Map(),
-      maxRetries: 3,
-      loadingPromises: new Map()
+      errors: []
     };
     
     // Track assets loading
@@ -31135,6 +30191,17 @@ class SimpleGame {
     
     // Create game UI
     this.ui = new GameUI();
+    
+    // Create player after scene setup (as specified in Task 8)
+    this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+      type: 'PLAYER',
+      shipModel: 'STANDARD',
+      teamColor: 0x00ffff
+    });
+    this.scene.add(this.player.mesh);
+    
+    // For backward compatibility with existing code
+    this.playerShip = this.player.mesh;
     
     // Game properties
     this.boundarySize = 100; // Size of the playable area
@@ -31174,6 +30241,10 @@ class SimpleGame {
     
     // Initialize NetworkManager
     this.networkManager = new NetworkManager();
+    
+    // Initialize remotePlayers map for multiplayer
+    this.remotePlayers = new Map();
+    
     this.networkManager.on('connected', () => {
       console.log('Connected to game server!');
       document.getElementById('connection-status').textContent = 'Connected';
@@ -31194,8 +30265,20 @@ class SimpleGame {
     
     this.networkManager.on('player_left', (id) => {
       console.log('Player left:', id);
+      // Remove player mesh if it exists
+      const player = this.remotePlayers.get(id);
+      if (player) {
+        this.scene.remove(player);
+        this.remotePlayers.delete(id);
+        console.log(`Removed remote player: ${id}`);
+      }
       // Update player count
       this.updatePlayerCount();
+    });
+    
+    // Add player update handling
+    this.networkManager.on('player_update', (data) => {
+      this.updateRemotePlayer(data.id, data.position, data.rotation);
     });
     
     // Add laser shot handling
@@ -31221,28 +30304,35 @@ class SimpleGame {
   }
   
   setupScene() {
-    // Create scene, camera, and renderer
+    // Create Three.js Scene
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0a1f); // Dark blue background
     
-    // Set up isometric camera
-    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.camera.position.set(10, 10, 10);
-    this.camera.lookAt(0, 0, 0);
-    
-    // Create WebGL renderer
+    // Setup WebGL renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('game-container').appendChild(this.renderer.domElement);
     
-    // Add CSS2D renderer for player name labels
-    this.labelRenderer = new CSS2DRenderer();
-    this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
-    this.labelRenderer.domElement.style.position = 'absolute';
-    this.labelRenderer.domElement.style.top = '0';
-    this.labelRenderer.domElement.style.pointerEvents = 'none';
-    document.body.appendChild(this.labelRenderer.domElement);
+    // Create camera
+    this.camera = new THREE.PerspectiveCamera(
+      60, // FOV
+      window.innerWidth / window.innerHeight, // Aspect ratio
+      0.1, // Near
+      1000 // Far
+    );
+    
+    // Position camera
+    this.camera.position.set(0, 7, 15); // Slightly above and behind player
+    this.camera.lookAt(0, 0, 0);
+    
+    // Attach audio listener to camera
+    if (this.soundManager) {
+      this.camera.add(this.soundManager.getListener());
+      console.log('Audio listener attached to camera');
+    }
     
     // Add lighting
     const ambientLight = new THREE.AmbientLight(0x404040);
@@ -31259,378 +30349,36 @@ class SimpleGame {
     this.createObstacles();
   }
   
-  loadAssets() {
+  async loadAssets() {
     if (this.loadingState.started) {
-      console.warn('🔍 Asset loading already in progress');
-      return;
+        console.warn('🔍 Asset loading already in progress');
+        return;
     }
     
-    console.log('🔍 Starting asset loading process');
-    console.log('Current loading state:', JSON.stringify(this.loadingState, null, 2));
-    
-    this.loadingState.started = true;
-    this.loadingState.completed = false;
-    this.loadingState.errors = [];
-    
-    // Show loading message
     this.updateLoadingUI('Loading game assets...');
     
-    // Create placeholder ship until model loads
-    this.createDefaultShip();
-    
-    // Load assets in parallel with proper error handling
-    Promise.all([
-      this.loadSounds().catch(error => {
-        console.error('🔍 Sound loading failed:', error);
-        this.handleLoadError('sounds', error);
-        return null;
-      }),
-      this.loadAssetsWithLoader().catch(error => {
-        console.error('🔍 Asset loading failed:', error);
-        this.handleLoadError('assets', error);
-        return null;
-      })
-    ]).then(() => {
-      console.log('🔍 All asset loading promises completed');
-      // Check loading progress even if some assets failed
-      this.checkLoadingProgress();
-    }).catch(error => {
-      console.error('🔍 Critical error loading assets:', error);
-      this.handleLoadError('critical', error);
-    });
-  }
-  
-  async loadAssetsWithLoader() {
-    console.log('🟢🟢🟢 Loading assets with AssetLoader...');
-    
-    // Use AssetLoader to load all assets including ship models
-    await this.assetLoader.loadAll();
-    this.shipModelLoaded = true;
-    console.log('✅ All assets loaded successfully via AssetLoader');
-    
-    return true;
-  }
-  
-  loadSounds() {
-    // AudioListener should already be initialized in constructor
-    if (!this.camera) {
-      console.error('Camera not initialized when trying to load sounds');
-      return Promise.reject(new Error('Camera not initialized'));
-    }
-
-    // Add listener to camera if not already added
-    if (!this.camera.children.includes(this.audioListener)) {
-      this.camera.add(this.audioListener);
-    }
-    
-    // Define sounds to load
-    const soundsToLoad = [
-      { name: 'laser', path: 'assets/sounds/laser.mp3', poolSize: 5 },
-      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3', poolSize: 3 },
-      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3', poolSize: 2 },
-      { name: 'bounce', path: 'assets/sounds/bounce.mp3', poolSize: 3 },
-      { name: 'weapon-switch', path: 'assets/sounds/weapon-switch.mp3', poolSize: 2 },
-      { name: 'weapon-charging', path: 'assets/sounds/weapon-charging.mp3', poolSize: 1, volume: 0.2 }  // Lower volume for background effect
-    ];
-    
-    // Create a pool of sounds for frequently played effects
-    const audioLoader = new THREE.AudioLoader();
-    
-    // Load each sound only if not already loaded
-    soundsToLoad.forEach(soundInfo => {
-      if (!this.loadedSounds.has(soundInfo.name)) {
-        const loadPromise = new Promise((resolve, reject) => {
-          // Set a timeout for loading
-          const timeoutId = setTimeout(() => {
-            reject(new Error(`Sound loading timeout: ${soundInfo.name}`));
-          }, 10000); // 10 second timeout
-          
-          audioLoader.load(
-            soundInfo.path,
-            buffer => {
-              clearTimeout(timeoutId);
-              
-              // Create sound pool
-              const pool = [];
-              for (let i = 0; i < soundInfo.poolSize; i++) {
-                const sound = new THREE.Audio(this.audioListener);
-                sound.setBuffer(buffer);
-                sound.setVolume(soundInfo.volume || 0.5); // Use specified volume or default to 0.5
-                pool.push({ sound, inUse: false, lastUsed: 0 });
-              }
-              
-              this.soundPools.set(soundInfo.name, pool);
-              this.loadedSounds.set(soundInfo.name, buffer);
-              console.log(`Loaded sound: ${soundInfo.name} (${soundInfo.poolSize} instances)`);
-              resolve();
-            },
-            xhr => {
-              console.log(`${soundInfo.name} ${(xhr.loaded / xhr.total * 100)}% loaded`);
-            },
-            error => {
-              clearTimeout(timeoutId);
-              console.error(`Error loading sound ${soundInfo.name}:`, error);
-              reject(error);
-            }
-          );
-        });
-        
-        this.soundLoadPromises.set(soundInfo.name, loadPromise);
-      }
-    });
-    
-    // Return a promise that resolves when all sounds are loaded
-    return Promise.all(Array.from(this.soundLoadPromises.values()))
-      .then(() => {
-        console.log('All sounds loaded successfully');
-      })
-      .catch(error => {
-        console.error('Error loading sounds:', error);
-        // Continue without sounds rather than breaking the game
-      });
-  }
-  
-  playSound(name) {
-    const pool = this.soundPools.get(name);
-    if (!pool || pool.length === 0) {
-      console.warn(`Sound "${name}" not found or not loaded yet.`);
-      return;
-    }
-    
     try {
-      const now = Date.now();
-      
-      // Find available sound that hasn't been used recently
-      let soundWrapper = pool.find(wrapper => 
-        !wrapper.inUse && (now - wrapper.lastUsed > 50) // 50ms minimum delay between same sound
-      );
-      
-      // If no sound available, find the oldest one
-      if (!soundWrapper) {
-        soundWrapper = pool.reduce((oldest, current) => 
-          (!oldest || current.lastUsed < oldest.lastUsed) ? current : oldest
-        );
-        
-        // If the oldest sound was used too recently, skip playing
-        if (now - soundWrapper.lastUsed < 50) {
-          return;
+        // Create initial player with default ship
+        if (!this.player) {
+            this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+                type: 'PLAYER',
+                shipModel: 'STANDARD',
+                teamColor: 0x00ffff
+            });
+            this.playerShip = this.player.mesh; // For backward compatibility
         }
         
-        soundWrapper.sound.stop(); // Stop it if it's playing
-      }
-      
-      // Mark as in use and update timestamp
-      soundWrapper.inUse = true;
-      soundWrapper.lastUsed = now;
-      
-      // Play the sound
-      soundWrapper.sound.play();
-      
-      // Set up callback to release back to the pool
-      soundWrapper.sound.onEnded = () => {
-        soundWrapper.inUse = false;
-      };
+        // Load all assets through AssetLoader
+        await this.assetLoader.loadAll();
+        this.assetsLoaded = true;
+        this.shipModelLoaded = true;
+        
+        console.log('✅ All assets loaded successfully');
+        this.checkLoadingProgress();
     } catch (error) {
-      console.warn(`Error playing sound "${name}":`, error);
+        console.error('🔍 Critical error loading assets:', error);
+        this.handleLoadError('critical', error);
     }
-  }
-  
-  createDefaultShip() {
-    // Create a simple ship geometry as placeholder
-    const geometry = new THREE.ConeGeometry(0.5, 1, 8);
-    geometry.rotateX(Math.PI / 2);
-    
-    // Create glowing material
-    const material = new THREE.MeshPhongMaterial({
-      color: 0x00ffff,
-      emissive: 0x006666,
-      shininess: 100
-    });
-    
-    // Create ship mesh
-    this.playerShip = new THREE.Mesh(geometry, material);
-    this.playerShip.position.set(0, 0.5, 0);
-    this.scene.add(this.playerShip);
-    
-    // Add a point light to the ship to make it glow
-    const light = new THREE.PointLight(0x00ffff, 1, 2);
-    light.position.set(0, 0, 0);
-    this.playerShip.add(light);
-    
-    // Add ship properties
-    this.shipSpeed = 0.1;
-    this.rotationSpeed = 0.05;
-  }
-  
-  setShipModel(type) {
-    console.log('🔍 Setting ship model:', type);
-    
-    // Get the ship model from assets
-    let model = this.assetLoader.getShipModel(type);
-    
-    // If model is null or undefined, create fallback model
-    if (!model) {
-      console.warn('⚠️ Using fallback ship model');
-      if (this.debugging) {
-        console.trace('Stack trace for fallback ship model');
-      }
-      
-      if (!THREE.BoxGeometry) {
-        console.error('THREE.BoxGeometry not available for fallback ship');
-        return;
-      }
-      
-      try {
-        console.log('📦 Creating simple fallback model');
-        // Create a simple fallback model (box)
-        const geometry = new THREE.BoxGeometry(1, 0.5, 2);
-        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
-        model = new THREE.Mesh(geometry, material);
-      } catch (error) {
-        console.error('Error creating fallback model:', error);
-        return;
-      }
-    }
-    
-    // Make all ships smaller (50-60% smaller)
-    const scaleFactor = 0.45; // About 55% smaller
-    model.scale.set(scaleFactor, scaleFactor, scaleFactor);
-    console.log(`DIAGNOSTIC: Applied reduced scale: [${model.scale.x}, ${model.scale.y}, ${model.scale.z}]`);
-    
-    // Log ship model information
-    console.log('🔍 Using ship model:', {
-      children: model.children?.length || 0,
-      position: model.position,
-      rotation: model.rotation,
-      scale: model.scale
-    });
-
-    // Store the model reference for thruster effects
-    this.shipModel = model;
-
-    // Add the model to the player ship group
-    this.playerShip.add(model);
-    
-    // Position the ship
-    this.playerShip.position.set(0, 0.5, 0);
-    
-    // Add to scene
-    this.scene.add(this.playerShip);
-    
-    // Add thruster effects
-    this.addThrusterGlow();
-    
-    // Add player name label above the ship
-    this.addPlayerNameLabel();
-    
-    console.log('✅ Ship model set successfully');
-    
-    // Set a fixed collision radius that works with the reduced ship size
-    const fixedCollisionRadius = 0.35; // Reduced radius to match smaller ship size
-    this.playerShip.userData.collisionRadius = fixedCollisionRadius;
-    console.log(`DIAGNOSTIC: Set ship collision radius: ${this.playerShip.userData.collisionRadius}`);
-  }
-  
-  // Function to add a player name label above the ship
-  addPlayerNameLabel() {
-    // Remove any existing name label
-    if (this.playerNameLabel) {
-      this.playerShip.remove(this.playerNameLabel);
-      this.playerNameLabel = null;
-    }
-    
-    // Create a canvas for the player name
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 512;
-    canvas.height = 128;
-    
-    // Set canvas background transparent
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Create gradient for the text
-    const gradient = context.createLinearGradient(0, 0, canvas.width, 0);
-    gradient.addColorStop(0, '#00c3ff');    // Cyan blue
-    gradient.addColorStop(0.5, '#80ffff');  // Light cyan
-    gradient.addColorStop(1, '#00c3ff');    // Cyan blue
-    
-    // Draw player name on canvas
-    context.font = 'bold 40px Orbitron';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    
-    // Add shadow/glow effect
-    context.shadowColor = '#0062ff';
-    context.shadowBlur = 15;
-    
-    // Draw stroke
-    context.strokeStyle = '#000';
-    context.lineWidth = 6;
-    context.strokeText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Fill with gradient
-    context.fillStyle = gradient;
-    context.fillText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Add a subtle underline
-    context.beginPath();
-    context.moveTo(canvas.width / 2 - context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.lineTo(canvas.width / 2 + context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.strokeStyle = '#00c3ff';
-    context.lineWidth = 2;
-    context.stroke();
-    
-    // Add a mini rank/icon before the name
-    const icon = this.getPlayerIcon();
-    const iconSize = 30;
-    context.font = 'bold 20px Orbitron';
-    context.fillStyle = '#ffcc00';
-    context.strokeStyle = '#000';
-    context.lineWidth = 3;
-    const iconX = canvas.width / 2 - context.measureText(this.playerName).width / 2 - iconSize - 10;
-    const iconY = canvas.height / 2;
-    context.strokeText(icon, iconX, iconY);
-    context.fillText(icon, iconX, iconY);
-    
-    // Create texture from canvas
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    
-    // Create sprite material
-    const material = new THREE.SpriteMaterial({ 
-      map: texture,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    });
-    
-    // Create sprite
-    const sprite = new THREE.Sprite(material);
-    sprite.scale.set(3, 0.8, 1);
-    sprite.position.set(0, 1.8, 0); // Position above the ship
-    
-    // Store reference and add to ship
-    this.playerNameLabel = sprite;
-    this.playerShip.add(this.playerNameLabel);
-    
-    console.log(`Added enhanced name label for player: ${this.playerName}`);
-  }
-  
-  // Helper function to get player icon based on name
-  getPlayerIcon() {
-    // Simple hash function to determine icon
-    let hash = 0;
-    for (let i = 0; i < this.playerName.length; i++) {
-      hash = ((hash << 5) - hash) + this.playerName.charCodeAt(i);
-      hash |= 0; // Convert to 32bit integer
-    }
-    
-    // Array of possible icons
-    const icons = ['⚡', '✦', '★', '♦', '◆', '⬢', '⚔️', '⚜️', '☄️', '⚪'];
-    
-    // Use hash to select icon
-    const iconIndex = Math.abs(hash) % icons.length;
-    return icons[iconIndex];
   }
   
   handleLoadError(assetType, error) {
@@ -31675,11 +30423,7 @@ class SimpleGame {
         this.loadingState = {
           started: false,
           completed: false,
-          errors: [],
-          timeouts: new Map(),
-          retryCount: new Map(),
-          maxRetries: 3,
-          loadingPromises: new Map()
+          errors: []
         };
         this.loadAssets();
       };
@@ -31697,46 +30441,37 @@ class SimpleGame {
   
   checkLoadingProgress() {
     console.log('🔍 Checking loading progress...');
-    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
-    console.log('Sound pools size:', this.soundPools.size);
-    console.log('Ship model loaded:', this.shipModelLoaded);
     
-    // Define what constitutes a fully loaded game
+    // Log loading state
+    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
+    
+    // Define what's required for a fully loaded game
     const requiredAssets = {
       shipModel: this.shipModelLoaded,
-      sounds: this.soundPools.size > 0
+      assetsLoaded: this.assetLoader.loadingState.completed
     };
     
     // Check if all required assets are loaded
-    const allAssetsLoaded = Object.entries(requiredAssets).every(([name, loaded]) => {
-      if (!loaded) {
-        console.log(`🔍 Asset "${name}" not loaded yet`);
-      }
+    const allAssetsLoaded = Object.entries(requiredAssets).every(([key, loaded]) => {
+      console.log(`🔍 ${key}: ${loaded ? '✅' : '❌'}`);
       return loaded;
     });
     
     if (allAssetsLoaded) {
-      console.log('✅ All required assets loaded successfully!');
+      console.log('✅ All required assets loaded!');
       this.loadingState.completed = true;
-      
-      // Clear any remaining timeouts
-      this.loadingState.timeouts.forEach(timeoutId => {
-        clearTimeout(timeoutId);
-      });
-      this.loadingState.timeouts.clear();
-      
-      // Show start screen
       this.showStartScreen();
     } else {
-      // Show which assets are still loading
+      // Log which assets are still pending
       const pendingAssets = Object.entries(requiredAssets)
-        .filter(([name, loaded]) => !loaded)
-        .map(([name]) => name);
+        .filter(([_, loaded]) => !loaded)
+        .map(([key]) => key);
+      console.log('⏳ Still waiting for:', pendingAssets);
       
-      console.log(`🔍 Still loading: ${pendingAssets.join(', ')}`);
-      this.updateLoadingUI(`Loading: ${pendingAssets.join(', ')}...`);
+      // Update loading UI
+      this.updateLoadingUI(`Loading... (${pendingAssets.join(', ')})`);
       
-      // Check again in 1 second if not all assets are loaded
+      // Check again after a delay
       setTimeout(() => this.checkLoadingProgress(), 1000);
     }
   }
@@ -31778,6 +30513,12 @@ class SimpleGame {
   }
   
   addThrusterGlow() {
+    // Check if player and player mesh exist
+    if (!this.player || !this.player.mesh) {
+      console.warn('Cannot add thruster glow: Player or player mesh is not initialized');
+      return;
+    }
+    
     // Create a single, efficient thruster glow effect
     // Use instanced mesh for better performance if you have multiple thrusters
     
@@ -31794,6 +30535,9 @@ class SimpleGame {
     thruster.position.set(0, 0, -0.7); // Position at the back of the ship
     thruster.rotation.x = Math.PI / 2;
     thruster.name = 'thruster'; // Name it for easier reference later
+    
+    // Add thruster to player mesh
+    this.player.mesh.add(thruster);
     
     // Add point light for the thruster
     const thrusterLight = new THREE.PointLight(0x00ffff, 1, 3);
@@ -31853,134 +30597,101 @@ class SimpleGame {
     
     // Load texture first
     const textureLoader = new THREE.TextureLoader();
-    const terrainTexture = textureLoader.load('assets/models/textures/Colors3.png', 
-      // Success callback
-      (texture) => {
-        console.log('Terrain texture (Colors3.png) loaded successfully');
-        // Configure texture 
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(8, 8); // Repeat the texture more times for better detail
-        
-        // Now load the Terrain.glb model
-        loadTerrainModel(texture);
-      },
-      // Progress callback
-      undefined,
-      // Error callback
-      (error) => {
-        console.error('Error loading Colors3.png texture:', error);
-        // Try fallback to original texture
-        textureLoader.load('assets/models/textures/tex.png', 
-          fallbackTexture => {
-            console.log('Fallback texture loaded');
-            fallbackTexture.wrapS = THREE.RepeatWrapping;
-            fallbackTexture.wrapT = THREE.RepeatWrapping;
-            fallbackTexture.repeat.set(5, 5);
-            loadTerrainModel(fallbackTexture);
-          },
-          undefined,
-          fallbackError => {
-            console.error('Error loading fallback texture:', fallbackError);
-            // Load model anyway without texture
-            loadTerrainModel(null);
-          }
-        );
-      }
-    );
-    
-    // Function to load terrain model with texture
-    const loadTerrainModel = (texture) => {
-      const terrainPath = 'assets/models/terrain/Terrain.glb';
-      
-      // Use GLTFLoader properly imported at the top
-      const loader = new GLTFLoader();
-      loader.load(
-        terrainPath,
-        (gltf) => {
-          console.log('Terrain model loaded successfully');
-          
-          // Remove the temporary floor
-          if (this.floor) {
-            this.scene.remove(this.floor);
-            this.floor.geometry.dispose();
-            this.floor.material.dispose();
-          }
-          
-          // Set up the terrain model
-          const terrain = gltf.scene;
-          
-          // Scale the terrain appropriately
-          const terrainScale = 100; // Adjust this value to change the overall size
-          terrain.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
-          
-          // Position terrain at center and slightly below zero to avoid z-fighting
-          terrain.position.set(0, -0.2, 0);
-          
-          // Set up materials with texture
-          terrain.traverse((node) => {
-            if (node.isMesh) {
-              // Enable shadows
-              node.castShadow = false; // We don't want the floor to cast shadows
-              node.receiveShadow = true; // But we do want it to receive shadows
-              
-              // Apply texture if available
-              if (node.material && texture) {
-                // Store original colors for blending
-                const originalColor = node.material.color ? node.material.color.clone() : new THREE.Color(0xffffff);
-                
-                // Apply texture
-                node.material.map = texture;
-                
-                // Make the terrain slightly emissive for a subtle glow
-                node.material.emissive = new THREE.Color(0x006688);
-                node.material.emissiveIntensity = 0.2;
-                
-                // Add more vibrant color variation for Colors3 texture
-                if (texture.source.data.src.includes('Colors3')) {
-                  // More vibrant color blend for the new texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x99ccff), 0.4);
-                  // Increase the contrast and saturation
-                  node.material.roughness = 0.6;
-                  node.material.metalness = 0.3;
-                } else {
-                  // Original settings for fallback texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x88aaff), 0.3);
-                  node.material.roughness = 0.8;
-                  node.material.metalness = 0.2;
-                }
-                
-                // Make sure textures are used
-                node.material.needsUpdate = true;
-              }
+    const texturePromise = new Promise((resolve, reject) => {
+      textureLoader.load(
+        'assets/models/textures/Colors3.png', 
+        texture => {
+          console.log('Terrain texture (Colors3.png) loaded successfully');
+          // Configure texture 
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.repeat.set(8, 8); // Repeat the texture more times for better detail
+          resolve(texture);
+        },
+        undefined,
+        error => {
+          console.error('Error loading Colors3.png texture:', error);
+          // Try fallback texture
+          textureLoader.load(
+            'assets/models/textures/tex.png', 
+            fallbackTexture => {
+              console.log('Fallback texture loaded');
+              fallbackTexture.wrapS = THREE.RepeatWrapping;
+              fallbackTexture.wrapT = THREE.RepeatWrapping;
+              fallbackTexture.repeat.set(5, 5);
+              resolve(fallbackTexture);
+            },
+            undefined,
+            fallbackError => {
+              console.error('Error loading fallback texture:', fallbackError);
+              resolve(null); // Resolve with null to continue without texture
             }
-          });
-          
-          // Store reference and add to scene
-          this.floor = terrain;
-          this.scene.add(terrain);
-          
-          // Add a circular highlight around the player's position
-          this.createPlayerHighlight();
-        },
-        (xhr) => {
-          // Progress callback
-          console.log(`Loading terrain: ${(xhr.loaded / xhr.total * 100).toFixed(2)}%`);
-        },
-        (error) => {
-          // Error callback
-          console.error('Error loading terrain model:', error);
-          console.log('Falling back to default floor');
-          
-          // Create grid as a fallback
-          const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
-          this.scene.add(gridHelper);
-          
-          // Add player highlight anyway
-          this.createPlayerHighlight();
+          );
         }
       );
-    };
+    });
+    
+    // When texture is loaded (or failed), get the terrain model from AssetLoader
+    texturePromise.then(texture => {
+      // Get terrain model from AssetLoader
+      const terrain = this.assetLoader.getModel('terrain/Terrain.glb');
+      
+      if (terrain) {
+        console.log('Using terrain model from AssetLoader');
+        
+        // Remove the temporary floor
+        if (this.floor) {
+          this.scene.remove(this.floor);
+          this.floor.geometry.dispose();
+          this.floor.material.dispose();
+        }
+        
+        // Clone the model to avoid modifying the original
+        const terrainClone = terrain.clone();
+        
+        // Scale the terrain appropriately
+        const terrainScale = 100; // Adjust this value to change the overall size
+        terrainClone.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
+        
+        // Position terrain at center and slightly below zero to avoid z-fighting
+        terrainClone.position.set(0, -0.2, 0);
+        
+        // Apply texture if available
+        if (texture) {
+          terrainClone.traverse((node) => {
+            if (node.isMesh) {
+              node.material = node.material.clone(); // Clone material to avoid affecting other instances
+              node.material.map = texture;
+              node.material.needsUpdate = true;
+              
+              // Enable shadows
+              node.castShadow = true;
+              node.receiveShadow = true;
+            }
+          });
+        }
+        
+        // Add to scene
+        this.scene.add(terrainClone);
+        this.terrain = terrainClone;
+        
+        console.log('Terrain model added to scene');
+        
+        // Add a circular highlight around the player's position
+        this.createPlayerHighlight();
+      } else {
+        console.warn('Terrain model not found in AssetLoader, using fallback grid');
+        
+        // Create a grid as fallback
+        const grid = new THREE.GridHelper(100, 100, 0x0000ff, 0x000044);
+        grid.position.y = 0;
+        this.scene.add(grid);
+        this.terrain = grid;
+        
+        // Add player highlight anyway
+        this.createPlayerHighlight();
+      }
+    });
   }
 
   // Separate method for player highlight to avoid code duplication
@@ -36387,6 +35098,111 @@ createMuzzleFlash(position, direction) {
     
     // Send the update to the network manager
     this.networkManager.sendPlayerUpdate(playerData);
+  }
+
+  // Add the missing setShipModel function
+  setShipModel(type) {
+    console.log('🔍 Setting ship model:', type);
+    
+    // Get the ship model from assets
+    let model = this.assetLoader.getShipModel(type);
+    
+    // If model is null or undefined, create fallback model
+    if (!model) {
+      console.warn('⚠️ Using fallback ship model for type:', type);
+      
+      // Create a simple geometric shape as fallback
+      const geometry = new THREE.BoxGeometry(1, 0.5, 2);
+      const material = new THREE.MeshPhongMaterial({ 
+        color: 0x00ffff, 
+        specular: 0x111111, 
+        shininess: 30 
+      });
+      model = new THREE.Mesh(geometry, material);
+    }
+    
+    // Clear existing player ship if it exists
+    if (this.playerShip) {
+      if (this.scene) {
+        this.scene.remove(this.playerShip);
+      }
+      this.playerShip = null;
+    }
+    
+    // Set the new ship model
+    this.playerShip = model;
+    
+    // Position the ship appropriately
+    if (this.playerShip && this.scene) {
+      this.playerShip.position.set(0, 0.5, 0);
+      this.scene.add(this.playerShip);
+    }
+    
+    return this.playerShip;
+  }
+
+  /**
+   * Play a sound by name
+   * @param {string} name - Name of the sound to play
+   * @param {THREE.Vector3} position - Optional position for 3D audio
+   */
+  playSound(name, position = null) {
+    if (this.soundManager) {
+      console.log(`Playing sound: ${name}`);
+      this.soundManager.playSound(name, position);
+    } else {
+      console.warn(`Cannot play sound '${name}': SoundManager not initialized`);
+    }
+  }
+
+  /**
+   * Update a remote player's position and rotation
+   * @param {string} id - Player ID
+   * @param {Object} position - Position coordinates
+   * @param {Object} rotation - Rotation coordinates
+   */
+  updateRemotePlayer(id, position, rotation) {
+    // Get existing player or create a new one
+    let player = this.remotePlayers.get(id);
+    
+    if (!player) {
+      // Create a new player mesh if this is the first update
+      player = this.createRemotePlayerMesh();
+      this.remotePlayers.set(id, player);
+      this.scene.add(player);
+      console.log(`Created new remote player: ${id}`);
+    }
+    
+    // Update player position and rotation
+    if (position) {
+      player.position.set(position.x, position.y, position.z);
+    }
+    
+    if (rotation) {
+      player.rotation.set(rotation.x, rotation.y, rotation.z);
+    }
+  }
+  
+  /**
+   * Create a mesh for a remote player
+   * @returns {THREE.Object3D} Player mesh
+   */
+  createRemotePlayerMesh() {
+    // For simplicity, we'll use a simple colored box for remote players
+    const geometry = new THREE.BoxGeometry(1, 1, 2);
+    const material = new THREE.MeshLambertMaterial({ color: 0xff0000 }); // Red for other players
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    // Add name label
+    const nameLabel = document.createElement('div');
+    nameLabel.className = 'player-label';
+    nameLabel.textContent = 'Player';
+    
+    const playerLabel = new CSS2DObject(nameLabel);
+    playerLabel.position.set(0, 1.5, 0);
+    mesh.add(playerLabel);
+    
+    return mesh;
   }
 }
 
@@ -42613,6 +41429,8 @@ export class ModelLoader {
 ### ./assets/ModelLoader.js END ###
 
 ### ./assets/SoundManager.js BEGIN ###
+import * as THREE from 'three';
+
 /**
  * SoundManager class for managing game audio
  */
@@ -42642,13 +41460,20 @@ export class SoundManager {
     // Create a sound loader
     const audioLoader = new THREE.AudioLoader();
     
-    // Define common sounds to preload
+    // Define common sounds to preload with updated paths
     const soundsToLoad = [
-      { name: 'laser', path: 'sounds/laser.mp3' },
-      { name: 'explosion', path: 'sounds/explosion.mp3' },
-      { name: 'hit', path: 'sounds/hit.mp3' },
-      { name: 'powerup', path: 'sounds/powerup.mp3' },
-      { name: 'engine', path: 'sounds/engine.mp3', loop: true }
+      { name: 'laser', path: 'assets/sounds/laser.mp3' },
+      { name: 'explosion', path: 'assets/sounds/explosion.mp3' },
+      { name: 'hit', path: 'assets/sounds/hit.mp3' },
+      { name: 'powerup', path: 'assets/sounds/powerup.mp3' },
+      { name: 'engine', path: 'assets/sounds/engine.mp3', loop: true },
+      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3' },
+      { name: 'weapon-switch', path: 'assets/sounds/weapon-switch.mp3' },
+      { name: 'collision', path: 'assets/sounds/collision.mp3' },
+      { name: 'weapon-charging', path: 'assets/sounds/weapon-charging.mp3' },
+      { name: 'bounce', path: 'assets/sounds/bounce.mp3' },
+      { name: 'weapon-armor-hit', path: 'assets/sounds/weapon-armor-hit.mp3' },
+      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3' }
     ];
     
     // Load each sound
@@ -42679,11 +41504,11 @@ export class SoundManager {
       }
     });
     
-    // Load background music
+    // Load background music with updated path
     try {
       this.music = new THREE.Audio(this.listener);
       audioLoader.load(
-        'sounds/background_music.mp3',
+        'assets/sounds/background_music.mp3',
         buffer => {
           this.music.setBuffer(buffer);
           this.music.setVolume(this.musicVolume);
@@ -42742,17 +41567,94 @@ export class SoundManager {
       return;
     }
     
-    // If sound is already playing, clone it
+    let soundToPlay = sound;
+    
+    // If sound is already playing, create a new instance
     if (sound.isPlaying) {
-      const soundClone = sound.clone();
-      soundClone.play();
-      
-      // Clean up clone after playing
-      soundClone.onEnded = () => {
-        soundClone.disconnect();
-      };
-    } else {
-      sound.play();
+      try {
+        // Create a new audio instance
+        if (position) {
+          // For positional audio
+          const soundClone = new THREE.PositionalAudio(this.listener);
+          soundClone.setBuffer(sound.buffer);
+          soundClone.setVolume(this.effectsVolume);
+          soundClone.setRefDistance(10); // Distance at which the volume is at full
+          soundToPlay = soundClone;
+        } else {
+          // For non-positional audio - create new instead of cloning
+          const soundClone = new THREE.Audio(this.listener);
+          soundClone.setBuffer(sound.buffer);
+          soundClone.setVolume(this.effectsVolume);
+          soundToPlay = soundClone;
+        }
+        
+        // Clean up clone after playing
+        soundToPlay.onEnded = () => {
+          if (soundToPlay.source) {
+            soundToPlay.disconnect();
+            soundToPlay.source = null; // Prevent memory leaks
+          }
+        };
+      } catch (error) {
+        console.error("Error creating new sound instance:", error);
+        // If cloning fails, don't play any sound rather than crashing
+        return;
+      }
+    }
+    
+    // If position is provided, make it positional
+    if (position && !sound.isPlaying) {
+      // We're using the original sound, convert it to positional if needed
+      if (!(soundToPlay instanceof THREE.PositionalAudio)) {
+        try {
+          // Create new positional audio
+          const positionalSound = new THREE.PositionalAudio(this.listener);
+          positionalSound.setBuffer(sound.buffer);
+          positionalSound.setVolume(this.effectsVolume);
+          positionalSound.setRefDistance(10);
+          soundToPlay = positionalSound;
+        } catch (error) {
+          console.error("Error creating positional audio:", error);
+          // Fall back to non-positional
+        }
+      }
+    }
+    
+    // Apply position if provided
+    if (position && soundToPlay instanceof THREE.PositionalAudio) {
+      try {
+        // Check if we need to add this to an object in the scene
+        const dummyObject = new THREE.Object3D();
+        dummyObject.position.copy(position);
+        dummyObject.add(soundToPlay);
+        
+        // Cleanup function to remove the dummy object after playing
+        soundToPlay.onEnded = () => {
+          if (dummyObject.parent) dummyObject.parent.remove(dummyObject);
+          if (soundToPlay.source) {
+            soundToPlay.disconnect();
+            soundToPlay.source = null;
+          }
+        };
+        
+        // Add to scene or listener (we assume listener is in scene)
+        if (this.listener && this.listener.parent) {
+          this.listener.parent.add(dummyObject);
+        } else {
+          console.warn('Audio listener has no parent, positional audio may not work correctly');
+          // Just play non-positional as fallback
+        }
+      } catch (error) {
+        console.error("Error setting up positional audio:", error);
+        // Fall back to just playing the sound
+      }
+    }
+    
+    // Play the sound
+    try {
+      soundToPlay.play();
+    } catch (error) {
+      console.error("Error playing sound:", error);
     }
   }
   
@@ -42884,11 +41786,39 @@ class AssetLoader {
         this.loadingState.errors = [];
 
         try {
-            await Promise.all([
-                this.loadModels(),
-                this.loadSounds(),
-                this.loadTextures()
-            ]);
+            const modelsToLoad = [
+                'ships/ALTSPACE1.glb',
+                'ships/ALTSPACE2.glb',
+                'terrain/Terrain.glb',
+                'terrain/Water.glb',
+                'objects/SP_Stone01.glb',
+                'objects/SP_Ground05.glb'
+            ];
+
+            const loader = new GLTFLoader();
+            
+            for (const model of modelsToLoad) {
+                try {
+                    const loaded = await this.loadWithRetry(() => 
+                        this.loadModel(loader, model, `assets/models/${model}`)
+                    );
+                    if (loaded) {
+                        console.log(`✅ Successfully loaded model: ${model}`);
+                        
+                        // Add aliases for ship models
+                        if (model === 'ships/ALTSPACE1.glb') {
+                            this.assets.models.set('FIGHTER', this.assets.models.get(model));
+                            this.assets.models.set('SCOUT', this.assets.models.get(model));
+                        } else if (model === 'ships/ALTSPACE2.glb') {
+                            this.assets.models.set('INTERCEPTOR', this.assets.models.get(model));
+                            this.assets.models.set('EXPERIMENTAL', this.assets.models.get(model));
+                        }
+                    }
+                } catch (error) {
+                    console.error(`⛔ Failed to load model ${model}:`, error);
+                    this.handleError('model', error);
+                }
+            }
 
             this.loadingState.completed = true;
             return true;
@@ -42896,30 +41826,6 @@ class AssetLoader {
             this.handleError('critical', error);
             return false;
         }
-    }
-
-    async loadModels() {
-        const loader = new GLTFLoader();
-        // Use absolute paths to ensure models are loaded correctly
-        const modelPaths = {
-            'FIGHTER': 'assets/models/ships/ALTSPACE1.glb',
-            'INTERCEPTOR': 'assets/models/ships/ALTSPACE2.glb',
-            // Add aliases for backward compatibility
-            'SCOUT': 'assets/models/ships/ALTSPACE1.glb',
-            'EXPERIMENTAL': 'assets/models/ships/ALTSPACE2.glb'
-        };
-
-        console.log('🚢 Starting to load ship models with paths:', modelPaths);
-
-        const loadPromises = Object.entries(modelPaths).map(([key, path]) => {
-            console.log(`🔄 Setting up loading for model: ${key} from path: ${path}`);
-            return this.loadWithRetry(() => this.loadModel(loader, key, path));
-        });
-
-        await Promise.all(loadPromises);
-        
-        // Apply consistent sizing to all ship models
-        this.normalizeShipSizes();
     }
 
     async loadModel(loader, key, path) {
@@ -42949,48 +41855,6 @@ class AssetLoader {
                     clearTimeout(timeoutId);
                     console.error(`⛔ Error loading model ${key}:`, error.message);
                     reject(new Error(`Error loading model ${key}: ${error.message}`));
-                }
-            );
-        });
-    }
-
-    async loadSounds() {
-        const audioLoader = new THREE.AudioLoader();
-        const soundPaths = {
-            'laser': 'assets/sounds/laser.mp3',
-            'laser-bounce': 'assets/sounds/laser-bounce.mp3',
-            'grenade-laser': 'assets/sounds/grenade-laser.mp3',
-            'bounce': 'assets/sounds/bounce.mp3'
-        };
-
-        const loadPromises = Object.entries(soundPaths).map(([key, path]) => {
-            return this.loadWithRetry(() => this.loadSound(audioLoader, key, path));
-        });
-
-        await Promise.all(loadPromises);
-    }
-
-    async loadSound(loader, key, path) {
-        return new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-                reject(new Error(`Sound loading timeout: ${key}`));
-            }, 10000);
-
-            loader.load(
-                path,
-                (buffer) => {
-                    clearTimeout(timeoutId);
-                    this.assets.sounds.set(key, buffer);
-                    this.onProgress?.(`Loaded sound: ${key}`);
-                    resolve();
-                },
-                (xhr) => {
-                    const percent = (xhr.loaded / xhr.total * 100);
-                    this.onProgress?.(`Loading ${key}: ${Math.round(percent)}%`);
-                },
-                (error) => {
-                    clearTimeout(timeoutId);
-                    reject(new Error(`Error loading sound ${key}: ${error.message}`));
                 }
             );
         });
@@ -43064,10 +41928,6 @@ class AssetLoader {
         return this.assets.models.get(key);
     }
 
-    getSound(key) {
-        return this.assets.sounds.get(key);
-    }
-
     getTexture(key) {
         return this.assets.textures.get(key);
     }
@@ -43099,7 +41959,6 @@ class AssetLoader {
 
         // Clear all maps
         this.assets.models.clear();
-        this.assets.sounds.clear();
         this.assets.textures.clear();
 
         // Reset loading state
@@ -43148,29 +42007,27 @@ class AssetLoader {
     getShipModel(key) {
         try {
             console.log(`Getting ship model: ${key}`);
-            const model = this.assets.models.get(key);
+            
+            // First try direct key lookup
+            let model = this.assets.models.get(key);
+            
+            // If not found, try the file path
+            if (!model) {
+                model = this.assets.models.get(`ships/${key}.glb`);
+            }
+            
+            // If still not found, try aliases
+            if (!model) {
+                console.log(`Trying to find model by alias: ${key}`);
+                if (key === 'FIGHTER' || key === 'SCOUT') {
+                    model = this.assets.models.get('ships/ALTSPACE1.glb');
+                } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL') {
+                    model = this.assets.models.get('ships/ALTSPACE2.glb');
+                }
+            }
             
             if (!model) {
                 console.warn(`Ship model with key "${key}" not found!`);
-                
-                // Try to find alternative models if aliases didn't work
-                if (key === 'FIGHTER' || key === 'SCOUT') {
-                    console.log('Trying to find FIGHTER/SCOUT alternatives');
-                    const altModel = this.assets.models.get('FIGHTER') || this.assets.models.get('SCOUT');
-                    if (altModel) {
-                        console.log('Found alternative model, cloning');
-                        return this.cloneAndPrepareModel(altModel);
-                    }
-                } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL') {
-                    console.log('Trying to find INTERCEPTOR/EXPERIMENTAL alternatives');
-                    const altModel = this.assets.models.get('INTERCEPTOR') || this.assets.models.get('EXPERIMENTAL');
-                    if (altModel) {
-                        console.log('Found alternative model, cloning');
-                        return this.cloneAndPrepareModel(altModel);
-                    }
-                }
-                
-                console.error(`No model or alternative found for key: ${key}`);
                 return null;
             }
             
@@ -43188,6 +42045,9 @@ class AssetLoader {
         
         // Clone the model
         const cloned = model.clone();
+        
+        // Apply consistent scaling as specified in Task 12
+        cloned.scale.set(0.45, 0.45, 0.45);
         
         // Ensure materials are properly cloned
         cloned.traverse(node => {
@@ -43235,6 +42095,48 @@ class AssetLoader {
             return null;
         }
     }
+
+    // Add the loadModels method used by ShipSelectionUI
+    async loadModels() {
+        console.log('Loading ship models for selection UI');
+        
+        if (this.assets.models.has('FIGHTER') && this.assets.models.has('INTERCEPTOR')) {
+            console.log('Ship models already loaded, using cached versions');
+            return true;
+        }
+        
+        const shipModels = [
+            'ships/ALTSPACE1.glb',
+            'ships/ALTSPACE2.glb'
+        ];
+        
+        const loader = new GLTFLoader();
+        
+        for (const model of shipModels) {
+            try {
+                const loaded = await this.loadWithRetry(() => 
+                    this.loadModel(loader, model, `assets/models/${model}`)
+                );
+                if (loaded) {
+                    console.log(`✅ Successfully loaded ship model: ${model} for selection UI`);
+                    
+                    // Add aliases for ship models
+                    if (model === 'ships/ALTSPACE1.glb') {
+                        this.assets.models.set('FIGHTER', this.assets.models.get(model));
+                        this.assets.models.set('SCOUT', this.assets.models.get(model));
+                    } else if (model === 'ships/ALTSPACE2.glb') {
+                        this.assets.models.set('INTERCEPTOR', this.assets.models.get(model));
+                        this.assets.models.set('EXPERIMENTAL', this.assets.models.get(model));
+                    }
+                }
+            } catch (error) {
+                console.error(`⛔ Failed to load ship model ${model}:`, error);
+                this.handleError('model', error);
+            }
+        }
+        
+        return true;
+    }
 }
 
 export default AssetLoader; 
@@ -43248,35 +42150,56 @@ export class Ship extends EventEmitter {
     constructor(scene, position, options = {}) {
         super();
         
-        this.options = {
+        this.scene = scene;
+        this.options = { 
+            health: 100, 
+            speed: 0.1,
             type: 'BASIC',
             teamId: null,
             teamColor: 0xffffff,
-            health: 100,
             maxHealth: 100,
-            speed: 0.1,
             size: 1.0,
             shipModel: 'STANDARD',
-            ...options
+            ...options 
         };
-
-        this.scene = scene;
+        
         this.health = this.options.health;
         this.maxHealth = this.options.maxHealth;
         this.isActive = true;
         this.teamId = this.options.teamId;
+        this.mesh = null;
         
-        // Create ship mesh
-        this.createMesh(position);
-        
-        // Add to scene
-        this.scene.add(this.mesh);
-        
-        // Initialize effects
-        this.initializeEffects();
+        // Initialize the ship if position is provided
+        if (position) {
+            this.createMesh(position);
+            // Add to scene if mesh was created
+            if (this.mesh) {
+                this.scene.add(this.mesh);
+            }
+            // Initialize effects
+            this.initializeEffects();
+        }
     }
 
     createMesh(position) {
+        // This is a base method that can be overridden by subclasses
+        // In the base class, implement default behavior
+        
+        const geometry = this.createGeometry();
+        const material = this.createMaterial();
+        
+        // Create mesh
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.mesh.position.copy(position || new THREE.Vector3());
+        this.mesh.position.y = this.options.size;
+        
+        // Add engine glow
+        this.addEngineGlow();
+        
+        return this.mesh;
+    }
+    
+    createGeometry() {
         // Ship models based on type
         const models = {
             STANDARD: () => new THREE.ConeGeometry(this.options.size, this.options.size * 2, 3),
@@ -43301,23 +42224,19 @@ export class Ship extends EventEmitter {
         // Get geometry based on ship model or fallback to STANDARD
         const geometry = (models[this.options.shipModel] || models.STANDARD)();
         geometry.rotateX(Math.PI / 2);
-
+        
+        return geometry;
+    }
+    
+    createMaterial() {
         // Create material with team color and effects
-        this.material = new THREE.MeshStandardMaterial({
+        return new THREE.MeshStandardMaterial({
             color: this.options.teamColor,
             emissive: this.options.teamColor,
             emissiveIntensity: 0.5,
             metalness: 0.7,
             roughness: 0.3
         });
-
-        // Create mesh
-        this.mesh = new THREE.Mesh(geometry, this.material);
-        this.mesh.position.copy(position);
-        this.mesh.position.y = this.options.size;
-
-        // Add engine glow
-        this.addEngineGlow();
     }
 
     addEngineGlow() {
@@ -43460,37 +42379,31 @@ export class Ship extends EventEmitter {
 
 ### ./entities/weapons/RegularLaser.js BEGIN ###
 import * as THREE from 'three';
+import { Laser } from './Laser';
 
 /**
  * RegularLaser weapon class
  */
-export class RegularLaser {
+export class RegularLaser extends Laser {
   constructor(weaponSystem) {
+    super(weaponSystem.scene, null, null, {
+      damage: 10, range: 50, speed: 50, color: 0x00ffff
+    });
     this.weaponSystem = weaponSystem;
-    
-    // Weapon properties
-    this.name = 'Regular Laser';
-    this.damage = 10;
-    this.range = 50;
-    this.speed = 50;
-    this.cooldown = 0.2; // seconds
-    this.energyCost = 5;
+    this.cooldown = 0.2;
     this.currentCooldown = 0;
-    
-    // Visuals
-    this.color = 0x00ffff; // Cyan color
-    this.size = { length: 0.8, width: 0.1 };
-    this.explosionSize = 0.3; // Size of hit effect
-    
-    // Sound
-    this.sound = 'laser';
+    this.energyCost = 5;
   }
   
   /**
-   * Update cooldown timer
+   * Update cooldown timer and laser position
    * @param {number} deltaTime - Time since last frame in seconds
    */
   update(deltaTime) {
+    // Call parent update to handle movement and range checking
+    super.update(deltaTime);
+    
+    // Handle cooldown timer
     if (this.currentCooldown > 0) {
       this.currentCooldown -= deltaTime;
     }
@@ -43512,25 +42425,28 @@ export class RegularLaser {
    * @param {object} player - Player object for energy management
    * @returns {boolean} - True if weapon fired successfully
    */
-  fire(position, direction, player) {
-    if (!this.canFire(player)) return false;
+  fire(position, direction, options = {}) {
+    // Position and orient the laser
+    this.mesh.position.copy(position);
+    this.direction = direction.normalize();
+    this.initialPosition = position.clone();
     
-    // Reset cooldown
-    this.currentCooldown = this.cooldown;
+    // Store initial properties
+    this.teamId = options.teamId;
     
-    // Consume energy
-    player.energy -= this.energyCost;
+    // Set color based on team
+    if (options.teamColor) {
+      if (this.mesh.material) {
+        this.mesh.material.color.set(options.teamColor);
+      }
+    }
     
-    // Create laser projectile
-    const projectile = this.createProjectile(position, direction);
+    // Play sound if available
+    if (this.weaponSystem.scene.soundManager) {
+      this.weaponSystem.scene.soundManager.playSound('laser', position);
+    }
     
-    // Add projectile to weapon system
-    this.weaponSystem.addProjectile(projectile);
-    
-    // Play sound
-    this.weaponSystem.soundManager?.playSound(this.sound);
-    
-    return true;
+    return this;
   }
   
   /**
@@ -43668,32 +42584,23 @@ export class WeaponSystem {
   }
   
   fireWeapon(weaponType, position, direction, options = {}) {
-    // Get weapon configuration
-    const weaponConfig = this.weaponTypes[weaponType];
-    if (!weaponConfig) {
-      console.error(`Unknown weapon type: ${weaponType}`);
-      return null;
-    }
+    const config = this.weaponTypes[weaponType] || this.weaponTypes['LASER'];
+    let projectile = this.createLaser(position, direction, {
+      ...config,
+      ...options
+    });
     
-    // Create projectile based on weapon type
-    let projectile;
-    
-    switch (weaponType) {
-      case 'LASER':
-        projectile = this.createLaser(position, direction, {
-          ...weaponConfig,
-          ...options
-        });
-        break;
-      // Other weapon types will be implemented later
-      default:
-        console.warn(`Weapon type ${weaponType} not yet implemented`);
-        return null;
-    }
-    
-    // Add to projectiles list for tracking
     if (projectile) {
       this.projectiles.push(projectile);
+    }
+    
+    // Network synchronization if available
+    if (this.scene.networkManager) {
+      this.scene.networkManager.emit('laser_shot', {
+        origin: position,
+        direction: direction,
+        type: weaponType
+      });
     }
     
     return projectile;
@@ -43934,95 +42841,38 @@ import * as THREE from 'three';
 
 export class Laser {
   constructor(scene, position, direction, options = {}) {
-    // Default options
-    this.options = {
-      color: 0x00ffff,
-      speed: 0.3,
-      length: 3,
-      thickness: 0.1,
-      lifetime: 2000, // milliseconds
-      ...options
-    };
-    
-    // Reference to the scene
     this.scene = scene;
-    
-    // Position and direction
-    this.position = position.clone();
-    this.direction = direction.clone().normalize();
-    
-    // Tracking
-    this.isActive = true;
-    this.creationTime = Date.now();
-    this.hasHit = false;
-    
-    // Create laser mesh
-    this.createLaser();
-    
-    // Add to scene
+    this.options = { speed: 0.3, color: 0x00ffff, ...options };
+    this.mesh = this.createMesh();
+    if (position) this.mesh.position.copy(position);
+    if (direction) this.direction = direction.normalize();
     this.scene.add(this.mesh);
+    this.isActive = true;
   }
-  
-  createLaser() {
-    // Create laser geometry
-    const geometry = new THREE.CylinderGeometry(
-      this.options.thickness, 
-      this.options.thickness, 
-      this.options.length, 
-      8
-    );
-    // Rotate geometry to align with Z-axis
+
+  createMesh() {
+    const geometry = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 8);
     geometry.rotateX(Math.PI / 2);
-    
-    // Create material with glow effect
-    this.material = new THREE.MeshStandardMaterial({
-      color: this.options.color,
-      emissive: this.options.color,
-      emissiveIntensity: 1,
-      transparent: true,
-      opacity: 0.8
-    });
-    
-    // Create mesh
-    this.mesh = new THREE.Mesh(geometry, this.material);
-    
-    // Position at starting point
-    this.mesh.position.copy(this.position);
-    
-    // Orient along direction
-    this.mesh.lookAt(this.position.clone().add(this.direction));
-    
-    // Add glow effect
-    this.addGlowEffect();
-  }
-  
-  addGlowEffect() {
-    // Create point light for glow
-    this.light = new THREE.PointLight(this.options.color, 1, 3);
-    this.light.position.copy(this.position);
-    this.scene.add(this.light);
-    
-    // Add trail particles if advanced effects are enabled
-    // (Placeholder for future particle effects)
+    const material = new THREE.MeshBasicMaterial({ color: this.options.color });
+    return new THREE.Mesh(geometry, material);
   }
   
   update(deltaTime) {
     if (!this.isActive) return;
     
-    // Move laser forward
-    const movement = this.direction.clone().multiplyScalar(this.options.speed * deltaTime);
-    this.position.add(movement);
-    this.mesh.position.copy(this.position);
-    
-    // Update light position
-    if (this.light) {
-      this.light.position.copy(this.position);
+    // Move in direction
+    if (this.direction) {
+      this.mesh.position.add(
+        this.direction.clone().multiplyScalar(this.options.speed * deltaTime)
+      );
     }
     
-    // Check lifetime
-    const age = Date.now() - this.creationTime;
-    if (age > this.options.lifetime) {
-      this.deactivate();
+    // Check if laser has exceeded its range
+    if (this.options.range) {
+      const distance = this.mesh.position.distanceTo(this.initialPosition);
+      if (distance > this.options.range) {
+        this.deactivate();
+      }
     }
   }
   
@@ -44030,21 +42880,21 @@ export class Laser {
     if (!this.isActive) return;
     
     this.isActive = false;
-    
-    // Remove from scene
-    this.scene.remove(this.mesh);
-    if (this.light) {
-      this.scene.remove(this.light);
+    if (this.mesh && this.scene) {
+      this.scene.remove(this.mesh);
     }
     
-    // Dispose of resources
-    this.mesh.geometry.dispose();
-    this.material.dispose();
-  }
-  
-  handleCollision() {
-    this.hasHit = true;
-    this.deactivate();
+    // Dispose of geometry and materials
+    if (this.mesh) {
+      if (this.mesh.geometry) this.mesh.geometry.dispose();
+      if (this.mesh.material) {
+        if (Array.isArray(this.mesh.material)) {
+          this.mesh.material.forEach(material => material.dispose());
+        } else {
+          this.mesh.material.dispose();
+        }
+      }
+    }
   }
 } 
 ### ./entities/weapons/Laser.js END ###
@@ -44534,39 +43384,18 @@ export class Enemy extends Ship {
   }
   
   checkWallCollision(wallSegments) {
-    if (!wallSegments || !Array.isArray(wallSegments) || wallSegments.length === 0) return false;
-    
-    const enemyPosition = new THREE.Vector2(this.mesh.position.x, this.mesh.position.z);
-    const enemyRadius = this.options.size;
-    
+    const pos = this.mesh.position;
     for (const segment of wallSegments) {
-      if (!segment || !segment.start || !segment.end) continue;
-      
-      const wallStart = new THREE.Vector2(segment.start.x, segment.start.z);
-      const wallEnd = new THREE.Vector2(segment.end.x, segment.end.z);
-      const wallVector = wallEnd.clone().sub(wallStart);
-      const enemyToWallStart = enemyPosition.clone().sub(wallStart);
-      
-      const wallLength = wallVector.length();
-      const wallDirection = wallVector.clone().normalize();
-      const projectionLength = enemyToWallStart.dot(wallDirection);
-      
-      let closestPoint;
-      if (projectionLength < 0) {
-        closestPoint = wallStart;
-      } else if (projectionLength > wallLength) {
-        closestPoint = wallEnd;
-      } else {
-        closestPoint = wallStart.clone().add(wallDirection.multiplyScalar(projectionLength));
-      }
-      
-      const distance = enemyPosition.distanceTo(closestPoint);
-      if (distance < enemyRadius) {
-        return true;
-      }
+      const closest = this.getClosestPoint(pos, segment.start, segment.end);
+      if (pos.distanceTo(closest) < this.options.size) return true;
     }
-    
     return false;
+  }
+
+  getClosestPoint(point, start, end) {
+    const line = end.clone().sub(start);
+    const t = Math.max(0, Math.min(1, point.clone().sub(start).dot(line) / line.lengthSq()));
+    return start.clone().add(line.multiplyScalar(t));
   }
 } 
 ### ./entities/enemies/Enemy.js END ###
@@ -44608,17 +43437,22 @@ export class Player extends Ship {
       boost: false
     };
     
+    // Bind event handler methods to preserve 'this' context
+    this.handleKeyDown = this.handleKeyDown.bind(this);
+    this.handleKeyUp = this.handleKeyUp.bind(this);
+    this.handleMouseMove = this.handleMouseMove.bind(this);
+    
     // Initialize controls
     this.setupControls();
   }
 
   setupControls() {
     // Keyboard controls
-    document.addEventListener('keydown', (event) => this.handleKeyDown(event));
-    document.addEventListener('keyup', (event) => this.handleKeyUp(event));
+    document.addEventListener('keydown', this.handleKeyDown);
+    document.addEventListener('keyup', this.handleKeyUp);
     
     // Mouse controls for aiming
-    document.addEventListener('mousemove', (event) => this.handleMouseMove(event));
+    document.addEventListener('mousemove', this.handleMouseMove);
   }
 
   handleKeyDown(event) {
@@ -44719,6 +43553,14 @@ export class Player extends Ship {
     const bounds = 50;
     this.mesh.position.x = Math.max(-bounds, Math.min(bounds, this.mesh.position.x));
     this.mesh.position.z = Math.max(-bounds, Math.min(bounds, this.mesh.position.z));
+    
+    // Broadcast position updates for multiplayer
+    if (this.networkManager) {
+      this.networkManager.emit('player_move', {
+        position: this.mesh.position,
+        rotation: this.mesh.rotation,
+      });
+    }
   }
 
   updateRotation(deltaTime) {
@@ -44875,6 +43717,8 @@ export class Player extends Ship {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantum Drift</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles/main.css">
+    <link rel="stylesheet" href="./styles/controls.css">
 </head>
 <body>
     <div id="loading-screen">
@@ -44920,6 +43764,7 @@ export class Player extends Ship {
         <p>Avoid the colored obstacles!</p>
     </div>
 </body>
+<script type="module" src="./index.js"></script>
 </html> 
 ### ./index.html END ###
 
@@ -45035,6 +43880,8 @@ import { InfiniteMap } from './core/InfiniteMap';
 import { NetworkManager } from './core/NetworkManager';
 import { CSS2DRenderer, CSS2DObject } from '@three/examples/renderers/CSS2DRenderer';
 import { GAME_CONFIG } from './config/GameConfig';
+import { Player } from './entities/player/Player';
+import { SoundManager } from './assets/SoundManager';
 
 // Basic Three.js game with a ship
 class SimpleGame {
@@ -45043,27 +43890,20 @@ class SimpleGame {
     // Player information
     this.playerName = 'Pilot';  // Default player name
     
-    // Sound management
-    this.audioListener = new THREE.AudioListener();
-    this.soundPools = new Map();
-    this.loadedSounds = new Map();
-    this.soundLoadPromises = new Map();
-
     // Create the asset loader
     this.assetLoader = new AssetLoader().setCallbacks(
       (message) => this.updateLoadingUI(message),
       (type, error) => this.handleLoadError(type, error)
     );
     
+    // Initialize SoundManager
+    this.soundManager = new SoundManager();
+    
     // Asset loading state
     this.loadingState = {
       started: false,
       completed: false,
-      errors: [],
-      timeouts: new Map(),
-      retryCount: new Map(),
-      maxRetries: 3,
-      loadingPromises: new Map()
+      errors: []
     };
     
     // Track assets loading
@@ -45095,6 +43935,17 @@ class SimpleGame {
     
     // Create game UI
     this.ui = new GameUI();
+    
+    // Create player after scene setup (as specified in Task 8)
+    this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+      type: 'PLAYER',
+      shipModel: 'STANDARD',
+      teamColor: 0x00ffff
+    });
+    this.scene.add(this.player.mesh);
+    
+    // For backward compatibility with existing code
+    this.playerShip = this.player.mesh;
     
     // Game properties
     this.boundarySize = 100; // Size of the playable area
@@ -45134,6 +43985,10 @@ class SimpleGame {
     
     // Initialize NetworkManager
     this.networkManager = new NetworkManager();
+    
+    // Initialize remotePlayers map for multiplayer
+    this.remotePlayers = new Map();
+    
     this.networkManager.on('connected', () => {
       console.log('Connected to game server!');
       document.getElementById('connection-status').textContent = 'Connected';
@@ -45154,8 +44009,20 @@ class SimpleGame {
     
     this.networkManager.on('player_left', (id) => {
       console.log('Player left:', id);
+      // Remove player mesh if it exists
+      const player = this.remotePlayers.get(id);
+      if (player) {
+        this.scene.remove(player);
+        this.remotePlayers.delete(id);
+        console.log(`Removed remote player: ${id}`);
+      }
       // Update player count
       this.updatePlayerCount();
+    });
+    
+    // Add player update handling
+    this.networkManager.on('player_update', (data) => {
+      this.updateRemotePlayer(data.id, data.position, data.rotation);
     });
     
     // Add laser shot handling
@@ -45181,28 +44048,35 @@ class SimpleGame {
   }
   
   setupScene() {
-    // Create scene, camera, and renderer
+    // Create Three.js Scene
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0a1f); // Dark blue background
     
-    // Set up isometric camera
-    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.camera.position.set(10, 10, 10);
-    this.camera.lookAt(0, 0, 0);
-    
-    // Create WebGL renderer
+    // Setup WebGL renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.getElementById('game-container').appendChild(this.renderer.domElement);
     
-    // Add CSS2D renderer for player name labels
-    this.labelRenderer = new CSS2DRenderer();
-    this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
-    this.labelRenderer.domElement.style.position = 'absolute';
-    this.labelRenderer.domElement.style.top = '0';
-    this.labelRenderer.domElement.style.pointerEvents = 'none';
-    document.body.appendChild(this.labelRenderer.domElement);
+    // Create camera
+    this.camera = new THREE.PerspectiveCamera(
+      60, // FOV
+      window.innerWidth / window.innerHeight, // Aspect ratio
+      0.1, // Near
+      1000 // Far
+    );
+    
+    // Position camera
+    this.camera.position.set(0, 7, 15); // Slightly above and behind player
+    this.camera.lookAt(0, 0, 0);
+    
+    // Attach audio listener to camera
+    if (this.soundManager) {
+      this.camera.add(this.soundManager.getListener());
+      console.log('Audio listener attached to camera');
+    }
     
     // Add lighting
     const ambientLight = new THREE.AmbientLight(0x404040);
@@ -45219,378 +44093,36 @@ class SimpleGame {
     this.createObstacles();
   }
   
-  loadAssets() {
+  async loadAssets() {
     if (this.loadingState.started) {
-      console.warn('🔍 Asset loading already in progress');
-      return;
+        console.warn('🔍 Asset loading already in progress');
+        return;
     }
     
-    console.log('🔍 Starting asset loading process');
-    console.log('Current loading state:', JSON.stringify(this.loadingState, null, 2));
-    
-    this.loadingState.started = true;
-    this.loadingState.completed = false;
-    this.loadingState.errors = [];
-    
-    // Show loading message
     this.updateLoadingUI('Loading game assets...');
     
-    // Create placeholder ship until model loads
-    this.createDefaultShip();
-    
-    // Load assets in parallel with proper error handling
-    Promise.all([
-      this.loadSounds().catch(error => {
-        console.error('🔍 Sound loading failed:', error);
-        this.handleLoadError('sounds', error);
-        return null;
-      }),
-      this.loadAssetsWithLoader().catch(error => {
-        console.error('🔍 Asset loading failed:', error);
-        this.handleLoadError('assets', error);
-        return null;
-      })
-    ]).then(() => {
-      console.log('🔍 All asset loading promises completed');
-      // Check loading progress even if some assets failed
-      this.checkLoadingProgress();
-    }).catch(error => {
-      console.error('🔍 Critical error loading assets:', error);
-      this.handleLoadError('critical', error);
-    });
-  }
-  
-  async loadAssetsWithLoader() {
-    console.log('🟢🟢🟢 Loading assets with AssetLoader...');
-    
-    // Use AssetLoader to load all assets including ship models
-    await this.assetLoader.loadAll();
-    this.shipModelLoaded = true;
-    console.log('✅ All assets loaded successfully via AssetLoader');
-    
-    return true;
-  }
-  
-  loadSounds() {
-    // AudioListener should already be initialized in constructor
-    if (!this.camera) {
-      console.error('Camera not initialized when trying to load sounds');
-      return Promise.reject(new Error('Camera not initialized'));
-    }
-
-    // Add listener to camera if not already added
-    if (!this.camera.children.includes(this.audioListener)) {
-      this.camera.add(this.audioListener);
-    }
-    
-    // Define sounds to load
-    const soundsToLoad = [
-      { name: 'laser', path: 'assets/sounds/laser.mp3', poolSize: 5 },
-      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3', poolSize: 3 },
-      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3', poolSize: 2 },
-      { name: 'bounce', path: 'assets/sounds/bounce.mp3', poolSize: 3 },
-      { name: 'weapon-switch', path: 'assets/sounds/weapon-switch.mp3', poolSize: 2 },
-      { name: 'weapon-charging', path: 'assets/sounds/weapon-charging.mp3', poolSize: 1, volume: 0.2 }  // Lower volume for background effect
-    ];
-    
-    // Create a pool of sounds for frequently played effects
-    const audioLoader = new THREE.AudioLoader();
-    
-    // Load each sound only if not already loaded
-    soundsToLoad.forEach(soundInfo => {
-      if (!this.loadedSounds.has(soundInfo.name)) {
-        const loadPromise = new Promise((resolve, reject) => {
-          // Set a timeout for loading
-          const timeoutId = setTimeout(() => {
-            reject(new Error(`Sound loading timeout: ${soundInfo.name}`));
-          }, 10000); // 10 second timeout
-          
-          audioLoader.load(
-            soundInfo.path,
-            buffer => {
-              clearTimeout(timeoutId);
-              
-              // Create sound pool
-              const pool = [];
-              for (let i = 0; i < soundInfo.poolSize; i++) {
-                const sound = new THREE.Audio(this.audioListener);
-                sound.setBuffer(buffer);
-                sound.setVolume(soundInfo.volume || 0.5); // Use specified volume or default to 0.5
-                pool.push({ sound, inUse: false, lastUsed: 0 });
-              }
-              
-              this.soundPools.set(soundInfo.name, pool);
-              this.loadedSounds.set(soundInfo.name, buffer);
-              console.log(`Loaded sound: ${soundInfo.name} (${soundInfo.poolSize} instances)`);
-              resolve();
-            },
-            xhr => {
-              console.log(`${soundInfo.name} ${(xhr.loaded / xhr.total * 100)}% loaded`);
-            },
-            error => {
-              clearTimeout(timeoutId);
-              console.error(`Error loading sound ${soundInfo.name}:`, error);
-              reject(error);
-            }
-          );
-        });
-        
-        this.soundLoadPromises.set(soundInfo.name, loadPromise);
-      }
-    });
-    
-    // Return a promise that resolves when all sounds are loaded
-    return Promise.all(Array.from(this.soundLoadPromises.values()))
-      .then(() => {
-        console.log('All sounds loaded successfully');
-      })
-      .catch(error => {
-        console.error('Error loading sounds:', error);
-        // Continue without sounds rather than breaking the game
-      });
-  }
-  
-  playSound(name) {
-    const pool = this.soundPools.get(name);
-    if (!pool || pool.length === 0) {
-      console.warn(`Sound "${name}" not found or not loaded yet.`);
-      return;
-    }
-    
     try {
-      const now = Date.now();
-      
-      // Find available sound that hasn't been used recently
-      let soundWrapper = pool.find(wrapper => 
-        !wrapper.inUse && (now - wrapper.lastUsed > 50) // 50ms minimum delay between same sound
-      );
-      
-      // If no sound available, find the oldest one
-      if (!soundWrapper) {
-        soundWrapper = pool.reduce((oldest, current) => 
-          (!oldest || current.lastUsed < oldest.lastUsed) ? current : oldest
-        );
-        
-        // If the oldest sound was used too recently, skip playing
-        if (now - soundWrapper.lastUsed < 50) {
-          return;
+        // Create initial player with default ship
+        if (!this.player) {
+            this.player = new Player(this.scene, new THREE.Vector3(0, 0.5, 0), {
+                type: 'PLAYER',
+                shipModel: 'STANDARD',
+                teamColor: 0x00ffff
+            });
+            this.playerShip = this.player.mesh; // For backward compatibility
         }
         
-        soundWrapper.sound.stop(); // Stop it if it's playing
-      }
-      
-      // Mark as in use and update timestamp
-      soundWrapper.inUse = true;
-      soundWrapper.lastUsed = now;
-      
-      // Play the sound
-      soundWrapper.sound.play();
-      
-      // Set up callback to release back to the pool
-      soundWrapper.sound.onEnded = () => {
-        soundWrapper.inUse = false;
-      };
+        // Load all assets through AssetLoader
+        await this.assetLoader.loadAll();
+        this.assetsLoaded = true;
+        this.shipModelLoaded = true;
+        
+        console.log('✅ All assets loaded successfully');
+        this.checkLoadingProgress();
     } catch (error) {
-      console.warn(`Error playing sound "${name}":`, error);
+        console.error('🔍 Critical error loading assets:', error);
+        this.handleLoadError('critical', error);
     }
-  }
-  
-  createDefaultShip() {
-    // Create a simple ship geometry as placeholder
-    const geometry = new THREE.ConeGeometry(0.5, 1, 8);
-    geometry.rotateX(Math.PI / 2);
-    
-    // Create glowing material
-    const material = new THREE.MeshPhongMaterial({
-      color: 0x00ffff,
-      emissive: 0x006666,
-      shininess: 100
-    });
-    
-    // Create ship mesh
-    this.playerShip = new THREE.Mesh(geometry, material);
-    this.playerShip.position.set(0, 0.5, 0);
-    this.scene.add(this.playerShip);
-    
-    // Add a point light to the ship to make it glow
-    const light = new THREE.PointLight(0x00ffff, 1, 2);
-    light.position.set(0, 0, 0);
-    this.playerShip.add(light);
-    
-    // Add ship properties
-    this.shipSpeed = 0.1;
-    this.rotationSpeed = 0.05;
-  }
-  
-  setShipModel(type) {
-    console.log('🔍 Setting ship model:', type);
-    
-    // Get the ship model from assets
-    let model = this.assetLoader.getShipModel(type);
-    
-    // If model is null or undefined, create fallback model
-    if (!model) {
-      console.warn('⚠️ Using fallback ship model');
-      if (this.debugging) {
-        console.trace('Stack trace for fallback ship model');
-      }
-      
-      if (!THREE.BoxGeometry) {
-        console.error('THREE.BoxGeometry not available for fallback ship');
-        return;
-      }
-      
-      try {
-        console.log('📦 Creating simple fallback model');
-        // Create a simple fallback model (box)
-        const geometry = new THREE.BoxGeometry(1, 0.5, 2);
-        const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
-        model = new THREE.Mesh(geometry, material);
-      } catch (error) {
-        console.error('Error creating fallback model:', error);
-        return;
-      }
-    }
-    
-    // Make all ships smaller (50-60% smaller)
-    const scaleFactor = 0.45; // About 55% smaller
-    model.scale.set(scaleFactor, scaleFactor, scaleFactor);
-    console.log(`DIAGNOSTIC: Applied reduced scale: [${model.scale.x}, ${model.scale.y}, ${model.scale.z}]`);
-    
-    // Log ship model information
-    console.log('🔍 Using ship model:', {
-      children: model.children?.length || 0,
-      position: model.position,
-      rotation: model.rotation,
-      scale: model.scale
-    });
-
-    // Store the model reference for thruster effects
-    this.shipModel = model;
-
-    // Add the model to the player ship group
-    this.playerShip.add(model);
-    
-    // Position the ship
-    this.playerShip.position.set(0, 0.5, 0);
-    
-    // Add to scene
-    this.scene.add(this.playerShip);
-    
-    // Add thruster effects
-    this.addThrusterGlow();
-    
-    // Add player name label above the ship
-    this.addPlayerNameLabel();
-    
-    console.log('✅ Ship model set successfully');
-    
-    // Set a fixed collision radius that works with the reduced ship size
-    const fixedCollisionRadius = 0.35; // Reduced radius to match smaller ship size
-    this.playerShip.userData.collisionRadius = fixedCollisionRadius;
-    console.log(`DIAGNOSTIC: Set ship collision radius: ${this.playerShip.userData.collisionRadius}`);
-  }
-  
-  // Function to add a player name label above the ship
-  addPlayerNameLabel() {
-    // Remove any existing name label
-    if (this.playerNameLabel) {
-      this.playerShip.remove(this.playerNameLabel);
-      this.playerNameLabel = null;
-    }
-    
-    // Create a canvas for the player name
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 512;
-    canvas.height = 128;
-    
-    // Set canvas background transparent
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Create gradient for the text
-    const gradient = context.createLinearGradient(0, 0, canvas.width, 0);
-    gradient.addColorStop(0, '#00c3ff');    // Cyan blue
-    gradient.addColorStop(0.5, '#80ffff');  // Light cyan
-    gradient.addColorStop(1, '#00c3ff');    // Cyan blue
-    
-    // Draw player name on canvas
-    context.font = 'bold 40px Orbitron';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    
-    // Add shadow/glow effect
-    context.shadowColor = '#0062ff';
-    context.shadowBlur = 15;
-    
-    // Draw stroke
-    context.strokeStyle = '#000';
-    context.lineWidth = 6;
-    context.strokeText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Fill with gradient
-    context.fillStyle = gradient;
-    context.fillText(this.playerName, canvas.width / 2, canvas.height / 2);
-    
-    // Add a subtle underline
-    context.beginPath();
-    context.moveTo(canvas.width / 2 - context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.lineTo(canvas.width / 2 + context.measureText(this.playerName).width / 2, canvas.height / 2 + 25);
-    context.strokeStyle = '#00c3ff';
-    context.lineWidth = 2;
-    context.stroke();
-    
-    // Add a mini rank/icon before the name
-    const icon = this.getPlayerIcon();
-    const iconSize = 30;
-    context.font = 'bold 20px Orbitron';
-    context.fillStyle = '#ffcc00';
-    context.strokeStyle = '#000';
-    context.lineWidth = 3;
-    const iconX = canvas.width / 2 - context.measureText(this.playerName).width / 2 - iconSize - 10;
-    const iconY = canvas.height / 2;
-    context.strokeText(icon, iconX, iconY);
-    context.fillText(icon, iconX, iconY);
-    
-    // Create texture from canvas
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    
-    // Create sprite material
-    const material = new THREE.SpriteMaterial({ 
-      map: texture,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false
-    });
-    
-    // Create sprite
-    const sprite = new THREE.Sprite(material);
-    sprite.scale.set(3, 0.8, 1);
-    sprite.position.set(0, 1.8, 0); // Position above the ship
-    
-    // Store reference and add to ship
-    this.playerNameLabel = sprite;
-    this.playerShip.add(this.playerNameLabel);
-    
-    console.log(`Added enhanced name label for player: ${this.playerName}`);
-  }
-  
-  // Helper function to get player icon based on name
-  getPlayerIcon() {
-    // Simple hash function to determine icon
-    let hash = 0;
-    for (let i = 0; i < this.playerName.length; i++) {
-      hash = ((hash << 5) - hash) + this.playerName.charCodeAt(i);
-      hash |= 0; // Convert to 32bit integer
-    }
-    
-    // Array of possible icons
-    const icons = ['⚡', '✦', '★', '♦', '◆', '⬢', '⚔️', '⚜️', '☄️', '⚪'];
-    
-    // Use hash to select icon
-    const iconIndex = Math.abs(hash) % icons.length;
-    return icons[iconIndex];
   }
   
   handleLoadError(assetType, error) {
@@ -45635,11 +44167,7 @@ class SimpleGame {
         this.loadingState = {
           started: false,
           completed: false,
-          errors: [],
-          timeouts: new Map(),
-          retryCount: new Map(),
-          maxRetries: 3,
-          loadingPromises: new Map()
+          errors: []
         };
         this.loadAssets();
       };
@@ -45657,46 +44185,37 @@ class SimpleGame {
   
   checkLoadingProgress() {
     console.log('🔍 Checking loading progress...');
-    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
-    console.log('Sound pools size:', this.soundPools.size);
-    console.log('Ship model loaded:', this.shipModelLoaded);
     
-    // Define what constitutes a fully loaded game
+    // Log loading state
+    console.log('Loading state:', JSON.stringify(this.loadingState, null, 2));
+    
+    // Define what's required for a fully loaded game
     const requiredAssets = {
       shipModel: this.shipModelLoaded,
-      sounds: this.soundPools.size > 0
+      assetsLoaded: this.assetLoader.loadingState.completed
     };
     
     // Check if all required assets are loaded
-    const allAssetsLoaded = Object.entries(requiredAssets).every(([name, loaded]) => {
-      if (!loaded) {
-        console.log(`🔍 Asset "${name}" not loaded yet`);
-      }
+    const allAssetsLoaded = Object.entries(requiredAssets).every(([key, loaded]) => {
+      console.log(`🔍 ${key}: ${loaded ? '✅' : '❌'}`);
       return loaded;
     });
     
     if (allAssetsLoaded) {
-      console.log('✅ All required assets loaded successfully!');
+      console.log('✅ All required assets loaded!');
       this.loadingState.completed = true;
-      
-      // Clear any remaining timeouts
-      this.loadingState.timeouts.forEach(timeoutId => {
-        clearTimeout(timeoutId);
-      });
-      this.loadingState.timeouts.clear();
-      
-      // Show start screen
       this.showStartScreen();
     } else {
-      // Show which assets are still loading
+      // Log which assets are still pending
       const pendingAssets = Object.entries(requiredAssets)
-        .filter(([name, loaded]) => !loaded)
-        .map(([name]) => name);
+        .filter(([_, loaded]) => !loaded)
+        .map(([key]) => key);
+      console.log('⏳ Still waiting for:', pendingAssets);
       
-      console.log(`🔍 Still loading: ${pendingAssets.join(', ')}`);
-      this.updateLoadingUI(`Loading: ${pendingAssets.join(', ')}...`);
+      // Update loading UI
+      this.updateLoadingUI(`Loading... (${pendingAssets.join(', ')})`);
       
-      // Check again in 1 second if not all assets are loaded
+      // Check again after a delay
       setTimeout(() => this.checkLoadingProgress(), 1000);
     }
   }
@@ -45738,6 +44257,12 @@ class SimpleGame {
   }
   
   addThrusterGlow() {
+    // Check if player and player mesh exist
+    if (!this.player || !this.player.mesh) {
+      console.warn('Cannot add thruster glow: Player or player mesh is not initialized');
+      return;
+    }
+    
     // Create a single, efficient thruster glow effect
     // Use instanced mesh for better performance if you have multiple thrusters
     
@@ -45754,6 +44279,9 @@ class SimpleGame {
     thruster.position.set(0, 0, -0.7); // Position at the back of the ship
     thruster.rotation.x = Math.PI / 2;
     thruster.name = 'thruster'; // Name it for easier reference later
+    
+    // Add thruster to player mesh
+    this.player.mesh.add(thruster);
     
     // Add point light for the thruster
     const thrusterLight = new THREE.PointLight(0x00ffff, 1, 3);
@@ -45813,134 +44341,101 @@ class SimpleGame {
     
     // Load texture first
     const textureLoader = new THREE.TextureLoader();
-    const terrainTexture = textureLoader.load('assets/models/textures/Colors3.png', 
-      // Success callback
-      (texture) => {
-        console.log('Terrain texture (Colors3.png) loaded successfully');
-        // Configure texture 
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(8, 8); // Repeat the texture more times for better detail
-        
-        // Now load the Terrain.glb model
-        loadTerrainModel(texture);
-      },
-      // Progress callback
-      undefined,
-      // Error callback
-      (error) => {
-        console.error('Error loading Colors3.png texture:', error);
-        // Try fallback to original texture
-        textureLoader.load('assets/models/textures/tex.png', 
-          fallbackTexture => {
-            console.log('Fallback texture loaded');
-            fallbackTexture.wrapS = THREE.RepeatWrapping;
-            fallbackTexture.wrapT = THREE.RepeatWrapping;
-            fallbackTexture.repeat.set(5, 5);
-            loadTerrainModel(fallbackTexture);
-          },
-          undefined,
-          fallbackError => {
-            console.error('Error loading fallback texture:', fallbackError);
-            // Load model anyway without texture
-            loadTerrainModel(null);
-          }
-        );
-      }
-    );
-    
-    // Function to load terrain model with texture
-    const loadTerrainModel = (texture) => {
-      const terrainPath = 'assets/models/terrain/Terrain.glb';
-      
-      // Use GLTFLoader properly imported at the top
-      const loader = new GLTFLoader();
-      loader.load(
-        terrainPath,
-        (gltf) => {
-          console.log('Terrain model loaded successfully');
-          
-          // Remove the temporary floor
-          if (this.floor) {
-            this.scene.remove(this.floor);
-            this.floor.geometry.dispose();
-            this.floor.material.dispose();
-          }
-          
-          // Set up the terrain model
-          const terrain = gltf.scene;
-          
-          // Scale the terrain appropriately
-          const terrainScale = 100; // Adjust this value to change the overall size
-          terrain.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
-          
-          // Position terrain at center and slightly below zero to avoid z-fighting
-          terrain.position.set(0, -0.2, 0);
-          
-          // Set up materials with texture
-          terrain.traverse((node) => {
-            if (node.isMesh) {
-              // Enable shadows
-              node.castShadow = false; // We don't want the floor to cast shadows
-              node.receiveShadow = true; // But we do want it to receive shadows
-              
-              // Apply texture if available
-              if (node.material && texture) {
-                // Store original colors for blending
-                const originalColor = node.material.color ? node.material.color.clone() : new THREE.Color(0xffffff);
-                
-                // Apply texture
-                node.material.map = texture;
-                
-                // Make the terrain slightly emissive for a subtle glow
-                node.material.emissive = new THREE.Color(0x006688);
-                node.material.emissiveIntensity = 0.2;
-                
-                // Add more vibrant color variation for Colors3 texture
-                if (texture.source.data.src.includes('Colors3')) {
-                  // More vibrant color blend for the new texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x99ccff), 0.4);
-                  // Increase the contrast and saturation
-                  node.material.roughness = 0.6;
-                  node.material.metalness = 0.3;
-                } else {
-                  // Original settings for fallback texture
-                  node.material.color = originalColor.lerp(new THREE.Color(0x88aaff), 0.3);
-                  node.material.roughness = 0.8;
-                  node.material.metalness = 0.2;
-                }
-                
-                // Make sure textures are used
-                node.material.needsUpdate = true;
-              }
+    const texturePromise = new Promise((resolve, reject) => {
+      textureLoader.load(
+        'assets/models/textures/Colors3.png', 
+        texture => {
+          console.log('Terrain texture (Colors3.png) loaded successfully');
+          // Configure texture 
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.repeat.set(8, 8); // Repeat the texture more times for better detail
+          resolve(texture);
+        },
+        undefined,
+        error => {
+          console.error('Error loading Colors3.png texture:', error);
+          // Try fallback texture
+          textureLoader.load(
+            'assets/models/textures/tex.png', 
+            fallbackTexture => {
+              console.log('Fallback texture loaded');
+              fallbackTexture.wrapS = THREE.RepeatWrapping;
+              fallbackTexture.wrapT = THREE.RepeatWrapping;
+              fallbackTexture.repeat.set(5, 5);
+              resolve(fallbackTexture);
+            },
+            undefined,
+            fallbackError => {
+              console.error('Error loading fallback texture:', fallbackError);
+              resolve(null); // Resolve with null to continue without texture
             }
-          });
-          
-          // Store reference and add to scene
-          this.floor = terrain;
-          this.scene.add(terrain);
-          
-          // Add a circular highlight around the player's position
-          this.createPlayerHighlight();
-        },
-        (xhr) => {
-          // Progress callback
-          console.log(`Loading terrain: ${(xhr.loaded / xhr.total * 100).toFixed(2)}%`);
-        },
-        (error) => {
-          // Error callback
-          console.error('Error loading terrain model:', error);
-          console.log('Falling back to default floor');
-          
-          // Create grid as a fallback
-          const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
-          this.scene.add(gridHelper);
-          
-          // Add player highlight anyway
-          this.createPlayerHighlight();
+          );
         }
       );
-    };
+    });
+    
+    // When texture is loaded (or failed), get the terrain model from AssetLoader
+    texturePromise.then(texture => {
+      // Get terrain model from AssetLoader
+      const terrain = this.assetLoader.getModel('terrain/Terrain.glb');
+      
+      if (terrain) {
+        console.log('Using terrain model from AssetLoader');
+        
+        // Remove the temporary floor
+        if (this.floor) {
+          this.scene.remove(this.floor);
+          this.floor.geometry.dispose();
+          this.floor.material.dispose();
+        }
+        
+        // Clone the model to avoid modifying the original
+        const terrainClone = terrain.clone();
+        
+        // Scale the terrain appropriately
+        const terrainScale = 100; // Adjust this value to change the overall size
+        terrainClone.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
+        
+        // Position terrain at center and slightly below zero to avoid z-fighting
+        terrainClone.position.set(0, -0.2, 0);
+        
+        // Apply texture if available
+        if (texture) {
+          terrainClone.traverse((node) => {
+            if (node.isMesh) {
+              node.material = node.material.clone(); // Clone material to avoid affecting other instances
+              node.material.map = texture;
+              node.material.needsUpdate = true;
+              
+              // Enable shadows
+              node.castShadow = true;
+              node.receiveShadow = true;
+            }
+          });
+        }
+        
+        // Add to scene
+        this.scene.add(terrainClone);
+        this.terrain = terrainClone;
+        
+        console.log('Terrain model added to scene');
+        
+        // Add a circular highlight around the player's position
+        this.createPlayerHighlight();
+      } else {
+        console.warn('Terrain model not found in AssetLoader, using fallback grid');
+        
+        // Create a grid as fallback
+        const grid = new THREE.GridHelper(100, 100, 0x0000ff, 0x000044);
+        grid.position.y = 0;
+        this.scene.add(grid);
+        this.terrain = grid;
+        
+        // Add player highlight anyway
+        this.createPlayerHighlight();
+      }
+    });
   }
 
   // Separate method for player highlight to avoid code duplication
@@ -50347,6 +48842,111 @@ createMuzzleFlash(position, direction) {
     
     // Send the update to the network manager
     this.networkManager.sendPlayerUpdate(playerData);
+  }
+
+  // Add the missing setShipModel function
+  setShipModel(type) {
+    console.log('🔍 Setting ship model:', type);
+    
+    // Get the ship model from assets
+    let model = this.assetLoader.getShipModel(type);
+    
+    // If model is null or undefined, create fallback model
+    if (!model) {
+      console.warn('⚠️ Using fallback ship model for type:', type);
+      
+      // Create a simple geometric shape as fallback
+      const geometry = new THREE.BoxGeometry(1, 0.5, 2);
+      const material = new THREE.MeshPhongMaterial({ 
+        color: 0x00ffff, 
+        specular: 0x111111, 
+        shininess: 30 
+      });
+      model = new THREE.Mesh(geometry, material);
+    }
+    
+    // Clear existing player ship if it exists
+    if (this.playerShip) {
+      if (this.scene) {
+        this.scene.remove(this.playerShip);
+      }
+      this.playerShip = null;
+    }
+    
+    // Set the new ship model
+    this.playerShip = model;
+    
+    // Position the ship appropriately
+    if (this.playerShip && this.scene) {
+      this.playerShip.position.set(0, 0.5, 0);
+      this.scene.add(this.playerShip);
+    }
+    
+    return this.playerShip;
+  }
+
+  /**
+   * Play a sound by name
+   * @param {string} name - Name of the sound to play
+   * @param {THREE.Vector3} position - Optional position for 3D audio
+   */
+  playSound(name, position = null) {
+    if (this.soundManager) {
+      console.log(`Playing sound: ${name}`);
+      this.soundManager.playSound(name, position);
+    } else {
+      console.warn(`Cannot play sound '${name}': SoundManager not initialized`);
+    }
+  }
+
+  /**
+   * Update a remote player's position and rotation
+   * @param {string} id - Player ID
+   * @param {Object} position - Position coordinates
+   * @param {Object} rotation - Rotation coordinates
+   */
+  updateRemotePlayer(id, position, rotation) {
+    // Get existing player or create a new one
+    let player = this.remotePlayers.get(id);
+    
+    if (!player) {
+      // Create a new player mesh if this is the first update
+      player = this.createRemotePlayerMesh();
+      this.remotePlayers.set(id, player);
+      this.scene.add(player);
+      console.log(`Created new remote player: ${id}`);
+    }
+    
+    // Update player position and rotation
+    if (position) {
+      player.position.set(position.x, position.y, position.z);
+    }
+    
+    if (rotation) {
+      player.rotation.set(rotation.x, rotation.y, rotation.z);
+    }
+  }
+  
+  /**
+   * Create a mesh for a remote player
+   * @returns {THREE.Object3D} Player mesh
+   */
+  createRemotePlayerMesh() {
+    // For simplicity, we'll use a simple colored box for remote players
+    const geometry = new THREE.BoxGeometry(1, 1, 2);
+    const material = new THREE.MeshLambertMaterial({ color: 0xff0000 }); // Red for other players
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    // Add name label
+    const nameLabel = document.createElement('div');
+    nameLabel.className = 'player-label';
+    nameLabel.textContent = 'Player';
+    
+    const playerLabel = new CSS2DObject(nameLabel);
+    playerLabel.position.set(0, 1.5, 0);
+    mesh.add(playerLabel);
+    
+    return mesh;
   }
 }
 
@@ -56573,6 +55173,8 @@ export class ModelLoader {
 ### ./assets/ModelLoader.js END ###
 
 ### ./assets/SoundManager.js BEGIN ###
+import * as THREE from 'three';
+
 /**
  * SoundManager class for managing game audio
  */
@@ -56602,13 +55204,20 @@ export class SoundManager {
     // Create a sound loader
     const audioLoader = new THREE.AudioLoader();
     
-    // Define common sounds to preload
+    // Define common sounds to preload with updated paths
     const soundsToLoad = [
-      { name: 'laser', path: 'sounds/laser.mp3' },
-      { name: 'explosion', path: 'sounds/explosion.mp3' },
-      { name: 'hit', path: 'sounds/hit.mp3' },
-      { name: 'powerup', path: 'sounds/powerup.mp3' },
-      { name: 'engine', path: 'sounds/engine.mp3', loop: true }
+      { name: 'laser', path: 'assets/sounds/laser.mp3' },
+      { name: 'explosion', path: 'assets/sounds/explosion.mp3' },
+      { name: 'hit', path: 'assets/sounds/hit.mp3' },
+      { name: 'powerup', path: 'assets/sounds/powerup.mp3' },
+      { name: 'engine', path: 'assets/sounds/engine.mp3', loop: true },
+      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3' },
+      { name: 'weapon-switch', path: 'assets/sounds/weapon-switch.mp3' },
+      { name: 'collision', path: 'assets/sounds/collision.mp3' },
+      { name: 'weapon-charging', path: 'assets/sounds/weapon-charging.mp3' },
+      { name: 'bounce', path: 'assets/sounds/bounce.mp3' },
+      { name: 'weapon-armor-hit', path: 'assets/sounds/weapon-armor-hit.mp3' },
+      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3' }
     ];
     
     // Load each sound
@@ -56639,11 +55248,11 @@ export class SoundManager {
       }
     });
     
-    // Load background music
+    // Load background music with updated path
     try {
       this.music = new THREE.Audio(this.listener);
       audioLoader.load(
-        'sounds/background_music.mp3',
+        'assets/sounds/background_music.mp3',
         buffer => {
           this.music.setBuffer(buffer);
           this.music.setVolume(this.musicVolume);
@@ -56702,17 +55311,94 @@ export class SoundManager {
       return;
     }
     
-    // If sound is already playing, clone it
+    let soundToPlay = sound;
+    
+    // If sound is already playing, create a new instance
     if (sound.isPlaying) {
-      const soundClone = sound.clone();
-      soundClone.play();
-      
-      // Clean up clone after playing
-      soundClone.onEnded = () => {
-        soundClone.disconnect();
-      };
-    } else {
-      sound.play();
+      try {
+        // Create a new audio instance
+        if (position) {
+          // For positional audio
+          const soundClone = new THREE.PositionalAudio(this.listener);
+          soundClone.setBuffer(sound.buffer);
+          soundClone.setVolume(this.effectsVolume);
+          soundClone.setRefDistance(10); // Distance at which the volume is at full
+          soundToPlay = soundClone;
+        } else {
+          // For non-positional audio - create new instead of cloning
+          const soundClone = new THREE.Audio(this.listener);
+          soundClone.setBuffer(sound.buffer);
+          soundClone.setVolume(this.effectsVolume);
+          soundToPlay = soundClone;
+        }
+        
+        // Clean up clone after playing
+        soundToPlay.onEnded = () => {
+          if (soundToPlay.source) {
+            soundToPlay.disconnect();
+            soundToPlay.source = null; // Prevent memory leaks
+          }
+        };
+      } catch (error) {
+        console.error("Error creating new sound instance:", error);
+        // If cloning fails, don't play any sound rather than crashing
+        return;
+      }
+    }
+    
+    // If position is provided, make it positional
+    if (position && !sound.isPlaying) {
+      // We're using the original sound, convert it to positional if needed
+      if (!(soundToPlay instanceof THREE.PositionalAudio)) {
+        try {
+          // Create new positional audio
+          const positionalSound = new THREE.PositionalAudio(this.listener);
+          positionalSound.setBuffer(sound.buffer);
+          positionalSound.setVolume(this.effectsVolume);
+          positionalSound.setRefDistance(10);
+          soundToPlay = positionalSound;
+        } catch (error) {
+          console.error("Error creating positional audio:", error);
+          // Fall back to non-positional
+        }
+      }
+    }
+    
+    // Apply position if provided
+    if (position && soundToPlay instanceof THREE.PositionalAudio) {
+      try {
+        // Check if we need to add this to an object in the scene
+        const dummyObject = new THREE.Object3D();
+        dummyObject.position.copy(position);
+        dummyObject.add(soundToPlay);
+        
+        // Cleanup function to remove the dummy object after playing
+        soundToPlay.onEnded = () => {
+          if (dummyObject.parent) dummyObject.parent.remove(dummyObject);
+          if (soundToPlay.source) {
+            soundToPlay.disconnect();
+            soundToPlay.source = null;
+          }
+        };
+        
+        // Add to scene or listener (we assume listener is in scene)
+        if (this.listener && this.listener.parent) {
+          this.listener.parent.add(dummyObject);
+        } else {
+          console.warn('Audio listener has no parent, positional audio may not work correctly');
+          // Just play non-positional as fallback
+        }
+      } catch (error) {
+        console.error("Error setting up positional audio:", error);
+        // Fall back to just playing the sound
+      }
+    }
+    
+    // Play the sound
+    try {
+      soundToPlay.play();
+    } catch (error) {
+      console.error("Error playing sound:", error);
     }
   }
   
@@ -56844,11 +55530,39 @@ class AssetLoader {
         this.loadingState.errors = [];
 
         try {
-            await Promise.all([
-                this.loadModels(),
-                this.loadSounds(),
-                this.loadTextures()
-            ]);
+            const modelsToLoad = [
+                'ships/ALTSPACE1.glb',
+                'ships/ALTSPACE2.glb',
+                'terrain/Terrain.glb',
+                'terrain/Water.glb',
+                'objects/SP_Stone01.glb',
+                'objects/SP_Ground05.glb'
+            ];
+
+            const loader = new GLTFLoader();
+            
+            for (const model of modelsToLoad) {
+                try {
+                    const loaded = await this.loadWithRetry(() => 
+                        this.loadModel(loader, model, `assets/models/${model}`)
+                    );
+                    if (loaded) {
+                        console.log(`✅ Successfully loaded model: ${model}`);
+                        
+                        // Add aliases for ship models
+                        if (model === 'ships/ALTSPACE1.glb') {
+                            this.assets.models.set('FIGHTER', this.assets.models.get(model));
+                            this.assets.models.set('SCOUT', this.assets.models.get(model));
+                        } else if (model === 'ships/ALTSPACE2.glb') {
+                            this.assets.models.set('INTERCEPTOR', this.assets.models.get(model));
+                            this.assets.models.set('EXPERIMENTAL', this.assets.models.get(model));
+                        }
+                    }
+                } catch (error) {
+                    console.error(`⛔ Failed to load model ${model}:`, error);
+                    this.handleError('model', error);
+                }
+            }
 
             this.loadingState.completed = true;
             return true;
@@ -56856,30 +55570,6 @@ class AssetLoader {
             this.handleError('critical', error);
             return false;
         }
-    }
-
-    async loadModels() {
-        const loader = new GLTFLoader();
-        // Use absolute paths to ensure models are loaded correctly
-        const modelPaths = {
-            'FIGHTER': 'assets/models/ships/ALTSPACE1.glb',
-            'INTERCEPTOR': 'assets/models/ships/ALTSPACE2.glb',
-            // Add aliases for backward compatibility
-            'SCOUT': 'assets/models/ships/ALTSPACE1.glb',
-            'EXPERIMENTAL': 'assets/models/ships/ALTSPACE2.glb'
-        };
-
-        console.log('🚢 Starting to load ship models with paths:', modelPaths);
-
-        const loadPromises = Object.entries(modelPaths).map(([key, path]) => {
-            console.log(`🔄 Setting up loading for model: ${key} from path: ${path}`);
-            return this.loadWithRetry(() => this.loadModel(loader, key, path));
-        });
-
-        await Promise.all(loadPromises);
-        
-        // Apply consistent sizing to all ship models
-        this.normalizeShipSizes();
     }
 
     async loadModel(loader, key, path) {
@@ -56909,48 +55599,6 @@ class AssetLoader {
                     clearTimeout(timeoutId);
                     console.error(`⛔ Error loading model ${key}:`, error.message);
                     reject(new Error(`Error loading model ${key}: ${error.message}`));
-                }
-            );
-        });
-    }
-
-    async loadSounds() {
-        const audioLoader = new THREE.AudioLoader();
-        const soundPaths = {
-            'laser': 'assets/sounds/laser.mp3',
-            'laser-bounce': 'assets/sounds/laser-bounce.mp3',
-            'grenade-laser': 'assets/sounds/grenade-laser.mp3',
-            'bounce': 'assets/sounds/bounce.mp3'
-        };
-
-        const loadPromises = Object.entries(soundPaths).map(([key, path]) => {
-            return this.loadWithRetry(() => this.loadSound(audioLoader, key, path));
-        });
-
-        await Promise.all(loadPromises);
-    }
-
-    async loadSound(loader, key, path) {
-        return new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-                reject(new Error(`Sound loading timeout: ${key}`));
-            }, 10000);
-
-            loader.load(
-                path,
-                (buffer) => {
-                    clearTimeout(timeoutId);
-                    this.assets.sounds.set(key, buffer);
-                    this.onProgress?.(`Loaded sound: ${key}`);
-                    resolve();
-                },
-                (xhr) => {
-                    const percent = (xhr.loaded / xhr.total * 100);
-                    this.onProgress?.(`Loading ${key}: ${Math.round(percent)}%`);
-                },
-                (error) => {
-                    clearTimeout(timeoutId);
-                    reject(new Error(`Error loading sound ${key}: ${error.message}`));
                 }
             );
         });
@@ -57024,10 +55672,6 @@ class AssetLoader {
         return this.assets.models.get(key);
     }
 
-    getSound(key) {
-        return this.assets.sounds.get(key);
-    }
-
     getTexture(key) {
         return this.assets.textures.get(key);
     }
@@ -57059,7 +55703,6 @@ class AssetLoader {
 
         // Clear all maps
         this.assets.models.clear();
-        this.assets.sounds.clear();
         this.assets.textures.clear();
 
         // Reset loading state
@@ -57108,29 +55751,27 @@ class AssetLoader {
     getShipModel(key) {
         try {
             console.log(`Getting ship model: ${key}`);
-            const model = this.assets.models.get(key);
+            
+            // First try direct key lookup
+            let model = this.assets.models.get(key);
+            
+            // If not found, try the file path
+            if (!model) {
+                model = this.assets.models.get(`ships/${key}.glb`);
+            }
+            
+            // If still not found, try aliases
+            if (!model) {
+                console.log(`Trying to find model by alias: ${key}`);
+                if (key === 'FIGHTER' || key === 'SCOUT') {
+                    model = this.assets.models.get('ships/ALTSPACE1.glb');
+                } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL') {
+                    model = this.assets.models.get('ships/ALTSPACE2.glb');
+                }
+            }
             
             if (!model) {
                 console.warn(`Ship model with key "${key}" not found!`);
-                
-                // Try to find alternative models if aliases didn't work
-                if (key === 'FIGHTER' || key === 'SCOUT') {
-                    console.log('Trying to find FIGHTER/SCOUT alternatives');
-                    const altModel = this.assets.models.get('FIGHTER') || this.assets.models.get('SCOUT');
-                    if (altModel) {
-                        console.log('Found alternative model, cloning');
-                        return this.cloneAndPrepareModel(altModel);
-                    }
-                } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL') {
-                    console.log('Trying to find INTERCEPTOR/EXPERIMENTAL alternatives');
-                    const altModel = this.assets.models.get('INTERCEPTOR') || this.assets.models.get('EXPERIMENTAL');
-                    if (altModel) {
-                        console.log('Found alternative model, cloning');
-                        return this.cloneAndPrepareModel(altModel);
-                    }
-                }
-                
-                console.error(`No model or alternative found for key: ${key}`);
                 return null;
             }
             
@@ -57148,6 +55789,9 @@ class AssetLoader {
         
         // Clone the model
         const cloned = model.clone();
+        
+        // Apply consistent scaling as specified in Task 12
+        cloned.scale.set(0.45, 0.45, 0.45);
         
         // Ensure materials are properly cloned
         cloned.traverse(node => {
@@ -57195,6 +55839,48 @@ class AssetLoader {
             return null;
         }
     }
+
+    // Add the loadModels method used by ShipSelectionUI
+    async loadModels() {
+        console.log('Loading ship models for selection UI');
+        
+        if (this.assets.models.has('FIGHTER') && this.assets.models.has('INTERCEPTOR')) {
+            console.log('Ship models already loaded, using cached versions');
+            return true;
+        }
+        
+        const shipModels = [
+            'ships/ALTSPACE1.glb',
+            'ships/ALTSPACE2.glb'
+        ];
+        
+        const loader = new GLTFLoader();
+        
+        for (const model of shipModels) {
+            try {
+                const loaded = await this.loadWithRetry(() => 
+                    this.loadModel(loader, model, `assets/models/${model}`)
+                );
+                if (loaded) {
+                    console.log(`✅ Successfully loaded ship model: ${model} for selection UI`);
+                    
+                    // Add aliases for ship models
+                    if (model === 'ships/ALTSPACE1.glb') {
+                        this.assets.models.set('FIGHTER', this.assets.models.get(model));
+                        this.assets.models.set('SCOUT', this.assets.models.get(model));
+                    } else if (model === 'ships/ALTSPACE2.glb') {
+                        this.assets.models.set('INTERCEPTOR', this.assets.models.get(model));
+                        this.assets.models.set('EXPERIMENTAL', this.assets.models.get(model));
+                    }
+                }
+            } catch (error) {
+                console.error(`⛔ Failed to load ship model ${model}:`, error);
+                this.handleError('model', error);
+            }
+        }
+        
+        return true;
+    }
 }
 
 export default AssetLoader; 
@@ -57208,35 +55894,56 @@ export class Ship extends EventEmitter {
     constructor(scene, position, options = {}) {
         super();
         
-        this.options = {
+        this.scene = scene;
+        this.options = { 
+            health: 100, 
+            speed: 0.1,
             type: 'BASIC',
             teamId: null,
             teamColor: 0xffffff,
-            health: 100,
             maxHealth: 100,
-            speed: 0.1,
             size: 1.0,
             shipModel: 'STANDARD',
-            ...options
+            ...options 
         };
-
-        this.scene = scene;
+        
         this.health = this.options.health;
         this.maxHealth = this.options.maxHealth;
         this.isActive = true;
         this.teamId = this.options.teamId;
+        this.mesh = null;
         
-        // Create ship mesh
-        this.createMesh(position);
-        
-        // Add to scene
-        this.scene.add(this.mesh);
-        
-        // Initialize effects
-        this.initializeEffects();
+        // Initialize the ship if position is provided
+        if (position) {
+            this.createMesh(position);
+            // Add to scene if mesh was created
+            if (this.mesh) {
+                this.scene.add(this.mesh);
+            }
+            // Initialize effects
+            this.initializeEffects();
+        }
     }
 
     createMesh(position) {
+        // This is a base method that can be overridden by subclasses
+        // In the base class, implement default behavior
+        
+        const geometry = this.createGeometry();
+        const material = this.createMaterial();
+        
+        // Create mesh
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.mesh.position.copy(position || new THREE.Vector3());
+        this.mesh.position.y = this.options.size;
+        
+        // Add engine glow
+        this.addEngineGlow();
+        
+        return this.mesh;
+    }
+    
+    createGeometry() {
         // Ship models based on type
         const models = {
             STANDARD: () => new THREE.ConeGeometry(this.options.size, this.options.size * 2, 3),
@@ -57261,23 +55968,19 @@ export class Ship extends EventEmitter {
         // Get geometry based on ship model or fallback to STANDARD
         const geometry = (models[this.options.shipModel] || models.STANDARD)();
         geometry.rotateX(Math.PI / 2);
-
+        
+        return geometry;
+    }
+    
+    createMaterial() {
         // Create material with team color and effects
-        this.material = new THREE.MeshStandardMaterial({
+        return new THREE.MeshStandardMaterial({
             color: this.options.teamColor,
             emissive: this.options.teamColor,
             emissiveIntensity: 0.5,
             metalness: 0.7,
             roughness: 0.3
         });
-
-        // Create mesh
-        this.mesh = new THREE.Mesh(geometry, this.material);
-        this.mesh.position.copy(position);
-        this.mesh.position.y = this.options.size;
-
-        // Add engine glow
-        this.addEngineGlow();
     }
 
     addEngineGlow() {
@@ -57420,37 +56123,31 @@ export class Ship extends EventEmitter {
 
 ### ./entities/weapons/RegularLaser.js BEGIN ###
 import * as THREE from 'three';
+import { Laser } from './Laser';
 
 /**
  * RegularLaser weapon class
  */
-export class RegularLaser {
+export class RegularLaser extends Laser {
   constructor(weaponSystem) {
+    super(weaponSystem.scene, null, null, {
+      damage: 10, range: 50, speed: 50, color: 0x00ffff
+    });
     this.weaponSystem = weaponSystem;
-    
-    // Weapon properties
-    this.name = 'Regular Laser';
-    this.damage = 10;
-    this.range = 50;
-    this.speed = 50;
-    this.cooldown = 0.2; // seconds
-    this.energyCost = 5;
+    this.cooldown = 0.2;
     this.currentCooldown = 0;
-    
-    // Visuals
-    this.color = 0x00ffff; // Cyan color
-    this.size = { length: 0.8, width: 0.1 };
-    this.explosionSize = 0.3; // Size of hit effect
-    
-    // Sound
-    this.sound = 'laser';
+    this.energyCost = 5;
   }
   
   /**
-   * Update cooldown timer
+   * Update cooldown timer and laser position
    * @param {number} deltaTime - Time since last frame in seconds
    */
   update(deltaTime) {
+    // Call parent update to handle movement and range checking
+    super.update(deltaTime);
+    
+    // Handle cooldown timer
     if (this.currentCooldown > 0) {
       this.currentCooldown -= deltaTime;
     }
@@ -57472,25 +56169,28 @@ export class RegularLaser {
    * @param {object} player - Player object for energy management
    * @returns {boolean} - True if weapon fired successfully
    */
-  fire(position, direction, player) {
-    if (!this.canFire(player)) return false;
+  fire(position, direction, options = {}) {
+    // Position and orient the laser
+    this.mesh.position.copy(position);
+    this.direction = direction.normalize();
+    this.initialPosition = position.clone();
     
-    // Reset cooldown
-    this.currentCooldown = this.cooldown;
+    // Store initial properties
+    this.teamId = options.teamId;
     
-    // Consume energy
-    player.energy -= this.energyCost;
+    // Set color based on team
+    if (options.teamColor) {
+      if (this.mesh.material) {
+        this.mesh.material.color.set(options.teamColor);
+      }
+    }
     
-    // Create laser projectile
-    const projectile = this.createProjectile(position, direction);
+    // Play sound if available
+    if (this.weaponSystem.scene.soundManager) {
+      this.weaponSystem.scene.soundManager.playSound('laser', position);
+    }
     
-    // Add projectile to weapon system
-    this.weaponSystem.addProjectile(projectile);
-    
-    // Play sound
-    this.weaponSystem.soundManager?.playSound(this.sound);
-    
-    return true;
+    return this;
   }
   
   /**
@@ -57628,32 +56328,23 @@ export class WeaponSystem {
   }
   
   fireWeapon(weaponType, position, direction, options = {}) {
-    // Get weapon configuration
-    const weaponConfig = this.weaponTypes[weaponType];
-    if (!weaponConfig) {
-      console.error(`Unknown weapon type: ${weaponType}`);
-      return null;
-    }
+    const config = this.weaponTypes[weaponType] || this.weaponTypes['LASER'];
+    let projectile = this.createLaser(position, direction, {
+      ...config,
+      ...options
+    });
     
-    // Create projectile based on weapon type
-    let projectile;
-    
-    switch (weaponType) {
-      case 'LASER':
-        projectile = this.createLaser(position, direction, {
-          ...weaponConfig,
-          ...options
-        });
-        break;
-      // Other weapon types will be implemented later
-      default:
-        console.warn(`Weapon type ${weaponType} not yet implemented`);
-        return null;
-    }
-    
-    // Add to projectiles list for tracking
     if (projectile) {
       this.projectiles.push(projectile);
+    }
+    
+    // Network synchronization if available
+    if (this.scene.networkManager) {
+      this.scene.networkManager.emit('laser_shot', {
+        origin: position,
+        direction: direction,
+        type: weaponType
+      });
     }
     
     return projectile;
@@ -57894,95 +56585,38 @@ import * as THREE from 'three';
 
 export class Laser {
   constructor(scene, position, direction, options = {}) {
-    // Default options
-    this.options = {
-      color: 0x00ffff,
-      speed: 0.3,
-      length: 3,
-      thickness: 0.1,
-      lifetime: 2000, // milliseconds
-      ...options
-    };
-    
-    // Reference to the scene
     this.scene = scene;
-    
-    // Position and direction
-    this.position = position.clone();
-    this.direction = direction.clone().normalize();
-    
-    // Tracking
-    this.isActive = true;
-    this.creationTime = Date.now();
-    this.hasHit = false;
-    
-    // Create laser mesh
-    this.createLaser();
-    
-    // Add to scene
+    this.options = { speed: 0.3, color: 0x00ffff, ...options };
+    this.mesh = this.createMesh();
+    if (position) this.mesh.position.copy(position);
+    if (direction) this.direction = direction.normalize();
     this.scene.add(this.mesh);
+    this.isActive = true;
   }
-  
-  createLaser() {
-    // Create laser geometry
-    const geometry = new THREE.CylinderGeometry(
-      this.options.thickness, 
-      this.options.thickness, 
-      this.options.length, 
-      8
-    );
-    // Rotate geometry to align with Z-axis
+
+  createMesh() {
+    const geometry = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 8);
     geometry.rotateX(Math.PI / 2);
-    
-    // Create material with glow effect
-    this.material = new THREE.MeshStandardMaterial({
-      color: this.options.color,
-      emissive: this.options.color,
-      emissiveIntensity: 1,
-      transparent: true,
-      opacity: 0.8
-    });
-    
-    // Create mesh
-    this.mesh = new THREE.Mesh(geometry, this.material);
-    
-    // Position at starting point
-    this.mesh.position.copy(this.position);
-    
-    // Orient along direction
-    this.mesh.lookAt(this.position.clone().add(this.direction));
-    
-    // Add glow effect
-    this.addGlowEffect();
-  }
-  
-  addGlowEffect() {
-    // Create point light for glow
-    this.light = new THREE.PointLight(this.options.color, 1, 3);
-    this.light.position.copy(this.position);
-    this.scene.add(this.light);
-    
-    // Add trail particles if advanced effects are enabled
-    // (Placeholder for future particle effects)
+    const material = new THREE.MeshBasicMaterial({ color: this.options.color });
+    return new THREE.Mesh(geometry, material);
   }
   
   update(deltaTime) {
     if (!this.isActive) return;
     
-    // Move laser forward
-    const movement = this.direction.clone().multiplyScalar(this.options.speed * deltaTime);
-    this.position.add(movement);
-    this.mesh.position.copy(this.position);
-    
-    // Update light position
-    if (this.light) {
-      this.light.position.copy(this.position);
+    // Move in direction
+    if (this.direction) {
+      this.mesh.position.add(
+        this.direction.clone().multiplyScalar(this.options.speed * deltaTime)
+      );
     }
     
-    // Check lifetime
-    const age = Date.now() - this.creationTime;
-    if (age > this.options.lifetime) {
-      this.deactivate();
+    // Check if laser has exceeded its range
+    if (this.options.range) {
+      const distance = this.mesh.position.distanceTo(this.initialPosition);
+      if (distance > this.options.range) {
+        this.deactivate();
+      }
     }
   }
   
@@ -57990,21 +56624,21 @@ export class Laser {
     if (!this.isActive) return;
     
     this.isActive = false;
-    
-    // Remove from scene
-    this.scene.remove(this.mesh);
-    if (this.light) {
-      this.scene.remove(this.light);
+    if (this.mesh && this.scene) {
+      this.scene.remove(this.mesh);
     }
     
-    // Dispose of resources
-    this.mesh.geometry.dispose();
-    this.material.dispose();
-  }
-  
-  handleCollision() {
-    this.hasHit = true;
-    this.deactivate();
+    // Dispose of geometry and materials
+    if (this.mesh) {
+      if (this.mesh.geometry) this.mesh.geometry.dispose();
+      if (this.mesh.material) {
+        if (Array.isArray(this.mesh.material)) {
+          this.mesh.material.forEach(material => material.dispose());
+        } else {
+          this.mesh.material.dispose();
+        }
+      }
+    }
   }
 } 
 ### ./entities/weapons/Laser.js END ###
@@ -58494,39 +57128,18 @@ export class Enemy extends Ship {
   }
   
   checkWallCollision(wallSegments) {
-    if (!wallSegments || !Array.isArray(wallSegments) || wallSegments.length === 0) return false;
-    
-    const enemyPosition = new THREE.Vector2(this.mesh.position.x, this.mesh.position.z);
-    const enemyRadius = this.options.size;
-    
+    const pos = this.mesh.position;
     for (const segment of wallSegments) {
-      if (!segment || !segment.start || !segment.end) continue;
-      
-      const wallStart = new THREE.Vector2(segment.start.x, segment.start.z);
-      const wallEnd = new THREE.Vector2(segment.end.x, segment.end.z);
-      const wallVector = wallEnd.clone().sub(wallStart);
-      const enemyToWallStart = enemyPosition.clone().sub(wallStart);
-      
-      const wallLength = wallVector.length();
-      const wallDirection = wallVector.clone().normalize();
-      const projectionLength = enemyToWallStart.dot(wallDirection);
-      
-      let closestPoint;
-      if (projectionLength < 0) {
-        closestPoint = wallStart;
-      } else if (projectionLength > wallLength) {
-        closestPoint = wallEnd;
-      } else {
-        closestPoint = wallStart.clone().add(wallDirection.multiplyScalar(projectionLength));
-      }
-      
-      const distance = enemyPosition.distanceTo(closestPoint);
-      if (distance < enemyRadius) {
-        return true;
-      }
+      const closest = this.getClosestPoint(pos, segment.start, segment.end);
+      if (pos.distanceTo(closest) < this.options.size) return true;
     }
-    
     return false;
+  }
+
+  getClosestPoint(point, start, end) {
+    const line = end.clone().sub(start);
+    const t = Math.max(0, Math.min(1, point.clone().sub(start).dot(line) / line.lengthSq()));
+    return start.clone().add(line.multiplyScalar(t));
   }
 } 
 ### ./entities/enemies/Enemy.js END ###
@@ -58568,17 +57181,22 @@ export class Player extends Ship {
       boost: false
     };
     
+    // Bind event handler methods to preserve 'this' context
+    this.handleKeyDown = this.handleKeyDown.bind(this);
+    this.handleKeyUp = this.handleKeyUp.bind(this);
+    this.handleMouseMove = this.handleMouseMove.bind(this);
+    
     // Initialize controls
     this.setupControls();
   }
 
   setupControls() {
     // Keyboard controls
-    document.addEventListener('keydown', (event) => this.handleKeyDown(event));
-    document.addEventListener('keyup', (event) => this.handleKeyUp(event));
+    document.addEventListener('keydown', this.handleKeyDown);
+    document.addEventListener('keyup', this.handleKeyUp);
     
     // Mouse controls for aiming
-    document.addEventListener('mousemove', (event) => this.handleMouseMove(event));
+    document.addEventListener('mousemove', this.handleMouseMove);
   }
 
   handleKeyDown(event) {
@@ -58679,6 +57297,14 @@ export class Player extends Ship {
     const bounds = 50;
     this.mesh.position.x = Math.max(-bounds, Math.min(bounds, this.mesh.position.x));
     this.mesh.position.z = Math.max(-bounds, Math.min(bounds, this.mesh.position.z));
+    
+    // Broadcast position updates for multiplayer
+    if (this.networkManager) {
+      this.networkManager.emit('player_move', {
+        position: this.mesh.position,
+        rotation: this.mesh.rotation,
+      });
+    }
   }
 
   updateRotation(deltaTime) {

@@ -34,6 +34,12 @@ export class Player extends Ship {
       boost: false
     };
     
+    // Energy and health regeneration
+    this.energy = 100;
+    this.maxEnergy = 100;
+    this.energyRegenRate = 1; // 1 unit per second
+    this.healthRegenRate = 0.5; // 0.5 units per second (half of energy regen)
+    
     // Bind event handler methods to preserve 'this' context
     this.handleKeyDown = this.handleKeyDown.bind(this);
     this.handleKeyUp = this.handleKeyUp.bind(this);
@@ -106,6 +112,16 @@ export class Player extends Ship {
     if (!this.isActive) return;
     
     super.update(deltaTime);
+    
+    // Regenerate energy
+    if (this.energy < this.maxEnergy) {
+      this.energy = Math.min(this.maxEnergy, this.energy + this.energyRegenRate * deltaTime);
+    }
+    
+    // Regenerate health
+    if (this.health < this.maxHealth) {
+      this.health = Math.min(this.maxHealth, this.health + this.healthRegenRate * deltaTime);
+    }
     
     // Update movement
     this.updateMovement(deltaTime);
