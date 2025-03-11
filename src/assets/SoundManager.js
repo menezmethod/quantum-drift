@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 /**
  * SoundManager class for managing game audio
  */
@@ -27,13 +29,20 @@ export class SoundManager {
     // Create a sound loader
     const audioLoader = new THREE.AudioLoader();
     
-    // Define common sounds to preload
+    // Define common sounds to preload with updated paths
     const soundsToLoad = [
-      { name: 'laser', path: 'sounds/laser.mp3' },
-      { name: 'explosion', path: 'sounds/explosion.mp3' },
-      { name: 'hit', path: 'sounds/hit.mp3' },
-      { name: 'powerup', path: 'sounds/powerup.mp3' },
-      { name: 'engine', path: 'sounds/engine.mp3', loop: true }
+      { name: 'laser', path: 'assets/sounds/laser.mp3' },
+      { name: 'explosion', path: 'assets/sounds/explosion.mp3' },
+      { name: 'hit', path: 'assets/sounds/hit.mp3' },
+      { name: 'powerup', path: 'assets/sounds/powerup.mp3' },
+      { name: 'engine', path: 'assets/sounds/engine.mp3', loop: true },
+      { name: 'laser-bounce', path: 'assets/sounds/laser-bounce.mp3' },
+      { name: 'weapon-switch', path: 'assets/sounds/weapon-switch.mp3' },
+      { name: 'collision', path: 'assets/sounds/collision.mp3' },
+      { name: 'weapon-charging', path: 'assets/sounds/weapon-charging.mp3' },
+      { name: 'bounce', path: 'assets/sounds/bounce.mp3' },
+      { name: 'weapon-armor-hit', path: 'assets/sounds/weapon-armor-hit.mp3' },
+      { name: 'grenade-laser', path: 'assets/sounds/grenade-laser.mp3' }
     ];
     
     // Load each sound
@@ -64,11 +73,11 @@ export class SoundManager {
       }
     });
     
-    // Load background music
+    // Load background music with updated path
     try {
       this.music = new THREE.Audio(this.listener);
       audioLoader.load(
-        'sounds/background_music.mp3',
+        'assets/sounds/background_music.mp3',
         buffer => {
           this.music.setBuffer(buffer);
           this.music.setVolume(this.musicVolume);
@@ -127,17 +136,94 @@ export class SoundManager {
       return;
     }
     
-    // If sound is already playing, clone it
+    let soundToPlay = sound;
+    
+    // If sound is already playing, create a new instance
     if (sound.isPlaying) {
-      const soundClone = sound.clone();
-      soundClone.play();
-      
-      // Clean up clone after playing
-      soundClone.onEnded = () => {
-        soundClone.disconnect();
-      };
-    } else {
-      sound.play();
+      try {
+        // Create a new audio instance
+        if (position) {
+          // For positional audio
+          const soundClone = new THREE.PositionalAudio(this.listener);
+          soundClone.setBuffer(sound.buffer);
+          soundClone.setVolume(this.effectsVolume);
+          soundClone.setRefDistance(10); // Distance at which the volume is at full
+          soundToPlay = soundClone;
+        } else {
+          // For non-positional audio - create new instead of cloning
+          const soundClone = new THREE.Audio(this.listener);
+          soundClone.setBuffer(sound.buffer);
+          soundClone.setVolume(this.effectsVolume);
+          soundToPlay = soundClone;
+        }
+        
+        // Clean up clone after playing
+        soundToPlay.onEnded = () => {
+          if (soundToPlay.source) {
+            soundToPlay.disconnect();
+            soundToPlay.source = null; // Prevent memory leaks
+          }
+        };
+      } catch (error) {
+        console.error("Error creating new sound instance:", error);
+        // If cloning fails, don't play any sound rather than crashing
+        return;
+      }
+    }
+    
+    // If position is provided, make it positional
+    if (position && !sound.isPlaying) {
+      // We're using the original sound, convert it to positional if needed
+      if (!(soundToPlay instanceof THREE.PositionalAudio)) {
+        try {
+          // Create new positional audio
+          const positionalSound = new THREE.PositionalAudio(this.listener);
+          positionalSound.setBuffer(sound.buffer);
+          positionalSound.setVolume(this.effectsVolume);
+          positionalSound.setRefDistance(10);
+          soundToPlay = positionalSound;
+        } catch (error) {
+          console.error("Error creating positional audio:", error);
+          // Fall back to non-positional
+        }
+      }
+    }
+    
+    // Apply position if provided
+    if (position && soundToPlay instanceof THREE.PositionalAudio) {
+      try {
+        // Check if we need to add this to an object in the scene
+        const dummyObject = new THREE.Object3D();
+        dummyObject.position.copy(position);
+        dummyObject.add(soundToPlay);
+        
+        // Cleanup function to remove the dummy object after playing
+        soundToPlay.onEnded = () => {
+          if (dummyObject.parent) dummyObject.parent.remove(dummyObject);
+          if (soundToPlay.source) {
+            soundToPlay.disconnect();
+            soundToPlay.source = null;
+          }
+        };
+        
+        // Add to scene or listener (we assume listener is in scene)
+        if (this.listener && this.listener.parent) {
+          this.listener.parent.add(dummyObject);
+        } else {
+          console.warn('Audio listener has no parent, positional audio may not work correctly');
+          // Just play non-positional as fallback
+        }
+      } catch (error) {
+        console.error("Error setting up positional audio:", error);
+        // Fall back to just playing the sound
+      }
+    }
+    
+    // Play the sound
+    try {
+      soundToPlay.play();
+    } catch (error) {
+      console.error("Error playing sound:", error);
     }
   }
   

@@ -1,39 +1,60 @@
 import * as THREE from 'three';
 import { EventEmitter } from 'events';
 
-export class BaseShip extends EventEmitter {
+export class Ship extends EventEmitter {
     constructor(scene, position, options = {}) {
         super();
         
-        this.options = {
+        this.scene = scene;
+        this.options = { 
+            health: 100, 
+            speed: 0.1,
             type: 'BASIC',
             teamId: null,
             teamColor: 0xffffff,
-            health: 100,
             maxHealth: 100,
-            speed: 0.1,
             size: 1.0,
             shipModel: 'STANDARD',
-            ...options
+            ...options 
         };
-
-        this.scene = scene;
+        
         this.health = this.options.health;
         this.maxHealth = this.options.maxHealth;
         this.isActive = true;
         this.teamId = this.options.teamId;
+        this.mesh = null;
         
-        // Create ship mesh
-        this.createMesh(position);
-        
-        // Add to scene
-        this.scene.add(this.mesh);
-        
-        // Initialize effects
-        this.initializeEffects();
+        // Initialize the ship if position is provided
+        if (position) {
+            this.createMesh(position);
+            // Add to scene if mesh was created
+            if (this.mesh) {
+                this.scene.add(this.mesh);
+            }
+            // Initialize effects
+            this.initializeEffects();
+        }
     }
 
     createMesh(position) {
+        // This is a base method that can be overridden by subclasses
+        // In the base class, implement default behavior
+        
+        const geometry = this.createGeometry();
+        const material = this.createMaterial();
+        
+        // Create mesh
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.mesh.position.copy(position || new THREE.Vector3());
+        this.mesh.position.y = this.options.size;
+        
+        // Add engine glow
+        this.addEngineGlow();
+        
+        return this.mesh;
+    }
+    
+    createGeometry() {
         // Ship models based on type
         const models = {
             STANDARD: () => new THREE.ConeGeometry(this.options.size, this.options.size * 2, 3),
@@ -58,23 +79,19 @@ export class BaseShip extends EventEmitter {
         // Get geometry based on ship model or fallback to STANDARD
         const geometry = (models[this.options.shipModel] || models.STANDARD)();
         geometry.rotateX(Math.PI / 2);
-
+        
+        return geometry;
+    }
+    
+    createMaterial() {
         // Create material with team color and effects
-        this.material = new THREE.MeshStandardMaterial({
+        return new THREE.MeshStandardMaterial({
             color: this.options.teamColor,
             emissive: this.options.teamColor,
             emissiveIntensity: 0.5,
             metalness: 0.7,
             roughness: 0.3
         });
-
-        // Create mesh
-        this.mesh = new THREE.Mesh(geometry, this.material);
-        this.mesh.position.copy(position);
-        this.mesh.position.y = this.options.size;
-
-        // Add engine glow
-        this.addEngineGlow();
     }
 
     addEngineGlow() {

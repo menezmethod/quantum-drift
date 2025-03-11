@@ -40,11 +40,39 @@ class AssetLoader {
         this.loadingState.errors = [];
 
         try {
-            await Promise.all([
-                this.loadModels(),
-                this.loadSounds(),
-                this.loadTextures()
-            ]);
+            const modelsToLoad = [
+                'ships/ALTSPACE1.glb',
+                'ships/ALTSPACE2.glb',
+                'terrain/Terrain.glb',
+                'terrain/Water.glb',
+                'objects/SP_Stone01.glb',
+                'objects/SP_Ground05.glb'
+            ];
+
+            const loader = new GLTFLoader();
+            
+            for (const model of modelsToLoad) {
+                try {
+                    const loaded = await this.loadWithRetry(() => 
+                        this.loadModel(loader, model, `assets/models/${model}`)
+                    );
+                    if (loaded) {
+                        console.log(`✅ Successfully loaded model: ${model}`);
+                        
+                        // Add aliases for ship models
+                        if (model === 'ships/ALTSPACE1.glb') {
+                            this.assets.models.set('FIGHTER', this.assets.models.get(model));
+                            this.assets.models.set('SCOUT', this.assets.models.get(model));
+                        } else if (model === 'ships/ALTSPACE2.glb') {
+                            this.assets.models.set('INTERCEPTOR', this.assets.models.get(model));
+                            this.assets.models.set('EXPERIMENTAL', this.assets.models.get(model));
+                        }
+                    }
+                } catch (error) {
+                    console.error(`⛔ Failed to load model ${model}:`, error);
+                    this.handleError('model', error);
+                }
+            }
 
             this.loadingState.completed = true;
             return true;
@@ -52,30 +80,6 @@ class AssetLoader {
             this.handleError('critical', error);
             return false;
         }
-    }
-
-    async loadModels() {
-        const loader = new GLTFLoader();
-        // Use absolute paths to ensure models are loaded correctly
-        const modelPaths = {
-            'FIGHTER': 'assets/models/ships/ALTSPACE1.glb',
-            'INTERCEPTOR': 'assets/models/ships/ALTSPACE2.glb',
-            // Add aliases for backward compatibility
-            'SCOUT': 'assets/models/ships/ALTSPACE1.glb',
-            'EXPERIMENTAL': 'assets/models/ships/ALTSPACE2.glb'
-        };
-
-        console.log('🚢 Starting to load ship models with paths:', modelPaths);
-
-        const loadPromises = Object.entries(modelPaths).map(([key, path]) => {
-            console.log(`🔄 Setting up loading for model: ${key} from path: ${path}`);
-            return this.loadWithRetry(() => this.loadModel(loader, key, path));
-        });
-
-        await Promise.all(loadPromises);
-        
-        // Apply consistent sizing to all ship models
-        this.normalizeShipSizes();
     }
 
     async loadModel(loader, key, path) {
@@ -105,48 +109,6 @@ class AssetLoader {
                     clearTimeout(timeoutId);
                     console.error(`⛔ Error loading model ${key}:`, error.message);
                     reject(new Error(`Error loading model ${key}: ${error.message}`));
-                }
-            );
-        });
-    }
-
-    async loadSounds() {
-        const audioLoader = new THREE.AudioLoader();
-        const soundPaths = {
-            'laser': 'assets/sounds/laser.mp3',
-            'laser-bounce': 'assets/sounds/laser-bounce.mp3',
-            'grenade-laser': 'assets/sounds/grenade-laser.mp3',
-            'bounce': 'assets/sounds/bounce.mp3'
-        };
-
-        const loadPromises = Object.entries(soundPaths).map(([key, path]) => {
-            return this.loadWithRetry(() => this.loadSound(audioLoader, key, path));
-        });
-
-        await Promise.all(loadPromises);
-    }
-
-    async loadSound(loader, key, path) {
-        return new Promise((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-                reject(new Error(`Sound loading timeout: ${key}`));
-            }, 10000);
-
-            loader.load(
-                path,
-                (buffer) => {
-                    clearTimeout(timeoutId);
-                    this.assets.sounds.set(key, buffer);
-                    this.onProgress?.(`Loaded sound: ${key}`);
-                    resolve();
-                },
-                (xhr) => {
-                    const percent = (xhr.loaded / xhr.total * 100);
-                    this.onProgress?.(`Loading ${key}: ${Math.round(percent)}%`);
-                },
-                (error) => {
-                    clearTimeout(timeoutId);
-                    reject(new Error(`Error loading sound ${key}: ${error.message}`));
                 }
             );
         });
@@ -220,10 +182,6 @@ class AssetLoader {
         return this.assets.models.get(key);
     }
 
-    getSound(key) {
-        return this.assets.sounds.get(key);
-    }
-
     getTexture(key) {
         return this.assets.textures.get(key);
     }
@@ -255,7 +213,6 @@ class AssetLoader {
 
         // Clear all maps
         this.assets.models.clear();
-        this.assets.sounds.clear();
         this.assets.textures.clear();
 
         // Reset loading state
@@ -304,67 +261,135 @@ class AssetLoader {
     getShipModel(key) {
         try {
             console.log(`Getting ship model: ${key}`);
-            const model = this.assets.models.get(key);
+            
+            // First try direct key lookup
+            let model = this.assets.models.get(key);
+            
+            // If not found, try the file path
+            if (!model) {
+                model = this.assets.models.get(`ships/${key}.glb`);
+            }
+            
+            // If still not found, try aliases
+            if (!model) {
+                console.log(`Trying to find model by alias: ${key}`);
+                if (key === 'FIGHTER' || key === 'SCOUT') {
+                    model = this.assets.models.get('ships/ALTSPACE1.glb');
+                } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL') {
+                    model = this.assets.models.get('ships/ALTSPACE2.glb');
+                }
+            }
             
             if (!model) {
                 console.warn(`Ship model with key "${key}" not found!`);
-                
-                // Try to find alternative models if aliases didn't work
-                if (key === 'FIGHTER' || key === 'SCOUT') {
-                    // Try alternatives for fighter
-                    console.log('Trying to find FIGHTER/SCOUT alternatives');
-                    const altModel = this.assets.models.get('FIGHTER') || this.assets.models.get('SCOUT');
-                    if (altModel) {
-                        console.log('Found alternative model, cloning');
-                        
-                        // DIAGNOSTIC: Log scale before cloning
-                        console.log(`DIAGNOSTIC: Original model scale before clone - [${altModel.scale.x}, ${altModel.scale.y}, ${altModel.scale.z}]`);
-                        
-                        const cloned = altModel.clone();
-                        
-                        // DIAGNOSTIC: Log scale after cloning
-                        console.log(`DIAGNOSTIC: Cloned model scale - [${cloned.scale.x}, ${cloned.scale.y}, ${cloned.scale.z}]`);
-                        
-                        return cloned;
-                    }
-                } else if (key === 'INTERCEPTOR' || key === 'EXPERIMENTAL') {
-                    // Try alternatives for interceptor
-                    console.log('Trying to find INTERCEPTOR/EXPERIMENTAL alternatives');
-                    const altModel = this.assets.models.get('INTERCEPTOR') || this.assets.models.get('EXPERIMENTAL');
-                    if (altModel) {
-                        console.log('Found alternative model, cloning');
-                        
-                        // DIAGNOSTIC: Log scale before cloning
-                        console.log(`DIAGNOSTIC: Original model scale before clone - [${altModel.scale.x}, ${altModel.scale.y}, ${altModel.scale.z}]`);
-                        
-                        const cloned = altModel.clone();
-                        
-                        // DIAGNOSTIC: Log scale after cloning
-                        console.log(`DIAGNOSTIC: Cloned model scale - [${cloned.scale.x}, ${cloned.scale.y}, ${cloned.scale.z}]`);
-                        
-                        return cloned;
-                    }
-                }
-                
-                console.error(`No model or alternative found for key: ${key}`);
                 return null;
             }
             
-            // DIAGNOSTIC: Log scale before cloning 
-            console.log(`DIAGNOSTIC: Original model scale before clone - [${model.scale.x}, ${model.scale.y}, ${model.scale.z}]`);
-            
-            // Return a properly cloned model
-            console.log(`Cloning model for: ${key}`);
-            const cloned = model.clone();
-            
-            // DIAGNOSTIC: Log scale after cloning
-            console.log(`DIAGNOSTIC: Cloned model scale - [${cloned.scale.x}, ${cloned.scale.y}, ${cloned.scale.z}]`);
-            
-            return cloned;
+            return this.cloneAndPrepareModel(model);
         } catch (error) {
             console.error(`Error cloning ship model ${key}:`, error);
             return null;
         }
+    }
+
+    // New method to handle model cloning and preparation
+    cloneAndPrepareModel(model) {
+        // DIAGNOSTIC: Log scale before cloning
+        console.log(`DIAGNOSTIC: Original model scale before clone - [${model.scale.x}, ${model.scale.y}, ${model.scale.z}]`);
+        
+        // Clone the model
+        const cloned = model.clone();
+        
+        // Apply consistent scaling as specified in Task 12
+        cloned.scale.set(0.45, 0.45, 0.45);
+        
+        // Ensure materials are properly cloned
+        cloned.traverse(node => {
+            if (node.isMesh && node.material) {
+                // Clone material to prevent sharing between instances
+                node.material = node.material.clone();
+                
+                // Ensure material properties are set
+                if (!node.material.color) node.material.color = new THREE.Color(0xffffff);
+                if (!node.material.emissive) node.material.emissive = new THREE.Color(0x000000);
+                
+                // Enable shadows
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+        
+        // DIAGNOSTIC: Log scale after cloning
+        console.log(`DIAGNOSTIC: Cloned model scale - [${cloned.scale.x}, ${cloned.scale.y}, ${cloned.scale.z}]`);
+        
+        return cloned;
+    }
+
+    // Method to get a cloned ship model for opponents
+    getOpponentShipModel(key) {
+        try {
+            console.log(`Getting opponent ship model: ${key}`);
+            // Use the same model loading logic as getShipModel
+            const model = this.getShipModel(key);
+            
+            if (!model) {
+                console.warn(`No model found for opponent ship type: ${key}`);
+                return null;
+            }
+            
+            // Clone the model to ensure each opponent has their own instance
+            const clonedModel = model.clone();
+            
+            // Apply any opponent-specific modifications here if needed
+            // For example, different materials or effects
+            
+            return clonedModel;
+        } catch (error) {
+            console.error(`Error getting opponent ship model ${key}:`, error);
+            return null;
+        }
+    }
+
+    // Add the loadModels method used by ShipSelectionUI
+    async loadModels() {
+        console.log('Loading ship models for selection UI');
+        
+        if (this.assets.models.has('FIGHTER') && this.assets.models.has('INTERCEPTOR')) {
+            console.log('Ship models already loaded, using cached versions');
+            return true;
+        }
+        
+        const shipModels = [
+            'ships/ALTSPACE1.glb',
+            'ships/ALTSPACE2.glb'
+        ];
+        
+        const loader = new GLTFLoader();
+        
+        for (const model of shipModels) {
+            try {
+                const loaded = await this.loadWithRetry(() => 
+                    this.loadModel(loader, model, `assets/models/${model}`)
+                );
+                if (loaded) {
+                    console.log(`✅ Successfully loaded ship model: ${model} for selection UI`);
+                    
+                    // Add aliases for ship models
+                    if (model === 'ships/ALTSPACE1.glb') {
+                        this.assets.models.set('FIGHTER', this.assets.models.get(model));
+                        this.assets.models.set('SCOUT', this.assets.models.get(model));
+                    } else if (model === 'ships/ALTSPACE2.glb') {
+                        this.assets.models.set('INTERCEPTOR', this.assets.models.get(model));
+                        this.assets.models.set('EXPERIMENTAL', this.assets.models.get(model));
+                    }
+                }
+            } catch (error) {
+                console.error(`⛔ Failed to load ship model ${model}:`, error);
+                this.handleError('model', error);
+            }
+        }
+        
+        return true;
     }
 }
 

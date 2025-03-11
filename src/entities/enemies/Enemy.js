@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { BaseShip } from '../BaseShip';
+import { Ship } from '../Ship';
 
-export class Enemy extends BaseShip {
+export class Enemy extends Ship {
   constructor(scene, position, options = {}) {
     // Set default enemy options
     const enemyOptions = {
@@ -182,38 +182,17 @@ export class Enemy extends BaseShip {
   }
   
   checkWallCollision(wallSegments) {
-    if (!wallSegments || !Array.isArray(wallSegments) || wallSegments.length === 0) return false;
-    
-    const enemyPosition = new THREE.Vector2(this.mesh.position.x, this.mesh.position.z);
-    const enemyRadius = this.options.size;
-    
+    const pos = this.mesh.position;
     for (const segment of wallSegments) {
-      if (!segment || !segment.start || !segment.end) continue;
-      
-      const wallStart = new THREE.Vector2(segment.start.x, segment.start.z);
-      const wallEnd = new THREE.Vector2(segment.end.x, segment.end.z);
-      const wallVector = wallEnd.clone().sub(wallStart);
-      const enemyToWallStart = enemyPosition.clone().sub(wallStart);
-      
-      const wallLength = wallVector.length();
-      const wallDirection = wallVector.clone().normalize();
-      const projectionLength = enemyToWallStart.dot(wallDirection);
-      
-      let closestPoint;
-      if (projectionLength < 0) {
-        closestPoint = wallStart;
-      } else if (projectionLength > wallLength) {
-        closestPoint = wallEnd;
-      } else {
-        closestPoint = wallStart.clone().add(wallDirection.multiplyScalar(projectionLength));
-      }
-      
-      const distance = enemyPosition.distanceTo(closestPoint);
-      if (distance < enemyRadius) {
-        return true;
-      }
+      const closest = this.getClosestPoint(pos, segment.start, segment.end);
+      if (pos.distanceTo(closest) < this.options.size) return true;
     }
-    
     return false;
+  }
+
+  getClosestPoint(point, start, end) {
+    const line = end.clone().sub(start);
+    const t = Math.max(0, Math.min(1, point.clone().sub(start).dot(line) / line.lengthSq()));
+    return start.clone().add(line.multiplyScalar(t));
   }
 } 

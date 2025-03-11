@@ -1,28 +1,16 @@
 import * as THREE from 'three';
+import { Laser } from './Laser';
 
 /**
  * RegularLaser weapon class
  */
-export class RegularLaser {
+export class RegularLaser extends Laser {
   constructor(weaponSystem) {
+    super(weaponSystem.scene, null, null, {
+      damage: 10, range: 50, speed: 50, color: 0x00ffff
+    });
     this.weaponSystem = weaponSystem;
-    
-    // Weapon properties
-    this.name = 'Regular Laser';
-    this.damage = 10;
-    this.range = 50;
-    this.speed = 50;
-    this.cooldown = 0.2; // seconds
-    this.energyCost = 5;
-    this.currentCooldown = 0;
-    
-    // Visuals
-    this.color = 0x00ffff; // Cyan color
-    this.size = { length: 0.8, width: 0.1 };
-    this.explosionSize = 0.3; // Size of hit effect
-    
-    // Sound
-    this.sound = 'laser';
+    this.cooldown = 0.2;
   }
   
   /**
@@ -51,25 +39,28 @@ export class RegularLaser {
    * @param {object} player - Player object for energy management
    * @returns {boolean} - True if weapon fired successfully
    */
-  fire(position, direction, player) {
-    if (!this.canFire(player)) return false;
+  fire(position, direction, options = {}) {
+    // Position and orient the laser
+    this.mesh.position.copy(position);
+    this.direction = direction.normalize();
+    this.initialPosition = position.clone();
     
-    // Reset cooldown
-    this.currentCooldown = this.cooldown;
+    // Store initial properties
+    this.teamId = options.teamId;
     
-    // Consume energy
-    player.energy -= this.energyCost;
+    // Set color based on team
+    if (options.teamColor) {
+      if (this.mesh.material) {
+        this.mesh.material.color.set(options.teamColor);
+      }
+    }
     
-    // Create laser projectile
-    const projectile = this.createProjectile(position, direction);
+    // Play sound if available
+    if (this.weaponSystem.scene.soundManager) {
+      this.weaponSystem.scene.soundManager.playSound('laser', position);
+    }
     
-    // Add projectile to weapon system
-    this.weaponSystem.addProjectile(projectile);
-    
-    // Play sound
-    this.weaponSystem.soundManager?.playSound(this.sound);
-    
-    return true;
+    return this;
   }
   
   /**

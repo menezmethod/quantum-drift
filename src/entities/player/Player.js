@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { ModelLoader } from '../../assets/ModelLoader';
 import { KEY_MAPPINGS, CONTROL_SETTINGS, DEFAULT_CONTROL_STATE, ControlUtils } from '../../config/Controls';
-import { BaseShip } from '../BaseShip';
+import { Ship } from '../Ship';
 
-export class Player extends BaseShip {
+export class Player extends Ship {
   constructor(scene, position, options = {}) {
     // Set default player options
     const playerOptions = {
@@ -34,17 +34,22 @@ export class Player extends BaseShip {
       boost: false
     };
     
+    // Bind event handler methods to preserve 'this' context
+    this.handleKeyDown = this.handleKeyDown.bind(this);
+    this.handleKeyUp = this.handleKeyUp.bind(this);
+    this.handleMouseMove = this.handleMouseMove.bind(this);
+    
     // Initialize controls
     this.setupControls();
   }
 
   setupControls() {
     // Keyboard controls
-    document.addEventListener('keydown', (event) => this.handleKeyDown(event));
-    document.addEventListener('keyup', (event) => this.handleKeyUp(event));
+    document.addEventListener('keydown', this.handleKeyDown);
+    document.addEventListener('keyup', this.handleKeyUp);
     
     // Mouse controls for aiming
-    document.addEventListener('mousemove', (event) => this.handleMouseMove(event));
+    document.addEventListener('mousemove', this.handleMouseMove);
   }
 
   handleKeyDown(event) {
@@ -145,6 +150,14 @@ export class Player extends BaseShip {
     const bounds = 50;
     this.mesh.position.x = Math.max(-bounds, Math.min(bounds, this.mesh.position.x));
     this.mesh.position.z = Math.max(-bounds, Math.min(bounds, this.mesh.position.z));
+    
+    // Broadcast position updates for multiplayer
+    if (this.networkManager) {
+      this.networkManager.emit('player_move', {
+        position: this.mesh.position,
+        rotation: this.mesh.rotation,
+      });
+    }
   }
 
   updateRotation(deltaTime) {

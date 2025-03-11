@@ -44,32 +44,23 @@ export class WeaponSystem {
   }
   
   fireWeapon(weaponType, position, direction, options = {}) {
-    // Get weapon configuration
-    const weaponConfig = this.weaponTypes[weaponType];
-    if (!weaponConfig) {
-      console.error(`Unknown weapon type: ${weaponType}`);
-      return null;
-    }
+    const config = this.weaponTypes[weaponType] || this.weaponTypes['LASER'];
+    let projectile = this.createLaser(position, direction, {
+      ...config,
+      ...options
+    });
     
-    // Create projectile based on weapon type
-    let projectile;
-    
-    switch (weaponType) {
-      case 'LASER':
-        projectile = this.createLaser(position, direction, {
-          ...weaponConfig,
-          ...options
-        });
-        break;
-      // Other weapon types will be implemented later
-      default:
-        console.warn(`Weapon type ${weaponType} not yet implemented`);
-        return null;
-    }
-    
-    // Add to projectiles list for tracking
     if (projectile) {
       this.projectiles.push(projectile);
+    }
+    
+    // Network synchronization if available
+    if (this.scene.networkManager) {
+      this.scene.networkManager.emit('laser_shot', {
+        origin: position,
+        direction: direction,
+        type: weaponType
+      });
     }
     
     return projectile;

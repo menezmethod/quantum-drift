@@ -7,6 +7,8 @@ import { SoundManager } from '../assets/SoundManager';
 import { RegularLaser } from '../entities/weapons/RegularLaser';
 import { GameUI } from '../ui/GameUI';
 import { NetworkManager } from './NetworkManager';
+import { AssetLoader } from '../assets/AssetLoader';
+import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer';
 
 export class GameEngine {
   constructor() {
@@ -39,6 +41,15 @@ export class GameEngine {
     
     // Add NetworkManager instance
     this.networkManager = new NetworkManager();
+    
+    // Initialize AssetLoader
+    this.assetLoader = new AssetLoader().setCallbacks(
+      (message) => console.log(`GameEngine: ${message}`),
+      (type, error) => this.handleAssetError(type, error)
+    );
+    
+    // Asset loading state
+    this.assetsLoaded = false;
     
     // Initialize Three.js components
     this.initThree();
@@ -79,7 +90,9 @@ export class GameEngine {
     document.getElementById('game-container').appendChild(this.renderer.domElement);
   }
   
-  initGame() {
+  async initGame() {
+    console.log('Initializing game...');
+    
     // Create clock for timing
     this.clock = new THREE.Clock();
     
@@ -118,6 +131,17 @@ export class GameEngine {
       document.body.appendChild(this.renderer.domElement);
     }
     
+    // Load assets before proceeding
+    try {
+      console.log('Loading game assets...');
+      this.assetsLoaded = await this.assetLoader.loadAll();
+      console.log('Assets loaded successfully:', this.assetsLoaded);
+    } catch (error) {
+      console.error('Failed to load assets:', error);
+      this.handleAssetError('critical', error);
+      return;
+    }
+    
     // Initialize sound manager
     this.soundManager = new SoundManager();
     
@@ -139,12 +163,17 @@ export class GameEngine {
     // Setup event listeners
     this.setupEventListeners();
     
+    // Setup network listeners only after assets are loaded
+    if (this.assetsLoaded) {
+      this.setupNetworkListeners();
+    }
+    
     // Show UI
     this.showGameUI();
     
     // Game is now initialized
     this.isInitialized = true;
-    this.isPaused = false;
+    console.log('Game initialization complete!');
   }
   
   initGameModeUI() {
@@ -1079,44 +1108,69 @@ export class GameEngine {
   
   // Create visual representation for other players
   createOtherPlayer(playerData) {
-    // Get ship type from player data or default to STANDARD
-    const shipType = playerData.shipType || 'STANDARD';
+    console.log('Creating other player with data:', playerData);
     
-    // Create geometry based on ship type
-    let geometry;
-    switch(shipType) {
-      case 'INTERCEPTOR':
-        geometry = new THREE.ConeGeometry(0.4, 1.25, 4);
-        break;
-      case 'HEAVY':
-        geometry = new THREE.CylinderGeometry(0.6, 0.7, 1.0, 6);
-        break;
-      case 'SCOUT':
-        geometry = new THREE.ConeGeometry(0.3, 1.1, 5);
-        break;
-      case 'STANDARD':
-      default:
-        geometry = new THREE.ConeGeometry(0.5, 1.0, 3);
-        break;
+    // Ensure assets are loaded
+    if (!this.assetsLoaded) {
+      console.warn('Attempting to create player before assets are loaded');
+      return null;
     }
     
-    // Rotate geometry to align with movement direction
-    geometry.rotateX(Math.PI / 2);
+    // Get ship type from player data or default to STANDARD
+    const shipType = playerData.shipType || 'STANDARD';
+    console.log('Using ship type:', shipType);
     
-    // Create material based on team color
-    const shipColor = playerData.teamColor || 0x00ffff;
-    const material = new THREE.MeshPhongMaterial({ 
-      color: shipColor, 
-      emissive: shipColor,
-      emissiveIntensity: 0.5,
-      shininess: 100
-    });
+    // Try to get ship model from asset loader first
+    let ship = null;
+    try {
+      ship = this.assetLoader.getOpponentShipModel(shipType);
+      if (ship) {
+        console.log('Successfully loaded ship model for type:', shipType);
+        ship.scale.set(0.45, 0.45, 0.45);
+      }
+    } catch (error) {
+      console.warn('Failed to load ship model:', error);
+    }
     
-    // Create mesh
-    const ship = new THREE.Mesh(geometry, material);
+    // Fallback to geometry if model loading failed
+    if (!ship) {
+      console.log('Using fallback geometry for ship type:', shipType);
+      // Create geometry based on ship type
+      let geometry;
+      switch(shipType) {
+        case 'INTERCEPTOR':
+          geometry = new THREE.ConeGeometry(0.4, 1.25, 4);
+          break;
+        case 'HEAVY':
+          geometry = new THREE.CylinderGeometry(0.6, 0.7, 1.0, 6);
+          break;
+        case 'SCOUT':
+          geometry = new THREE.ConeGeometry(0.3, 1.1, 5);
+          break;
+        case 'STANDARD':
+        default:
+          geometry = new THREE.ConeGeometry(0.5, 1.0, 3);
+          break;
+      }
+      
+      // Rotate geometry to align with movement direction
+      geometry.rotateX(Math.PI / 2);
+      
+      // Create material based on team color
+      const shipColor = playerData.teamColor || 0x00ffff;
+      const material = new THREE.MeshPhongMaterial({ 
+        color: shipColor, 
+        emissive: shipColor,
+        emissiveIntensity: 0.5,
+        shininess: 100
+      });
+      
+      // Create mesh
+      ship = new THREE.Mesh(geometry, material);
+    }
     
     // Add engine glow effect
-    const engineGlow = new THREE.PointLight(shipColor, 1, 2);
+    const engineGlow = new THREE.PointLight(playerData.teamColor || 0x00ffff, 1, 2);
     engineGlow.position.set(0, 0, -0.5);
     ship.add(engineGlow);
     
@@ -1146,6 +1200,14 @@ export class GameEngine {
       ship.rotation.y = playerData.rotation;
     }
     
+    console.log('Player object created successfully:', {
+      id: playerData.id,
+      name: playerData.name,
+      shipType,
+      position: ship.position.toArray(),
+      rotation: ship.rotation.y
+    });
+    
     // Return the player object
     return {
       mesh: ship,
@@ -1153,13 +1215,21 @@ export class GameEngine {
       engineGlow,
       team: playerData.team,
       health: 100,
-      shipType
+      shipType,
+      lastUpdate: Date.now()
     };
   }
   
   // Update other player with new data
   updateOtherPlayer(player, data) {
-    if (!player || !player.mesh) return;
+    if (!player || !player.mesh) {
+      console.warn('Invalid player object for update:', { player, data });
+      return;
+    }
+    
+    const now = Date.now();
+    const timeSinceLastUpdate = now - (player.lastUpdate || 0);
+    console.log(`Updating player ${data.id}, time since last update: ${timeSinceLastUpdate}ms`);
     
     // Update position with smooth lerping
     if (data.position) {
@@ -1169,24 +1239,57 @@ export class GameEngine {
         data.position.z
       );
       
+      const currentPos = player.mesh.position.clone();
       player.mesh.position.lerp(targetPos, 0.3);
+      
+      // Log position change
+      const distance = currentPos.distanceTo(player.mesh.position);
+      if (distance > 0.01) {
+        console.log('Position updated:', {
+          from: currentPos.toArray(),
+          to: player.mesh.position.toArray(),
+          distance: distance.toFixed(3)
+        });
+      }
     }
     
     // Update rotation with smooth interpolation
     if (data.rotation !== undefined) {
+      const currentRotation = player.mesh.rotation.y;
+      
       // Find shortest rotation path
-      let rotDiff = data.rotation - player.mesh.rotation.y;
+      let rotDiff = data.rotation - currentRotation;
       if (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
       if (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
       
-      player.mesh.rotation.y += rotDiff * 0.3;
+      const newRotation = currentRotation + rotDiff * 0.3;
+      player.mesh.rotation.y = newRotation;
+      
+      // Log significant rotation changes
+      if (Math.abs(rotDiff) > 0.1) {
+        console.log('Rotation updated:', {
+          from: currentRotation.toFixed(3),
+          to: newRotation.toFixed(3),
+          difference: rotDiff.toFixed(3)
+        });
+      }
     }
     
     // Update team if changed
     if (data.team !== undefined && data.team !== player.team) {
+      console.log('Team changed:', { from: player.team, to: data.team });
       player.team = data.team;
     }
     
-    // Update other properties as needed
+    // Update last update timestamp
+    player.lastUpdate = now;
+  }
+
+  handleAssetError(type, error) {
+    console.error(`Asset loading error (${type}):`, error);
+    if (type === 'critical') {
+      // Show error UI
+      this.ui.showError('Failed to load game assets. Please refresh the page.');
+    }
   }
 } 

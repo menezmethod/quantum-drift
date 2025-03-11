@@ -16,6 +16,9 @@ const io = new Server(server, {
   }
 });
 
+// Valid ship types
+const VALID_SHIP_TYPES = ['STANDARD', 'INTERCEPTOR', 'HEAVY', 'SCOUT'];
+
 // Store connected players
 const players = new Map();
 
@@ -36,7 +39,7 @@ io.on('connection', (socket) => {
     position: { x: 0, y: 0, z: 0 },
     rotation: 0,
     name: 'Player_' + playerId.substring(0, 5),
-    shipType: 'default',
+    shipType: 'STANDARD',
     team: null,
     lastUpdate: Date.now()
   });
@@ -55,6 +58,11 @@ io.on('connection', (socket) => {
   socket.on('player_update', (data) => {
     const player = players.get(data.id);
     if (player) {
+      // Validate ship type
+      if (data.shipType && !VALID_SHIP_TYPES.includes(data.shipType)) {
+        data.shipType = 'STANDARD';
+      }
+      
       // Update player data
       Object.assign(player, data);
       player.lastUpdate = Date.now();
@@ -74,9 +82,14 @@ io.on('connection', (socket) => {
   socket.on('player_info', (data) => {
     const player = players.get(data.id);
     if (player) {
+      // Validate ship type
+      const shipType = data.shipType && VALID_SHIP_TYPES.includes(data.shipType) 
+        ? data.shipType 
+        : 'STANDARD';
+      
       // Update player info
       player.name = data.name || player.name;
-      player.shipType = data.shipType || player.shipType;
+      player.shipType = shipType;
       
       // Broadcast to all players
       io.emit('player_info', {
