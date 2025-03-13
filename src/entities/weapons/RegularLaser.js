@@ -42,7 +42,7 @@ export class RegularLaser extends Laser {
    * Fire the weapon
    * @param {THREE.Vector3} position - Starting position of projectile
    * @param {THREE.Vector3} direction - Direction to fire
-   * @param {object} player - Player object for energy management
+   * @param options
    * @returns {boolean} - True if weapon fired successfully
    */
   fire(position, direction, options = {}) {

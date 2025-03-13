@@ -1,6 +1,4 @@
 import * as THREE from 'three';
-import { ModelLoader } from '../../assets/ModelLoader';
-import { KEY_MAPPINGS, CONTROL_SETTINGS, DEFAULT_CONTROL_STATE, ControlUtils } from '../../config/Controls';
 import { Ship } from '../Ship';
 
 export class Player extends Ship {

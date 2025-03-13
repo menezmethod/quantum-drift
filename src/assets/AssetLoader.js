@@ -24,6 +24,13 @@ class AssetLoader {
 
         this.onProgress = null;
         this.onError = null;
+        this.scene = null; // Will be set by setScene method
+    }
+
+    // Set the scene reference for methods that need to add objects to the scene
+    setScene(scene) {
+        this.scene = scene;
+        return this;
     }
 
     setCallbacks(onProgress, onError) {
@@ -400,6 +407,345 @@ class AssetLoader {
         }
         
         return true;
+    }
+
+    // Methods moved from Game.js
+
+    /**
+     * Creates a floor for the game using the Terrain.glb model
+     * @param {THREE.Scene} scene - The scene to add the floor to
+     * @returns {Object} - The created floor objects
+     */
+    createFloor(scene) {
+        console.log('Creating floor with Terrain.glb model');
+        const sceneToUse = scene || this.scene;
+        
+        if (!sceneToUse) {
+            console.error('No scene provided to createFloor');
+            return null;
+        }
+
+        // Create a placeholder floor initially - this will be visible until the model loads
+        const tempFloorGeometry = new THREE.PlaneGeometry(100, 100, 1, 1);
+        const tempFloorMaterial = new THREE.MeshBasicMaterial({
+            color: 0x000022,
+            transparent: true,
+            opacity: 0.2,
+        });
+
+        const floor = new THREE.Mesh(tempFloorGeometry, tempFloorMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = -0.01;
+        sceneToUse.add(floor);
+
+        // Also create an invisible raycasting plane that will always work for targeting
+        // This ensures mouse input works consistently regardless of the visual floor model
+        const raycastFloor = new THREE.Mesh(
+            new THREE.PlaneGeometry(1000, 1000),
+            new THREE.MeshBasicMaterial({
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 0.05, // Very slight visibility for debugging
+                side: THREE.DoubleSide
+            })
+        );
+        raycastFloor.rotation.x = -Math.PI / 2;
+        raycastFloor.position.y = 0.1; // Position higher above terrain
+        sceneToUse.add(raycastFloor);
+
+        // Add debug logging
+        console.log('Raycast floor created at height:', raycastFloor.position.y, 'and size:', 1000);
+
+        // Load texture first
+        const textureLoader = new THREE.TextureLoader();
+        const texturePromise = new Promise((resolve, reject) => {
+            textureLoader.load(
+                'assets/models/textures/Colors3.png',
+                texture => {
+                    console.log('Terrain texture (Colors3.png) loaded successfully');
+                    // Configure texture
+                    texture.wrapS = THREE.RepeatWrapping;
+                    texture.wrapT = THREE.RepeatWrapping;
+                    texture.repeat.set(8, 8); // Repeat the texture more times for better detail
+                    resolve(texture);
+                },
+                undefined,
+                error => {
+                    console.error('Error loading Colors3.png texture:', error);
+                    // Try fallback texture
+                    textureLoader.load(
+                        'assets/models/textures/tex.png',
+                        fallbackTexture => {
+                            console.log('Fallback texture loaded');
+                            fallbackTexture.wrapS = THREE.RepeatWrapping;
+                            fallbackTexture.wrapT = THREE.RepeatWrapping;
+                            fallbackTexture.repeat.set(5, 5);
+                            resolve(fallbackTexture);
+                        },
+                        undefined,
+                        fallbackError => {
+                            console.error('Error loading fallback texture:', fallbackError);
+                            resolve(null); // Resolve with null to continue without texture
+                        }
+                    );
+                }
+            );
+        });
+
+        // When texture is loaded (or failed), get the terrain model from AssetLoader
+        texturePromise.then(texture => {
+            // Get terrain model from AssetLoader
+            const terrain = this.getModel('terrain/Terrain.glb');
+
+            if (terrain) {
+                console.log('Using terrain model from AssetLoader');
+
+                // Remove the temporary floor
+                if (floor) {
+                    sceneToUse.remove(floor);
+                    floor.geometry.dispose();
+                    floor.material.dispose();
+                }
+
+                // Clone the model to avoid modifying the original
+                const terrainClone = terrain.clone();
+
+                // Scale the terrain appropriately
+                const terrainScale = 100; // Adjust this value to change the overall size
+                terrainClone.scale.set(terrainScale, terrainScale * 0.5, terrainScale);
+
+                // Position terrain at center and slightly below zero to avoid z-fighting
+                terrainClone.position.set(0, -0.2, 0);
+
+                // Apply texture if available
+                if (texture) {
+                    terrainClone.traverse((node) => {
+                        if (node.isMesh) {
+                            node.material = node.material.clone(); // Clone material to avoid affecting other instances
+                            node.material.map = texture;
+                            node.material.needsUpdate = true;
+
+                            // Enable shadows
+                            node.castShadow = true;
+                            node.receiveShadow = true;
+                        }
+                    });
+                }
+
+                // Add to scene
+                sceneToUse.add(terrainClone);
+                
+                console.log('Terrain model added to scene');
+                
+                // Return the created objects
+                return { terrain: terrainClone, raycastFloor };
+            } else {
+                console.warn('Terrain model not found in AssetLoader, using fallback grid');
+
+                // Create a grid as fallback
+                const grid = new THREE.GridHelper(100, 100, 0x0000ff, 0x000044);
+                grid.position.y = 0;
+                sceneToUse.add(grid);
+                
+                // Return the created objects
+                return { terrain: grid, raycastFloor };
+            }
+        });
+
+        // Return initial objects
+        return { floor, raycastFloor };
+    }
+
+    /**
+     * Sets a ship model for a player
+     * @param {string} type - The type of ship to set
+     * @param {THREE.Scene} scene - The scene to add the ship to
+     * @param {THREE.Object3D} existingShip - The existing ship to replace
+     * @param {Function} onComplete - Callback when ship is set
+     * @returns {THREE.Object3D} - The new ship model
+     */
+    setShipModel(type, scene, existingShip, onComplete) {
+        console.log('🔍 Setting ship model:', type);
+        const sceneToUse = scene || this.scene;
+        
+        if (!sceneToUse) {
+            console.error('No scene provided to setShipModel');
+            return null;
+        }
+
+        // Get the ship model from assets
+        let model = this.getShipModel(type);
+
+        // If model is null or undefined, create fallback model
+        if (!model) {
+            console.warn('⚠️ Using fallback ship model for type:', type);
+
+            // Create a simple geometric shape as fallback
+            const geometry = new THREE.BoxGeometry(1, 0.5, 2);
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x00ffff,
+                specular: 0x111111,
+                shininess: 30
+            });
+            model = new THREE.Mesh(geometry, material);
+        }
+
+        // Clear existing ship if it exists
+        if (existingShip) {
+            if (sceneToUse) {
+                sceneToUse.remove(existingShip);
+            }
+        }
+
+        // Position the ship appropriately
+        if (model && sceneToUse) {
+            model.position.set(0, 0.5, 0);
+            sceneToUse.add(model);
+        }
+
+        // Call the completion callback if provided
+        if (onComplete && typeof onComplete === 'function') {
+            onComplete(model);
+        }
+
+        return model;
+    }
+
+    /**
+     * Adds a thruster glow effect to a player mesh
+     * @param {THREE.Object3D} playerMesh - The player mesh to add the thruster to
+     * @returns {Object} - The created thruster objects
+     */
+    addThrusterGlow(playerMesh) {
+        // Check if player mesh exists
+        if (!playerMesh) {
+            console.warn('Cannot add thruster glow: Player mesh is not initialized');
+            return null;
+        }
+
+        // Create a single, efficient thruster glow effect
+        // Use instanced mesh for better performance if you have multiple thrusters
+
+        // Create a glow for the thruster
+        const thrusterGeometry = new THREE.CylinderGeometry(0.2, 0.3, 0.5, 12);
+        const thrusterMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.7,
+            blending: THREE.AdditiveBlending // Use additive blending for better glow effect
+        });
+
+        const thruster = new THREE.Mesh(thrusterGeometry, thrusterMaterial);
+        thruster.position.set(0, 0, -0.7); // Position at the back of the ship
+        thruster.rotation.x = Math.PI / 2;
+        thruster.name = 'thruster'; // Name it for easier reference later
+
+        // Add thruster to player mesh
+        playerMesh.add(thruster);
+
+        // Add point light for the thruster
+        const thrusterLight = new THREE.PointLight(0x00ffff, 1, 3);
+        thrusterLight.position.copy(thruster.position);
+        thrusterLight.name = 'thrusterLight';
+        
+        // Add light to player mesh
+        playerMesh.add(thrusterLight);
+
+        return { thruster, thrusterLight };
+    }
+
+    // UI-related methods moved from Game.js
+    
+    /**
+     * Updates the loading UI with a message
+     * @param {string} message - The message to display
+     */
+    updateLoadingUI(message) {
+        // Call the callback if provided
+        if (this.onProgress) {
+            this.onProgress(message);
+            return;
+        }
+        
+        // Otherwise, update the UI directly
+        const loadingScreen = document.getElementById('loading-screen');
+        if (loadingScreen) {
+            const messageElement = loadingScreen.querySelector('.loading-message');
+            if (messageElement) {
+                messageElement.textContent = message;
+            }
+        }
+    }
+
+    /**
+     * Shows an error screen with a message
+     * @param {string} message - The error message to display
+     */
+    showErrorScreen(message) {
+        // Call the callback if provided
+        if (this.onError) {
+            this.onError('ui', message);
+            return;
+        }
+        
+        // Otherwise, create and show the error screen directly
+        let errorScreen = document.getElementById('error-screen');
+        if (!errorScreen) {
+            errorScreen = document.createElement('div');
+            errorScreen.id = 'error-screen';
+            errorScreen.className = 'error-screen';
+
+            const errorMessage = document.createElement('div');
+            errorMessage.className = 'error-message';
+            errorScreen.appendChild(errorMessage);
+
+            const retryButton = document.createElement('button');
+            retryButton.textContent = 'Retry';
+            retryButton.onclick = () => {
+                errorScreen.remove();
+                this.loadingState = {
+                    started: false,
+                    completed: false,
+                    errors: []
+                };
+                this.loadAll();
+            };
+            errorScreen.appendChild(retryButton);
+
+            document.body.appendChild(errorScreen);
+        }
+
+        // Update error message
+        const messageElement = errorScreen.querySelector('.error-message');
+        if (messageElement) {
+            messageElement.textContent = message;
+        }
+    }
+
+    /**
+     * Checks the loading progress and updates the UI
+     * @param {Function} onComplete - Callback when loading is complete
+     */
+    checkLoadingProgress(onComplete) {
+        console.log('🔍 Checking asset loading progress...');
+
+        // Log loading state
+        console.log('Asset loading state:', JSON.stringify(this.loadingState, null, 2));
+
+        if (this.loadingState.completed) {
+            console.log('✅ All assets loaded!');
+            
+            // Call the completion callback if provided
+            if (onComplete && typeof onComplete === 'function') {
+                onComplete();
+            }
+        } else {
+            // Update loading UI
+            this.updateLoadingUI(`Loading assets...`);
+
+            // Check again after a delay
+            setTimeout(() => this.checkLoadingProgress(onComplete), 1000);
+        }
     }
 }
 

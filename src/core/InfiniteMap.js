@@ -37,7 +37,6 @@ export class InfiniteMap {
         'SP_Rock09.glb'
       ],
       objects: [
-        'SP_Crystal01.glb',
         'SP_Ground02.glb',
         'SP_Ground03.glb',
         'SP_Ground04.glb',
