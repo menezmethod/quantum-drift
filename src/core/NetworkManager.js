@@ -702,48 +702,39 @@ export class NetworkManager {
     };
     
     // Add player name label above the ship
-    const nameDiv = document.createElement('div');
-    nameDiv.className = 'player-name-label';
-    nameDiv.textContent = `Player-${playerData.id.substring(0, 6)}`;
-    nameDiv.style.color = `#${playerColor.toString(16).padStart(6, '0')}`;
-    nameDiv.style.textShadow = `0 0 5px #${playerColor.toString(16).padStart(6, '0')}`;
-    nameDiv.style.fontWeight = 'bold';
-    nameDiv.style.fontSize = '12px';
-    nameDiv.style.textAlign = 'center';
-    nameDiv.style.background = 'rgba(0, 0, 0, 0.7)';
-    nameDiv.style.padding = '2px 6px';
-    nameDiv.style.borderRadius = '3px';
-    nameDiv.style.whiteSpace = 'nowrap';
+    // Create canvas-based text sprite for player name
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 128;
+    canvas.height = 32;
     
-    // Create CSS2D label (if available) or use a simple sprite
-    let nameLabel;
-    if (window.CSS2DRenderer) {
-      const { CSS2DObject } = require('three/examples/jsm/renderers/CSS2DRenderer');
-      nameLabel = new CSS2DObject(nameDiv);
-      nameLabel.position.set(0, 1.5, 0);
-      shipGroup.add(nameLabel);
-    } else {
-      // Fallback: create a simple text sprite
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      canvas.width = 128;
-      canvas.height = 32;
-      
-      context.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.fillStyle = `#${playerColor.toString(16).padStart(6, '0')}`;
-      context.font = 'bold 16px Arial';
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillText(`Player-${playerData.id.substring(0, 6)}`, canvas.width / 2, canvas.height / 2);
-      
-      const texture = new THREE.CanvasTexture(canvas);
-      const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
-      const sprite = new THREE.Sprite(spriteMaterial);
-      sprite.position.set(0, 1.5, 0);
-      sprite.scale.set(2, 0.5, 1);
-      shipGroup.add(sprite);
-    }
+    // Draw background
+    context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw border
+    context.strokeStyle = `#${playerColor.toString(16).padStart(6, '0')}`;
+    context.lineWidth = 2;
+    context.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+    
+    // Draw text
+    context.fillStyle = `#${playerColor.toString(16).padStart(6, '0')}`;
+    context.font = 'bold 16px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(`Player-${playerData.id.substring(0, 6)}`, canvas.width / 2, canvas.height / 2);
+    
+    // Create texture and sprite
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({ 
+      map: texture, 
+      transparent: true,
+      sizeAttenuation: false
+    });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.position.set(0, 1.5, 0);
+    sprite.scale.set(2, 0.5, 1);
+    shipGroup.add(sprite);
     
     console.log('🌐 Created colored ship model at position:', shipGroup.position);
     
