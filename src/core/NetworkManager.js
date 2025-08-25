@@ -370,6 +370,7 @@ export class NetworkManager {
   // Method to create all pending players when game starts
   createPendingPlayers() {
     console.log('🚀 Game starting - creating pending players and positioning local player');
+    this.logPlayerState(); // Debug current state
     
     // Mark game as started
     this.gameStarted = true;
@@ -419,7 +420,13 @@ export class NetworkManager {
       if (this.pendingPlayers && this.pendingPlayers.size > 0) {
         console.log('🌐 Creating', this.pendingPlayers.size, 'pending players');
         this.pendingPlayers.forEach((playerData, id) => {
-          this.createOtherPlayer(playerData);
+          // Only create OTHER players, not the local player
+          if (id !== this.playerId) {
+            console.log('🌐 Creating other player:', id);
+            this.createOtherPlayer(playerData);
+          } else {
+            console.log('🌐 Skipping local player creation:', id);
+          }
         });
         this.pendingPlayers.clear();
       } else {
@@ -428,6 +435,10 @@ export class NetworkManager {
       
       // Position and show the local player
       this.positionLocalPlayer();
+      
+      // Debug final state
+      console.log('🚀 Final player state after creation:');
+      this.logPlayerState();
     }, 100); // 100ms delay to ensure game is ready
   }
   
@@ -575,32 +586,32 @@ export class NetworkManager {
     }
   }
   
+  // Debug method to log current state
+  logPlayerState() {
+    console.log('🔍 === PLAYER STATE DEBUG ===');
+    console.log('🔍 Local Player ID:', this.playerId);
+    console.log('🔍 Game Started:', this.gameStarted);
+    console.log('🔍 Pending Players:', this.pendingPlayers ? Array.from(this.pendingPlayers.keys()) : 'None');
+    console.log('🔍 Other Players:', Array.from(this.otherPlayers.keys()));
+    console.log('🔍 Total Pending:', this.pendingPlayers ? this.pendingPlayers.size : 0);
+    console.log('🔍 Total Other Players:', this.otherPlayers.size);
+    console.log('🔍 ============================');
+  }
+
   createOtherPlayer(playerData) {
-    console.log('🌐 Creating other player:', playerData.id);
-    
-    // Safety check: don't create the local player as an "other player"
+    // Safety check: don't create the local player
     if (playerData.id === this.playerId) {
-      console.log('🚀 Skipping local player creation in createOtherPlayer - will be handled separately');
+      console.log('🌐 Skipping local player creation in createOtherPlayer:', playerData.id);
       return;
     }
     
     // Check if player already exists
     if (this.otherPlayers.has(playerData.id)) {
-      console.log('🌐 Player already exists, updating:', playerData.id);
-      this.removeOtherPlayer(playerData.id);
-    }
-    
-    // Check if game and scene are properly initialized
-    if (!this.game) {
-      console.error('❌ Game object not available in NetworkManager');
+      console.log('🌐 Player already exists, skipping creation:', playerData.id);
       return;
     }
     
-    if (!this.game.scene) {
-      console.error('❌ Game scene not available in NetworkManager');
-      return;
-    }
-    
+    console.log('🌐 Creating other player:', playerData.id);
     console.log('🌐 Player data:', playerData);
     console.log('🌐 Game scene:', this.game.scene);
     console.log('🌐 Local player position:', this.game.playerShip ? this.game.playerShip.position : 'No local player');
@@ -701,48 +712,34 @@ export class NetworkManager {
       originalY: shipGroup.position.y
     };
     
-    // Add player name label above the ship
     // Create canvas-based text sprite for player name
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
-    canvas.width = 256; // Higher resolution for crisp text
-    canvas.height = 64; // Taller for better text rendering
+    canvas.width = 128; // Smaller canvas
+    canvas.height = 32; // Much shorter height
     
     // Draw background
-    context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    context.fillStyle = 'rgba(0, 0, 0, 0.7)';
     context.fillRect(0, 0, canvas.width, canvas.height);
     
     // Draw border
     context.strokeStyle = `#${playerColor.toString(16).padStart(6, '0')}`;
-    context.lineWidth = 3;
-    context.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+    context.lineWidth = 1; // Thinner border
+    context.strokeRect(0, 0, canvas.width, canvas.height);
     
     // Draw text
     context.fillStyle = `#${playerColor.toString(16).padStart(6, '0')}`;
-    context.font = 'bold 32px Arial'; // Larger font for better readability
+    context.font = 'bold 14px Arial'; // Much smaller font
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     
     // Add text shadow for better readability
-    context.shadowColor = 'rgba(0, 0, 0, 0.8)';
-    context.shadowBlur = 4;
-    context.shadowOffsetX = 2;
-    context.shadowOffsetY = 2;
+    context.shadowColor = 'rgba(0, 0, 0, 0.9)';
+    context.shadowBlur = 2;
+    context.shadowOffsetX = 1;
+    context.shadowOffsetY = 1;
     
-    context.fillText(`Player-${playerData.id.substring(0, 6)}`, canvas.width / 2, canvas.height / 2);
-    
-    // Add subtle glow effect
-    context.shadowColor = `#${playerColor.toString(16).padStart(6, '0')}`;
-    context.shadowBlur = 8;
-    context.shadowOffsetX = 0;
-    context.shadowOffsetY = 0;
-    context.fillText(`Player-${playerData.id.substring(0, 6)}`, canvas.width / 2, canvas.height / 2);
-    
-    // Reset shadow for border
-    context.shadowColor = 'transparent';
-    context.shadowBlur = 0;
-    context.shadowOffsetX = 0;
-    context.shadowOffsetY = 0;
+    context.fillText(`P-${playerData.id.substring(0, 4)}`, canvas.width / 2, canvas.height / 2);
     
     // Create texture and sprite
     const texture = new THREE.CanvasTexture(canvas);
@@ -752,8 +749,8 @@ export class NetworkManager {
       sizeAttenuation: false
     });
     const sprite = new THREE.Sprite(spriteMaterial);
-    sprite.position.set(0, 1.5, 0);
-    sprite.scale.set(0.8, 0.2, 1); // Much smaller scale for proper size
+    sprite.position.set(0, 1.2, 0); // Closer to ship
+    sprite.scale.set(0.3, 0.075, 1); // Much much smaller scale
     shipGroup.add(sprite);
     
     console.log('🌐 Created colored ship model at position:', shipGroup.position);
