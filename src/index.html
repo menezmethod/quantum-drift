@@ -22,6 +22,22 @@
         </div>
     </div>
     
+    <!-- Multiplayer HUD -->
+    <div id="multiplayer-hud" class="multiplayer-hud hidden">
+        <div id="connection-status" class="connection-status">🔴 Disconnected</div>
+        <div id="player-count" class="player-count">Players: 1</div>
+        <div id="network-latency" class="network-latency">Ping: --</div>
+    </div>
+    
+    <!-- Death Screen -->
+    <div id="death-screen" class="death-screen hidden">
+        <div class="death-content">
+            <h2>YOU DIED</h2>
+            <p>Respawning in 5 seconds...</p>
+            <button id="respawn-button" class="glow-button">Respawn Now</button>
+        </div>
+    </div>
+    
     <!-- Simple HUD for controls info -->
     <div class="controls-info hidden">
         <p>W/↑: Forward | S/↓: Backward</p>

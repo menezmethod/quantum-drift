@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import './styles/main.css';
 import { GameUI } from './ui/GameUI';
 import { MiniMap } from './ui/MiniMap';
+import { NetworkManager } from './core/NetworkManager';
 import { KEY_MAPPINGS, CONTROL_SETTINGS, CONTROL_FEEDBACK, DEFAULT_CONTROL_STATE, ControlUtils } from './config/Controls';
 
 // Basic Three.js game with a ship
@@ -79,6 +80,15 @@ class SimpleGame {
     // Create mini-map (after scene setup) but keep it hidden initially
     this.miniMap = new MiniMap(this);
     this.miniMap.hide(); // Make sure it starts hidden
+    
+    // Initialize networking (with error handling)
+    try {
+      this.networkManager = new NetworkManager(this);
+      console.log('✅ NetworkManager initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize NetworkManager:', error);
+      this.networkManager = null;
+    }
     
     // Handle window resize
     window.addEventListener('resize', this.boundHandleResize);
@@ -1359,6 +1369,12 @@ selectWeapon(weaponType) {
       this.miniMap.update();
     }
     
+    // Update networking
+    if (this.networkManager) {
+      this.networkManager.updateOtherPlayers(deltaTime);
+      this.networkManager.updateNetworkProjectiles(deltaTime);
+    }
+    
     // Update player highlight position
     if (this.playerHighlight) {
       this.playerHighlight.position.x = this.playerShip.position.x;
@@ -2631,6 +2647,11 @@ selectWeapon(weaponType) {
       this.audioListener = null;
     }
     
+    // Cleanup networking
+    if (this.networkManager) {
+      this.networkManager.cleanup();
+    }
+    
     // Remove event listeners
     window.removeEventListener('resize', this.boundHandleResize);
     document.removeEventListener('keydown', this.boundHandleKeyDown);
@@ -2671,11 +2692,19 @@ selectWeapon(weaponType) {
     }
 
     // Show game UI
-    this.ui.show();
+    if (this.ui) {
+        this.ui.show();
+    }
 
     // Show mini-map
     if (this.miniMap) {
         this.miniMap.show();
+    }
+
+    // Show multiplayer HUD
+    const multiplayerHUD = document.getElementById('multiplayer-hud');
+    if (multiplayerHUD) {
+        multiplayerHUD.classList.remove('hidden');
     }
 
     // Create and show controls if not already created
@@ -2791,6 +2820,30 @@ fireCurrentWeapon(direction) {
 
     // Visual feedback for firing
     this.createMuzzleFlash(position, shipDirection);
+
+    // Send network event for weapon firing
+    if (this.networkManager && this.networkManager.isConnected) {
+        const weaponDamage = {
+            'LASER': 25,
+            'BOUNCE': 30,
+            'GRENADE': 50
+        };
+        
+        // Use actual weapon speeds to match local projectile movement
+        const weaponSpeed = {
+            'LASER': 50,    // Match RegularLaser speed
+            'BOUNCE': 30,   // Match BounceLaser speed
+            'GRENADE': 15   // Match GrenadeLaser speed
+        };
+        
+        this.networkManager.sendWeaponFired(
+            this.currentWeapon,
+            position,
+            shipDirection.normalize(),
+            weaponSpeed[this.currentWeapon] || 50,  // Use actual weapon speed
+            weaponDamage[this.currentWeapon] || 25
+        );
+    }
 
     // Log energy state for debugging
     console.log(`Weapon fired: ${this.currentWeapon}, Energy remaining: ${this.energy}/${this.maxEnergy}`);
