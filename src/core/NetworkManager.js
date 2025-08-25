@@ -295,20 +295,9 @@ export class NetworkManager {
       }
       
       data.players.forEach(playerData => {
-        if (playerData.id !== this.playerId) {
-          this.pendingPlayers.set(playerData.id, playerData);
-        } else {
-          // This is the local player - sync position if game is ready
-          if (this.game && this.game.playerShip) {
-            console.log('🌐 Syncing local player with server state:', playerData.position);
-            this.game.playerShip.position.set(
-              playerData.position.x,
-              playerData.position.y,
-              playerData.position.z
-            );
-            this.game.playerShip.rotation.y = playerData.rotation.y;
-          }
-        }
+        // Store ALL players (including local player) as pending
+        this.pendingPlayers.set(playerData.id, playerData);
+        console.log('🌐 Stored player as pending:', playerData.id, 'at position:', playerData.position);
       });
       
       console.log('🌐 Total pending players after game state:', this.pendingPlayers.size);
@@ -362,30 +351,32 @@ export class NetworkManager {
   handlePlayerJoined(playerData) {
     console.log('🌐 Player joined:', playerData.id);
     
-    if (this.gameStarted) {
-      console.log('🌐 Game already started, creating player immediately');
+    // Store ALL players (including local player) as pending until game starts
+    if (!this.pendingPlayers) {
+      this.pendingPlayers = new Map();
+    }
+    
+    this.pendingPlayers.set(playerData.id, playerData);
+    console.log('🌐 Stored player as pending:', playerData.id, 'at position:', playerData.position);
+    console.log('🌐 Total pending players:', this.pendingPlayers.size);
+    
+    // Only create other players immediately if game has started
+    if (this.gameStarted && playerData.id !== this.playerId) {
+      console.log('🌐 Game already started, creating other player immediately');
       this.createOtherPlayer(playerData);
-    } else {
-      // Store player as pending until game starts
-      console.log('🌐 Game not started yet, storing player as pending');
-      if (!this.pendingPlayers) {
-        this.pendingPlayers = new Map();
-      }
-      this.pendingPlayers.set(playerData.id, playerData);
-      console.log('🌐 Total pending players:', this.pendingPlayers.size);
     }
   }
   
   // Method to create all pending players when game starts
   createPendingPlayers() {
-    console.log('🌐 Game starting - creating pending players');
+    console.log('🚀 Game starting - creating pending players and positioning local player');
     
     // Mark game as started
     this.gameStarted = true;
     
     // Add a small delay to ensure game is fully initialized
     setTimeout(() => {
-      console.log('🌐 Delayed player creation - checking game state...');
+      console.log('🚀 Delayed player creation - checking game state...');
       
       // Check if game and scene are properly initialized
       if (!this.game) {
@@ -403,7 +394,7 @@ export class NetworkManager {
         return;
       }
       
-      console.log('🌐 Game state verified - proceeding with player creation');
+      console.log('🚀 Game state verified - proceeding with player creation');
       
       // First, sync the local world with server state
       this.syncWorldWithServer();
@@ -434,6 +425,9 @@ export class NetworkManager {
       } else {
         console.log('🌐 No pending players to create');
       }
+      
+      // Position and show the local player
+      this.positionLocalPlayer();
     }, 100); // 100ms delay to ensure game is ready
   }
   
@@ -582,7 +576,19 @@ export class NetworkManager {
   }
   
   createOtherPlayer(playerData) {
-    if (playerData.id === this.playerId) return;
+    console.log('🌐 Creating other player:', playerData.id);
+    
+    // Safety check: don't create the local player as an "other player"
+    if (playerData.id === this.playerId) {
+      console.log('🚀 Skipping local player creation in createOtherPlayer - will be handled separately');
+      return;
+    }
+    
+    // Check if player already exists
+    if (this.otherPlayers.has(playerData.id)) {
+      console.log('🌐 Player already exists, updating:', playerData.id);
+      this.removeOtherPlayer(playerData.id);
+    }
     
     // Check if game and scene are properly initialized
     if (!this.game) {
@@ -595,7 +601,6 @@ export class NetworkManager {
       return;
     }
     
-    console.log('🌐 Creating other player:', playerData.id);
     console.log('🌐 Player data:', playerData);
     console.log('🌐 Game scene:', this.game.scene);
     console.log('🌐 Local player position:', this.game.playerShip ? this.game.playerShip.position : 'No local player');
@@ -1051,34 +1056,24 @@ export class NetworkManager {
   syncWorldWithServer() {
     console.log('🌐 Syncing local world with server state...');
     
-    if (!this.game || !this.game.scene) {
-      console.error('❌ Cannot sync world - game or scene not available');
+    if (!this.game || !this.game.playerShip) {
+      console.log('🌐 Cannot sync world - game or playerShip not available');
       return;
     }
     
-    // Ensure local player is at the correct position
-    if (this.game.playerShip) {
-      console.log('🌐 Local player position before sync:', this.game.playerShip.position);
-      
-      // Get player data from server state
-      const localPlayerData = this.pendingPlayers.get(this.playerId);
-      if (localPlayerData) {
-        console.log('🌐 Server position for local player:', localPlayerData.position);
-        this.game.playerShip.position.set(
-          localPlayerData.position.x,
-          localPlayerData.position.y,
-          localPlayerData.position.z
-        );
-        this.game.playerShip.rotation.y = localPlayerData.rotation.y;
-        console.log('🌐 Local player position after sync:', this.game.playerShip.position);
-      }
-    }
+    console.log('🌐 Local player position before sync:', this.game.playerShip.position);
+    console.log('🌐 Local player visible before sync:', this.game.playerShip.visible);
     
-    // Log all pending players for debugging
-    console.log('🌐 All pending players to sync:');
-    this.pendingPlayers.forEach((playerData, id) => {
-      console.log(`  - Player ${id}: x=${playerData.position.x.toFixed(2)}, z=${playerData.position.z.toFixed(2)}`);
-    });
+    // Log all pending players to sync
+    if (this.pendingPlayers && this.pendingPlayers.size > 0) {
+      console.log('🌐 All pending players to sync:');
+      this.pendingPlayers.forEach((playerData, id) => {
+        const isLocal = id === this.playerId;
+        console.log(`  ${isLocal ? '🚀 LOCAL' : '🌐 OTHER'}: ${id} at ${playerData.position.x.toFixed(2)}, ${playerData.position.z.toFixed(2)}`);
+      });
+    } else {
+      console.log('🌐 No pending players to sync');
+    }
   }
 
   // Create obstacles from server map data
@@ -1181,5 +1176,61 @@ export class NetworkManager {
     console.log(`🌐 Created ${this.game.obstacles.length} obstacles from map data`);
     console.log('🌐 Scene children count after:', this.game.scene.children.length);
     console.log('🌐 Final obstacles array:', this.game.obstacles);
+  }
+
+  // Position and show the local player when game starts
+  positionLocalPlayer() {
+    console.log('🚀 Positioning local player from server data...');
+    
+    if (!this.game || !this.game.playerShip) {
+      console.error('❌ Cannot position local player - game or playerShip not available');
+      return;
+    }
+    
+    // Get the local player's data from the server state
+    const localPlayerData = this.pendingPlayers ? 
+      Array.from(this.pendingPlayers.values()).find(p => p.id === this.playerId) : null;
+    
+    if (localPlayerData) {
+      console.log('🚀 Found local player data from server:', localPlayerData.position);
+      
+      // Position the local player from server data
+      this.game.playerShip.position.set(
+        localPlayerData.position.x,
+        localPlayerData.position.y,
+        localPlayerData.position.z
+      );
+      
+      if (localPlayerData.rotation) {
+        this.game.playerShip.rotation.y = localPlayerData.rotation.y;
+      }
+      
+      // Make the local player visible
+      this.game.playerShip.visible = true;
+      
+      console.log('🚀 Local player positioned at:', this.game.playerShip.position);
+      console.log('🚀 Local player now visible:', this.game.playerShip.visible);
+      
+      // Update game state
+      if (this.game.health !== undefined) {
+        this.game.health = localPlayerData.health || 100;
+      }
+      if (this.game.energy !== undefined) {
+        this.game.energy = localPlayerData.energy || 100;
+      }
+      if (localPlayerData.currentWeapon) {
+        this.game.currentWeapon = localPlayerData.currentWeapon;
+      }
+      
+      console.log('🚀 Local player game state updated - health:', this.game.health, 'energy:', this.game.energy);
+    } else {
+      console.log('🚀 No server data for local player, using default position');
+      
+      // If no server data, use a safe default position
+      this.game.playerShip.position.set(0, 0.5, 0);
+      this.game.playerShip.visible = true;
+      
+      console.log('🚀 Local player positioned at default location:', this.game.playerShip.position);
+    }
   }
 }

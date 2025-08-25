@@ -375,8 +375,20 @@ class SimpleGame {
                   this.scene.remove(this.playerShip);
                   this.playerShip = new THREE.Group();
                   this.playerShip.add(this.shipModel);
-                  this.playerShip.position.set(0, 0.5, 0);
+                  
+                  // Initially hide the local player and position off-screen until game starts
+                  this.playerShip.visible = false;
+                  this.playerShip.position.set(1000, 0.5, 1000); // Far off-screen
+                  
                   this.scene.add(this.playerShip);
+                  
+                  // Store initial state for later restoration
+                  this.localPlayerInitialState = {
+                    visible: false,
+                    position: { x: 1000, y: 0.5, z: 1000 }
+                  };
+                  
+                  console.log('🚀 Local player created but hidden - will be positioned when game starts');
                   
                   // Add effects
                   this.addThrusterGlow();
@@ -2622,6 +2634,8 @@ selectWeapon(weaponType) {
   }
 
   startGame() {
+    console.log('🚀 Starting game - positioning local player and showing UI');
+    
     // Hide start screen
     const startScreen = document.getElementById('start-screen');
     if (startScreen) {
@@ -2656,6 +2670,7 @@ selectWeapon(weaponType) {
 
     // Create any pending players that joined before game started
     if (this.networkManager) {
+        console.log('🚀 Creating pending players via NetworkManager');
         this.networkManager.createPendingPlayers();
     }
 
