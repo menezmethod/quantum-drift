@@ -609,54 +609,186 @@ export class NetworkManager {
     console.log('🌐 World coordinates - Network player:', 
       `x=${playerData.position.x.toFixed(2)}, z=${playerData.position.z.toFixed(2)}`);
     
-    // Create player mesh (similar to local player but different color)
-    const geometry = new THREE.ConeGeometry(0.5, 1, 8);
-    geometry.rotateX(Math.PI / 2);
+    // Generate a unique color for this player based on their ID
+    const playerColors = [
+      0xff0000, // Red
+      0x00ff00, // Green
+      0x0000ff, // Blue
+      0xffff00, // Yellow
+      0xff00ff, // Magenta
+      0x00ffff, // Cyan
+      0xff8800, // Orange
+      0x8800ff, // Purple
+      0xff0088, // Pink
+      0x88ff00, // Lime
+      0x0088ff, // Light Blue
+      0xff8800  // Gold
+    ];
     
-    const material = new THREE.MeshPhongMaterial({
-      color: 0xff0000, // Red for other players
-      emissive: 0x660000,
-      shininess: 100
+    const colorIndex = playerData.id.charCodeAt(0) % playerColors.length;
+    const playerColor = playerColors[colorIndex];
+    
+    // Create a proper ship model instead of a simple cone
+    const shipGroup = new THREE.Group();
+    
+    // Main ship body (elongated cone for aerodynamic look)
+    const bodyGeometry = new THREE.ConeGeometry(0.4, 1.2, 8);
+    bodyGeometry.rotateX(Math.PI / 2);
+    const bodyMaterial = new THREE.MeshPhongMaterial({
+      color: playerColor,
+      emissive: playerColor,
+      emissiveIntensity: 0.3,
+      shininess: 100,
+      transparent: true,
+      opacity: 0.9
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    shipGroup.add(body);
+    
+    // Ship wings (two triangular wings)
+    const wingGeometry = new THREE.ConeGeometry(0.1, 0.8, 3);
+    wingGeometry.rotateX(Math.PI / 2);
+    const wingMaterial = new THREE.MeshPhongMaterial({
+      color: playerColor,
+      emissive: playerColor,
+      emissiveIntensity: 0.2,
+      shininess: 80
     });
     
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
-    mesh.rotation.y = playerData.rotation.y;
+    // Left wing
+    const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
+    leftWing.position.set(-0.6, 0, 0);
+    leftWing.rotation.z = Math.PI / 6;
+    shipGroup.add(leftWing);
     
-    console.log('🌐 Created mesh at position:', mesh.position);
-    console.log('🌐 Adding mesh to scene...');
+    // Right wing
+    const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
+    rightWing.position.set(0.6, 0, 0);
+    rightWing.rotation.z = -Math.PI / 6;
+    shipGroup.add(rightWing);
+    
+    // Engine glow effect
+    const engineGlow = new THREE.PointLight(playerColor, 0.8, 3);
+    engineGlow.position.set(0, 0, -0.6);
+    shipGroup.add(engineGlow);
+    
+    // Add some engine particles for visual effect
+    const engineParticles = new THREE.Points(
+      new THREE.BufferGeometry(),
+      new THREE.PointsMaterial({
+        color: playerColor,
+        size: 0.1,
+        transparent: true,
+        opacity: 0.7
+      })
+    );
+    engineParticles.position.set(0, 0, -0.7);
+    shipGroup.add(engineParticles);
+    
+    // Set position and rotation
+    shipGroup.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
+    if (playerData.rotation && playerData.rotation.y !== undefined) {
+      shipGroup.rotation.y = playerData.rotation.y;
+    }
+    
+    // Add subtle hover effect
+    shipGroup.position.y += 0.1; // Slight elevation
+    
+    // Add gentle rotation animation for visual appeal
+    shipGroup.userData = {
+      hoverOffset: 0,
+      rotationSpeed: 0.001 + (Math.random() * 0.002), // Random rotation speed
+      originalY: shipGroup.position.y
+    };
+    
+    // Add player name label above the ship
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'player-name-label';
+    nameDiv.textContent = `Player-${playerData.id.substring(0, 6)}`;
+    nameDiv.style.color = `#${playerColor.toString(16).padStart(6, '0')}`;
+    nameDiv.style.textShadow = `0 0 5px #${playerColor.toString(16).padStart(6, '0')}`;
+    nameDiv.style.fontWeight = 'bold';
+    nameDiv.style.fontSize = '12px';
+    nameDiv.style.textAlign = 'center';
+    nameDiv.style.background = 'rgba(0, 0, 0, 0.7)';
+    nameDiv.style.padding = '2px 6px';
+    nameDiv.style.borderRadius = '3px';
+    nameDiv.style.whiteSpace = 'nowrap';
+    
+    // Create CSS2D label (if available) or use a simple sprite
+    let nameLabel;
+    if (window.CSS2DRenderer) {
+      const { CSS2DObject } = require('three/examples/jsm/renderers/CSS2DRenderer');
+      nameLabel = new CSS2DObject(nameDiv);
+      nameLabel.position.set(0, 1.5, 0);
+      shipGroup.add(nameLabel);
+    } else {
+      // Fallback: create a simple text sprite
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      canvas.width = 128;
+      canvas.height = 32;
+      
+      context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = `#${playerColor.toString(16).padStart(6, '0')}`;
+      context.font = 'bold 16px Arial';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(`Player-${playerData.id.substring(0, 6)}`, canvas.width / 2, canvas.height / 2);
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
+      const sprite = new THREE.Sprite(spriteMaterial);
+      sprite.position.set(0, 1.5, 0);
+      sprite.scale.set(2, 0.5, 1);
+      shipGroup.add(sprite);
+    }
+    
+    console.log('🌐 Created colored ship model at position:', shipGroup.position);
     
     // Add to scene
-    this.game.scene.add(mesh);
-    
-    console.log('🌐 Mesh added to scene. Scene children count:', this.game.scene.children.length);
-    console.log('🌐 Mesh visible:', mesh.visible);
-    console.log('🌐 Mesh position after adding:', mesh.position);
+    this.game.scene.add(shipGroup);
     
     // Store player data
-    this.otherPlayers.set(playerData.id, {
+    const playerInfo = {
       id: playerData.id,
-      mesh: mesh,
-      position: playerData.position,
-      rotation: playerData.rotation,
-      health: playerData.health,
-      energy: playerData.energy,
-      currentWeapon: playerData.currentWeapon,
-      team: playerData.team,
-      isAlive: playerData.isAlive,
-      targetPosition: playerData.position,
-      targetRotation: playerData.rotation,
-      lastUpdate: Date.now()
-    });
+      mesh: shipGroup,
+      lastUpdate: Date.now(),
+      color: playerColor
+    };
     
-    console.log('🌐 Other players count:', this.otherPlayers.size);
+    this.otherPlayers.set(playerData.id, playerInfo);
+    console.log('🌐 Other player created successfully:', playerData.id);
+    
+    return playerInfo;
   }
   
   removeOtherPlayer(playerId) {
     const player = this.otherPlayers.get(playerId);
     if (player && player.mesh) {
+      // Remove the entire ship group from the scene
       this.game.scene.remove(player.mesh);
+      
+      // Dispose of geometries and materials to prevent memory leaks
+      player.mesh.traverse((child) => {
+        if (child.isMesh) {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(material => material.dispose());
+            } else {
+              child.material.dispose();
+            }
+          }
+        }
+        if (child.isLight) {
+          child.dispose();
+        }
+      });
+      
       this.otherPlayers.delete(playerId);
+      console.log('🌐 Removed other player:', playerId);
     }
   }
   
@@ -935,22 +1067,56 @@ export class NetworkManager {
     }
   }
   
-  updateOtherPlayers(deltaTime) {
-    // Update other players with interpolation
-    this.otherPlayers.forEach(player => {
-      if (player.mesh && player.isAlive) {
-        // Interpolate position
-        if (player.targetPosition) {
-          player.mesh.position.lerp(player.targetPosition, deltaTime * 10);
-        }
+  updateOtherPlayers() {
+    if (!this.game || !this.game.scene) return;
+    
+    const now = Date.now();
+    const updateThreshold = 100; // Update every 100ms
+    
+    this.otherPlayers.forEach((player, playerId) => {
+      if (now - player.lastUpdate > updateThreshold) {
+        // Get the latest player data from pending players
+        const latestData = this.pendingPlayers ? this.pendingPlayers.get(playerId) : null;
         
-        // Interpolate rotation
-        if (player.targetRotation) {
-          player.mesh.rotation.y = THREE.MathUtils.lerp(
-            player.mesh.rotation.y,
-            player.targetRotation.y,
-            deltaTime * 10
-          );
+        if (latestData && player.mesh) {
+          // Update position with smooth interpolation
+          if (latestData.position) {
+            const targetPosition = new THREE.Vector3(
+              latestData.position.x,
+              latestData.position.y,
+              latestData.position.z
+            );
+            
+            // Smooth movement using lerp
+            player.mesh.position.lerp(targetPosition, 0.1);
+          }
+          
+          // Update rotation with smooth interpolation
+          if (latestData.rotation && latestData.rotation.y !== undefined) {
+            const targetRotation = latestData.rotation.y;
+            const currentRotation = player.mesh.rotation.y;
+            
+            // Calculate the shortest rotation direction
+            let rotationDiff = targetRotation - currentRotation;
+            if (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
+            if (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
+            
+            // Smooth rotation
+            player.mesh.rotation.y += rotationDiff * 0.1;
+          }
+          
+          // Add subtle hover animation
+          if (player.mesh.userData) {
+            player.mesh.userData.hoverOffset += 0.05;
+            const hoverY = player.mesh.userData.originalY + Math.sin(player.mesh.userData.hoverOffset) * 0.05;
+            player.mesh.position.y = hoverY;
+            
+            // Gentle rotation animation
+            player.mesh.rotation.y += player.mesh.userData.rotationSpeed;
+          }
+          
+          // Update last update time
+          player.lastUpdate = now;
         }
       }
     });
