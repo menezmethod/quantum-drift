@@ -65,6 +65,7 @@ class SimpleGame {
     this.energy = 100;
     this.maxEnergy = 100;
     this.energyRechargeRate = 20; // Units per second
+    this.healthRegenRate = 10; // 10% per second (10 units per second)
     this.currentWeapon = 'LASER';
     
     // Initialize available weapons
@@ -1792,6 +1793,34 @@ selectWeapon(weaponType) {
         // Log significant energy changes (more than 1 unit) for debugging
         if (Math.abs(this.energy - oldEnergy) > 1) {
             console.log(`Energy updated: ${oldEnergy.toFixed(1)} -> ${this.energy.toFixed(1)} (Δ${deltaTime.toFixed(3)}s)`);
+        }
+    }
+
+    // Health regeneration (10% per second)
+    if (typeof this.health !== 'number') this.health = 100;
+    if (typeof this.maxHealth !== 'number') this.maxHealth = 100;
+    if (typeof this.healthRegenRate !== 'number') this.healthRegenRate = 10;
+
+    // Store old health for change detection
+    const oldHealth = this.health;
+
+    // Calculate health regeneration amount (10% per second)
+    const healthRegenAmount = this.healthRegenRate * deltaTime;
+    
+    // Apply health regeneration with bounds checking (only if not at max health)
+    if (this.health < this.maxHealth) {
+        this.health = Math.min(this.maxHealth, this.health + healthRegenAmount);
+    }
+
+    // Update UI only if health changed
+    if (this.health !== oldHealth) {
+        if (this.ui && typeof this.ui.updateHealth === 'function') {
+            this.ui.updateHealth(this.health, this.maxHealth);
+        }
+
+        // Log significant health changes for debugging
+        if (Math.abs(this.health - oldHealth) > 1) {
+            console.log(`Health regenerated: ${oldHealth.toFixed(1)} -> ${this.health.toFixed(1)} (Δ${deltaTime.toFixed(3)}s)`);
         }
     }
   }

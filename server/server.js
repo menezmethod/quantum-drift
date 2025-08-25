@@ -58,9 +58,23 @@ class Player {
     if (data.rotation) this.rotation = data.rotation;
     if (data.health !== undefined) this.health = data.health;
     if (data.energy !== undefined) this.energy = data.energy;
-    if (data.currentWeapon) this.currentWeapon = data.currentWeapon;
+    if (data.currentWeapon) this.currentWeapon = this.currentWeapon;
     if (data.team !== undefined) this.team = data.team;
     this.lastUpdate = Date.now();
+  }
+
+  // Health regeneration method
+  regenerateHealth(deltaTime) {
+    if (this.health < this.maxHealth && this.isAlive) {
+      const healthRegenRate = 10; // 10% per second (10 units per second)
+      const healthRegenAmount = healthRegenRate * deltaTime;
+      this.health = Math.min(this.maxHealth, this.health + healthRegenAmount);
+      
+      // Log significant health regeneration
+      if (healthRegenAmount > 1) {
+        console.log(`🌍 Player ${this.id} health regenerated: ${(this.health - healthRegenAmount).toFixed(1)} -> ${this.health.toFixed(1)}`);
+      }
+    }
   }
 
   toJSON() {
@@ -369,6 +383,11 @@ setInterval(() => {
     if (now - projectile.createdAt > 10000) { // 10 seconds
       delete gameState.projectiles[projectileId];
     }
+  });
+
+  // Health regeneration for all players
+  Object.values(gameState.players).forEach(player => {
+    player.regenerateHealth(deltaTime);
   });
 }, 50); // 20 FPS server update rate
 

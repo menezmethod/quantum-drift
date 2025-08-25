@@ -4,6 +4,7 @@
 export class GameUI {
   constructor() {
     this.uiContainer = null;
+    this.lastHealth = 100; // Track last health value for regeneration detection
     this.controlsInfo = null;
     this.healthBar = null;
     this.energyBar = null;
@@ -134,14 +135,25 @@ export class GameUI {
     // Change color based on health level
     if (percentage < 30) {
       this.healthBar.classList.add('critical');
+      this.healthBar.classList.remove('warning', 'regenerating');
     } else if (percentage < 60) {
-      this.healthBar.classList.remove('critical');
+      this.healthBar.classList.remove('critical', 'regenerating');
       this.healthBar.classList.add('warning');
     } else {
-      this.healthBar.classList.remove('critical', 'warning');
+      this.healthBar.classList.remove('critical', 'warning', 'regenerating');
+    }
+    
+    // Add regeneration effect if health is increasing
+    if (health > this.lastHealth) {
+      this.healthBar.classList.add('regenerating');
+      // Remove regeneration effect after a short delay
+      setTimeout(() => {
+        this.healthBar.classList.remove('regenerating');
+      }, 500);
     }
     
     this.healthPercentage.textContent = `${percentage.toFixed(0)}%`;
+    this.lastHealth = health;
   }
   
   /**

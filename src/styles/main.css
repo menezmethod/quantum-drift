@@ -362,6 +362,18 @@ canvas {
   animation: pulse-critical 0.8s infinite;
 }
 
+.health-bar.regenerating {
+  background: linear-gradient(90deg, #0f0, #5f0);
+  box-shadow: 0 0 12px rgba(0, 255, 0, 0.8), 0 0 20px rgba(0, 255, 0, 0.4);
+  animation: pulse-regeneration 0.5s ease-in-out;
+}
+
+@keyframes pulse-regeneration {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
 .energy-bar {
   background: linear-gradient(90deg, #00f, #06f);
   box-shadow: 0 0 8px rgba(0, 0, 255, 0.5);
