@@ -446,30 +446,6 @@ canvas {
   100% { left: 200%; }
 }
 
-/* Player name labels */
-.player-name-label {
-  font-family: 'Orbitron', monospace;
-  font-weight: bold;
-  font-size: 12px;
-  text-align: center;
-  background: rgba(0, 0, 0, 0.8);
-  color: #fff;
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  text-shadow: 0 0 5px currentColor;
-  white-space: nowrap;
-  pointer-events: none;
-  user-select: none;
-  backdrop-filter: blur(2px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-}
-
-.player-name-label:hover {
-  transform: scale(1.05);
-  transition: transform 0.2s ease;
-}
-
 @media (max-width: 768px) {
   .game-ui {
     top: 10px;

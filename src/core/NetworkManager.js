@@ -370,7 +370,6 @@ export class NetworkManager {
   // Method to create all pending players when game starts
   createPendingPlayers() {
     console.log('🚀 Game starting - creating pending players and positioning local player');
-    this.logPlayerState(); // Debug current state
     
     // Mark game as started
     this.gameStarted = true;
@@ -420,13 +419,7 @@ export class NetworkManager {
       if (this.pendingPlayers && this.pendingPlayers.size > 0) {
         console.log('🌐 Creating', this.pendingPlayers.size, 'pending players');
         this.pendingPlayers.forEach((playerData, id) => {
-          // Only create OTHER players, not the local player
-          if (id !== this.playerId) {
-            console.log('🌐 Creating other player:', id);
-            this.createOtherPlayer(playerData);
-          } else {
-            console.log('🌐 Skipping local player creation:', id);
-          }
+          this.createOtherPlayer(playerData);
         });
         this.pendingPlayers.clear();
       } else {
@@ -435,10 +428,6 @@ export class NetworkManager {
       
       // Position and show the local player
       this.positionLocalPlayer();
-      
-      // Debug final state
-      console.log('🚀 Final player state after creation:');
-      this.logPlayerState();
     }, 100); // 100ms delay to ensure game is ready
   }
   
@@ -586,32 +575,32 @@ export class NetworkManager {
     }
   }
   
-  // Debug method to log current state
-  logPlayerState() {
-    console.log('🔍 === PLAYER STATE DEBUG ===');
-    console.log('🔍 Local Player ID:', this.playerId);
-    console.log('🔍 Game Started:', this.gameStarted);
-    console.log('🔍 Pending Players:', this.pendingPlayers ? Array.from(this.pendingPlayers.keys()) : 'None');
-    console.log('🔍 Other Players:', Array.from(this.otherPlayers.keys()));
-    console.log('🔍 Total Pending:', this.pendingPlayers ? this.pendingPlayers.size : 0);
-    console.log('🔍 Total Other Players:', this.otherPlayers.size);
-    console.log('🔍 ============================');
-  }
-
   createOtherPlayer(playerData) {
-    // Safety check: don't create the local player
+    console.log('🌐 Creating other player:', playerData.id);
+    
+    // Safety check: don't create the local player as an "other player"
     if (playerData.id === this.playerId) {
-      console.log('🌐 Skipping local player creation in createOtherPlayer:', playerData.id);
+      console.log('🚀 Skipping local player creation in createOtherPlayer - will be handled separately');
       return;
     }
     
     // Check if player already exists
     if (this.otherPlayers.has(playerData.id)) {
-      console.log('🌐 Player already exists, skipping creation:', playerData.id);
+      console.log('🌐 Player already exists, updating:', playerData.id);
+      this.removeOtherPlayer(playerData.id);
+    }
+    
+    // Check if game and scene are properly initialized
+    if (!this.game) {
+      console.error('❌ Game object not available in NetworkManager');
       return;
     }
     
-    console.log('🌐 Creating other player:', playerData.id);
+    if (!this.game.scene) {
+      console.error('❌ Game scene not available in NetworkManager');
+      return;
+    }
+    
     console.log('🌐 Player data:', playerData);
     console.log('🌐 Game scene:', this.game.scene);
     console.log('🌐 Local player position:', this.game.playerShip ? this.game.playerShip.position : 'No local player');
@@ -620,183 +609,164 @@ export class NetworkManager {
     console.log('🌐 World coordinates - Network player:', 
       `x=${playerData.position.x.toFixed(2)}, z=${playerData.position.z.toFixed(2)}`);
     
-    // Generate a unique color for this player based on their ID
-    const playerColors = [
-      0xff0000, // Red
-      0x00ff00, // Green
-      0x0000ff, // Blue
-      0xffff00, // Yellow
-      0xff00ff, // Magenta
-      0x00ffff, // Cyan
-      0xff8800, // Orange
-      0x8800ff, // Purple
-      0xff0088, // Pink
-      0x88ff00, // Lime
-      0x0088ff, // Light Blue
-      0xff8800  // Gold
-    ];
-    
-    const colorIndex = playerData.id.charCodeAt(0) % playerColors.length;
-    const playerColor = playerColors[colorIndex];
-    
-    // Create a proper ship model instead of a simple cone
+    // Create enhanced ship model for other players
     const shipGroup = new THREE.Group();
     
-    // Main ship body (elongated cone for aerodynamic look)
-    const bodyGeometry = new THREE.ConeGeometry(0.4, 1.2, 8);
+    // Create main ship body (more detailed than simple cone)
+    const bodyGeometry = new THREE.ConeGeometry(0.4, 1.2, 6);
     bodyGeometry.rotateX(Math.PI / 2);
+    
+    // Generate unique color for each player based on ID
+    const playerIdHash = playerData.id.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+    const shipColor = new THREE.Color().setHSL(Math.abs(playerIdHash) % 360 / 360, 0.7, 0.6);
+    
     const bodyMaterial = new THREE.MeshPhongMaterial({
-      color: playerColor,
-      emissive: playerColor,
-      emissiveIntensity: 0.3,
+      color: shipColor,
+      emissive: shipColor.clone().multiplyScalar(0.3),
       shininess: 100,
-      transparent: true,
-      opacity: 0.9
-    });
-    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    shipGroup.add(body);
-    
-    // Ship wings (two triangular wings)
-    const wingGeometry = new THREE.ConeGeometry(0.1, 0.8, 3);
-    wingGeometry.rotateX(Math.PI / 2);
-    const wingMaterial = new THREE.MeshPhongMaterial({
-      color: playerColor,
-      emissive: playerColor,
-      emissiveIntensity: 0.2,
-      shininess: 80
+      specular: 0x444444
     });
     
-    // Left wing
-    const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
-    leftWing.position.set(-0.6, 0, 0);
-    leftWing.rotation.z = Math.PI / 6;
-    shipGroup.add(leftWing);
+    const shipBody = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    shipGroup.add(shipBody);
     
-    // Right wing
-    const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
-    rightWing.position.set(0.6, 0, 0);
-    rightWing.rotation.z = -Math.PI / 6;
-    shipGroup.add(rightWing);
-    
-    // Engine glow effect
-    const engineGlow = new THREE.PointLight(playerColor, 0.8, 3);
+    // Add engine glow effect
+    const engineGlow = new THREE.PointLight(shipColor, 0.8, 3);
     engineGlow.position.set(0, 0, -0.6);
     shipGroup.add(engineGlow);
     
-    // Add some engine particles for visual effect
-    const engineParticles = new THREE.Points(
-      new THREE.BufferGeometry(),
-      new THREE.PointsMaterial({
-        color: playerColor,
-        size: 0.1,
-        transparent: true,
-        opacity: 0.7
-      })
-    );
-    engineParticles.position.set(0, 0, -0.7);
-    shipGroup.add(engineParticles);
+    // Add wing details
+    const wingGeometry = new THREE.BoxGeometry(0.8, 0.1, 0.4);
+    const wingMaterial = new THREE.MeshPhongMaterial({
+      color: shipColor.clone().multiplyScalar(0.8),
+      emissive: shipColor.clone().multiplyScalar(0.1)
+    });
+    
+    const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
+    leftWing.position.set(-0.4, 0, 0);
+    shipGroup.add(leftWing);
+    
+    const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
+    rightWing.position.set(0.4, 0, 0);
+    shipGroup.add(rightWing);
     
     // Set position and rotation
     shipGroup.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
-    if (playerData.rotation && playerData.rotation.y !== undefined) {
-      shipGroup.rotation.y = playerData.rotation.y;
-    }
+    shipGroup.rotation.y = playerData.rotation.y;
     
-    // Add subtle hover effect
-    shipGroup.position.y += 0.1; // Slight elevation
-    
-    // Add gentle rotation animation for visual appeal
-    shipGroup.userData = {
-      hoverOffset: 0,
-      rotationSpeed: 0.001 + (Math.random() * 0.002), // Random rotation speed
-      originalY: shipGroup.position.y
-    };
-    
-    // Create canvas-based text sprite for player name
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 128; // Smaller canvas
-    canvas.height = 32; // Much shorter height
-    
-    // Draw background
-    context.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw border
-    context.strokeStyle = `#${playerColor.toString(16).padStart(6, '0')}`;
-    context.lineWidth = 1; // Thinner border
-    context.strokeRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw text
-    context.fillStyle = `#${playerColor.toString(16).padStart(6, '0')}`;
-    context.font = 'bold 14px Arial'; // Much smaller font
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    
-    // Add text shadow for better readability
-    context.shadowColor = 'rgba(0, 0, 0, 0.9)';
-    context.shadowBlur = 2;
-    context.shadowOffsetX = 1;
-    context.shadowOffsetY = 1;
-    
-    context.fillText(`P-${playerData.id.substring(0, 4)}`, canvas.width / 2, canvas.height / 2);
-    
-    // Create texture and sprite
-    const texture = new THREE.CanvasTexture(canvas);
-    const spriteMaterial = new THREE.SpriteMaterial({ 
-      map: texture, 
-      transparent: true,
-      sizeAttenuation: false
-    });
-    const sprite = new THREE.Sprite(spriteMaterial);
-    sprite.position.set(0, 1.2, 0); // Closer to ship
-    sprite.scale.set(0.3, 0.075, 1); // Much much smaller scale
-    shipGroup.add(sprite);
-    
-    console.log('🌐 Created colored ship model at position:', shipGroup.position);
+    console.log('🌐 Created enhanced ship at position:', shipGroup.position);
+    console.log('🌐 Adding ship to scene...');
     
     // Add to scene
     this.game.scene.add(shipGroup);
     
+    console.log('🌐 Ship added to scene. Scene children count:', this.game.scene.children.length);
+    console.log('🌐 Ship visible:', shipGroup.visible);
+    console.log('🌐 Ship position after adding:', shipGroup.position);
+    
+    // Create player tag (name label)
+    const playerTag = this.createPlayerTag(playerData.id, shipColor);
+    shipGroup.add(playerTag);
+    
     // Store player data
-    const playerInfo = {
+    this.otherPlayers.set(playerData.id, {
       id: playerData.id,
       mesh: shipGroup,
-      lastUpdate: Date.now(),
-      color: playerColor
+      position: playerData.position,
+      rotation: playerData.rotation,
+      health: playerData.health,
+      energy: playerData.energy,
+      currentWeapon: playerData.currentWeapon,
+      team: playerData.team,
+      isAlive: playerData.isAlive,
+      targetPosition: playerData.position,
+      targetRotation: playerData.rotation,
+      lastUpdate: Date.now()
+    });
+    
+    console.log('🌐 Other players count:', this.otherPlayers.size);
+  }
+  
+  /**
+   * Create a player tag (name label) for other players
+   * @param {string} playerId - The player's ID
+   * @param {THREE.Color} shipColor - The ship's color for consistent styling
+   * @returns {THREE.Group} - The player tag group
+   */
+  createPlayerTag(playerId, shipColor) {
+    // Create a group to hold the tag elements
+    const tagGroup = new THREE.Group();
+    
+    // Create background plate for the tag
+    const plateGeometry = new THREE.PlaneGeometry(2, 0.6);
+    const plateMaterial = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    });
+    
+    const backgroundPlate = new THREE.Mesh(plateGeometry, plateMaterial);
+    backgroundPlate.position.set(0, 1.5, 0);
+    backgroundPlate.rotation.x = -Math.PI / 2; // Face upward
+    tagGroup.add(backgroundPlate);
+    
+    // Create border for the tag
+    const borderGeometry = new THREE.PlaneGeometry(2.1, 0.7);
+    const borderMaterial = new THREE.MeshBasicMaterial({
+      color: shipColor,
+      transparent: true,
+      opacity: 0.9,
+      side: THREE.DoubleSide
+    });
+    
+    const border = new THREE.Mesh(borderGeometry, borderMaterial);
+    border.position.set(0, 1.5, 0.01);
+    border.rotation.x = -Math.PI / 2;
+    tagGroup.add(border);
+    
+    // Create player name text (simplified - just a colored box for now)
+    // In a full implementation, you'd use TextGeometry or HTML overlays
+    const textGeometry = new THREE.BoxGeometry(1.8, 0.1, 0.5);
+    const textMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.9
+    });
+    
+    const textBox = new THREE.Mesh(textGeometry, textMaterial);
+    textBox.position.set(0, 1.5, 0.02);
+    tagGroup.add(textBox);
+    
+    // Add a small indicator dot
+    const dotGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+    const dotMaterial = new THREE.MeshBasicMaterial({
+      color: shipColor,
+      emissive: shipColor.clone().multiplyScalar(0.5)
+    });
+    
+    const indicatorDot = new THREE.Mesh(dotGeometry, dotMaterial);
+    indicatorDot.position.set(-0.8, 1.5, 0.03);
+    tagGroup.add(indicatorDot);
+    
+    // Make tag always face the camera
+    tagGroup.userData = { 
+      isPlayerTag: true, 
+      playerId: playerId,
+      shipColor: shipColor 
     };
     
-    this.otherPlayers.set(playerData.id, playerInfo);
-    console.log('🌐 Other player created successfully:', playerData.id);
-    
-    return playerInfo;
+    return tagGroup;
   }
   
   removeOtherPlayer(playerId) {
     const player = this.otherPlayers.get(playerId);
     if (player && player.mesh) {
-      // Remove the entire ship group from the scene
       this.game.scene.remove(player.mesh);
-      
-      // Dispose of geometries and materials to prevent memory leaks
-      player.mesh.traverse((child) => {
-        if (child.isMesh) {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) {
-            if (Array.isArray(child.material)) {
-              child.material.forEach(material => material.dispose());
-            } else {
-              child.material.dispose();
-            }
-          }
-        }
-        if (child.isLight) {
-          child.dispose();
-        }
-      });
-      
       this.otherPlayers.delete(playerId);
-      console.log('🌐 Removed other player:', playerId);
     }
   }
   
@@ -1075,56 +1045,34 @@ export class NetworkManager {
     }
   }
   
-  updateOtherPlayers() {
-    if (!this.game || !this.game.scene) return;
-    
-    const now = Date.now();
-    const updateThreshold = 100; // Update every 100ms
-    
-    this.otherPlayers.forEach((player, playerId) => {
-      if (now - player.lastUpdate > updateThreshold) {
-        // Get the latest player data from pending players
-        const latestData = this.pendingPlayers ? this.pendingPlayers.get(playerId) : null;
+  updateOtherPlayers(deltaTime) {
+    // Update other players with interpolation
+    this.otherPlayers.forEach(player => {
+      if (player.mesh && player.isAlive) {
+        // Interpolate position
+        if (player.targetPosition) {
+          player.mesh.position.lerp(player.targetPosition, deltaTime * 10);
+        }
         
-        if (latestData && player.mesh) {
-          // Update position with smooth interpolation
-          if (latestData.position) {
-            const targetPosition = new THREE.Vector3(
-              latestData.position.x,
-              latestData.position.y,
-              latestData.position.z
-            );
-            
-            // Smooth movement using lerp
-            player.mesh.position.lerp(targetPosition, 0.1);
-          }
-          
-          // Update rotation with smooth interpolation
-          if (latestData.rotation && latestData.rotation.y !== undefined) {
-            const targetRotation = latestData.rotation.y;
-            const currentRotation = player.mesh.rotation.y;
-            
-            // Calculate the shortest rotation direction
-            let rotationDiff = targetRotation - currentRotation;
-            if (rotationDiff > Math.PI) rotationDiff -= Math.PI * 2;
-            if (rotationDiff < -Math.PI) rotationDiff += Math.PI * 2;
-            
-            // Smooth rotation
-            player.mesh.rotation.y += rotationDiff * 0.1;
-          }
-          
-          // Add subtle hover animation
-          if (player.mesh.userData) {
-            player.mesh.userData.hoverOffset += 0.05;
-            const hoverY = player.mesh.userData.originalY + Math.sin(player.mesh.userData.hoverOffset) * 0.05;
-            player.mesh.position.y = hoverY;
-            
-            // Gentle rotation animation
-            player.mesh.rotation.y += player.mesh.userData.rotationSpeed;
-          }
-          
-          // Update last update time
-          player.lastUpdate = now;
+        // Interpolate rotation
+        if (player.targetRotation) {
+          player.mesh.rotation.y = THREE.MathUtils.lerp(
+            player.mesh.rotation.y,
+            player.targetRotation.y,
+            deltaTime * 10
+          );
+        }
+        
+        // Make player tags always face the camera
+        if (this.game.camera) {
+          player.mesh.traverse(child => {
+            if (child.userData && child.userData.isPlayerTag) {
+              // Make the tag face the camera
+              child.lookAt(this.game.camera.position);
+              // Adjust rotation to face upward
+              child.rotation.x = -Math.PI / 2;
+            }
+          });
         }
       }
     });
