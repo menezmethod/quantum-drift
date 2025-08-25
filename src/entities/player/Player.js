@@ -457,28 +457,25 @@ export class Player {
    * @returns {boolean} - True if collision detected
    */
   checkObstacleCollisions(obstacles) {
-    if (!obstacles || !Array.isArray(obstacles) || obstacles.length === 0) {
-      return false;
-    }
+    if (!obstacles || !Array.isArray(obstacles)) return false;
     
-    // Skip collision detection if player is invulnerable
-    if (this.isInvulnerable) {
-      return false;
-    }
-    
-    const playerPosition = this.mesh.position.clone();
+    const playerPosition = this.shipModel.position.clone();
     const playerRadius = this.collisionRadius || 0.8; // Default player collision radius
     
     for (const obstacle of obstacles) {
-      if (!obstacle || !obstacle.position) continue;
+      // Check if obstacle has the new structure
+      if (!obstacle || !obstacle.data || !obstacle.data.position) {
+        console.warn('🚨 Player collision check: Skipping obstacle with invalid structure:', obstacle);
+        continue;
+      }
       
       // Handle different obstacle types
-      if (obstacle.type === 'wall' && obstacle.size) {
+      if (obstacle.data.type === 'box') {
         // Rectangular wall collision
-        const halfWidth = obstacle.size.x / 2;
-        const halfDepth = obstacle.size.z / 2;
-        const obstacleX = obstacle.position.x;
-        const obstacleZ = obstacle.position.z;
+        const halfWidth = obstacle.data.size.x / 2;
+        const halfDepth = obstacle.data.size.z / 2;
+        const obstacleX = obstacle.data.position.x;
+        const obstacleZ = obstacle.data.position.z;
         
         // Calculate closest point on the rectangle to the player
         const closestX = Math.max(obstacleX - halfWidth, Math.min(playerPosition.x, obstacleX + halfWidth));
@@ -495,44 +492,23 @@ export class Player {
           this.flashOnCollision();
           return true;
         }
-      } else if ((obstacle.type === 'cylinder' || obstacle.type === 'hazard') && obstacle.radius) {
-        // Circular obstacle collision (cylinders, hazards)
-        const distance = playerPosition.distanceTo(obstacle.position);
-        const combinedRadius = playerRadius + obstacle.radius;
+      } else if (obstacle.data.type === 'cylinder') {
+        // Circular obstacle collision (cylinders)
+        const distance = playerPosition.distanceTo(obstacle.data.position);
+        const combinedRadius = playerRadius + obstacle.data.radius;
         
         if (distance < combinedRadius) {
-          // For hazards, take damage
-          if (obstacle.type === 'hazard' && obstacle.damage) {
-            this.takeDamage(obstacle.damage);
-          }
-          
           // Flash on collision
           this.flashOnCollision();
           return true;
         }
-      } else if (obstacle.type === 'box' && obstacle.size) {
-        // Box obstacle (similar to wall but in 3D)
-        const halfWidth = obstacle.size.x / 2;
-        const halfHeight = obstacle.size.y / 2;
-        const halfDepth = obstacle.size.z / 2;
-        const obstacleX = obstacle.position.x;
-        const obstacleY = obstacle.position.y;
-        const obstacleZ = obstacle.position.z;
+      } else if (obstacle.data.type === 'sphere') {
+        // Spherical obstacle collision
+        const distance = playerPosition.distanceTo(obstacle.data.position);
+        const combinedRadius = playerRadius + obstacle.data.radius;
         
-        // Calculate closest point on the box to the player
-        const closestX = Math.max(obstacleX - halfWidth, Math.min(playerPosition.x, obstacleX + halfWidth));
-        const closestY = Math.max(obstacleY - halfHeight, Math.min(playerPosition.y, obstacleY + halfHeight));
-        const closestZ = Math.max(obstacleZ - halfDepth, Math.min(playerPosition.z, obstacleZ + halfDepth));
-        
-        // Calculate distance between closest point and player center
-        const distanceX = playerPosition.x - closestX;
-        const distanceY = playerPosition.y - closestY;
-        const distanceZ = playerPosition.z - closestZ;
-        const distanceSquared = distanceX * distanceX + distanceY * distanceY + distanceZ * distanceZ;
-        
-        // Collision detected if distance is less than player radius
-        if (distanceSquared < playerRadius * playerRadius) {
-          // Flash the ship on collision
+        if (distance < combinedRadius) {
+          // Flash on collision
           this.flashOnCollision();
           return true;
         }

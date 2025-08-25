@@ -105,7 +105,7 @@ export class WeaponSystem {
     const targetArray = Array.isArray(targets) ? targets : [];
     
     // Format obstacles to wall segments if needed
-    const wallSegments = this.formatObstacles(obstacles);
+    const wallSegments = this.formatObstaclesForCollision(obstacles);
     
     // Check each projectile for collisions
     for (const projectile of this.projectiles) {
@@ -145,29 +145,27 @@ export class WeaponSystem {
     return hitResults;
   }
   
-  formatObstacles(obstacles) {
-    // If obstacles is already an array of wall segments, return it
-    if (Array.isArray(obstacles) && obstacles.length > 0 && 
-        obstacles[0].start && obstacles[0].end) {
-      return obstacles;
-    }
-    
+  formatObstaclesForCollision(obstacles) {
     // Format obstacles into wall segments if they're in the GameRoom format
     if (Array.isArray(obstacles)) {
       const wallSegments = [];
       
       for (const obstacle of obstacles) {
-        if (!obstacle || !obstacle.position) continue;
+        // Check if obstacle has the new structure
+        if (!obstacle || !obstacle.data || !obstacle.data.position) {
+          console.warn('🚨 Weapon collision: Skipping obstacle with invalid structure:', obstacle);
+          continue;
+        }
         
-        if (obstacle.type === 'wall' && obstacle.size) {
+        if (obstacle.data.type === 'box') {
           // Create line segments for walls
-          const halfWidth = obstacle.size.x / 2;
-          const halfDepth = obstacle.size.z / 2;
-          const x = obstacle.position.x;
-          const z = obstacle.position.z;
+          const halfWidth = obstacle.data.size.x / 2;
+          const halfDepth = obstacle.data.size.z / 2;
+          const x = obstacle.data.position.x;
+          const z = obstacle.data.position.z;
           
           // Determine if it's a horizontal or vertical wall
-          if (obstacle.size.x > obstacle.size.z) {
+          if (obstacle.data.size.x > obstacle.data.size.z) {
             // Horizontal wall
             wallSegments.push({
               start: new THREE.Vector3(x - halfWidth, 0, z),
@@ -180,11 +178,11 @@ export class WeaponSystem {
               end: new THREE.Vector3(x, 0, z + halfDepth)
             });
           }
-        } else if (obstacle.radius) {
+        } else if (obstacle.data.type === 'cylinder' && obstacle.data.radius) {
           // For cylindrical obstacles, we'll approximate with line segments
           const segments = 8; // Number of line segments to approximate circle
-          const center = obstacle.position;
-          const radius = obstacle.radius;
+          const center = obstacle.data.position;
+          const radius = obstacle.data.radius;
           
           for (let i = 0; i < segments; i++) {
             const angle1 = (i / segments) * Math.PI * 2;
@@ -200,29 +198,26 @@ export class WeaponSystem {
               end: new THREE.Vector3(x2, 0, z2)
             });
           }
-        } else if (obstacle.size) {
-          // Box obstacle - create four wall segments
-          const halfWidth = obstacle.size.x / 2;
-          const halfDepth = obstacle.size.z / 2;
-          const x = obstacle.position.x;
-          const z = obstacle.position.z;
+        } else if (obstacle.data.type === 'sphere' && obstacle.data.radius) {
+          // For spherical obstacles, we'll approximate with line segments
+          const segments = 8; // Number of line segments to approximate circle
+          const center = obstacle.data.position;
+          const radius = obstacle.data.radius;
           
-          wallSegments.push({
-            start: new THREE.Vector3(x - halfWidth, 0, z - halfDepth),
-            end: new THREE.Vector3(x + halfWidth, 0, z - halfDepth)
-          });
-          wallSegments.push({
-            start: new THREE.Vector3(x + halfWidth, 0, z - halfDepth),
-            end: new THREE.Vector3(x + halfWidth, 0, z + halfDepth)
-          });
-          wallSegments.push({
-            start: new THREE.Vector3(x + halfWidth, 0, z + halfDepth),
-            end: new THREE.Vector3(x - halfWidth, 0, z + halfDepth)
-          });
-          wallSegments.push({
-            start: new THREE.Vector3(x - halfWidth, 0, z + halfDepth),
-            end: new THREE.Vector3(x - halfWidth, 0, z - halfDepth)
-          });
+          for (let i = 0; i < segments; i++) {
+            const angle1 = (i / segments) * Math.PI * 2;
+            const angle2 = ((i + 1) / segments) * Math.PI * 2;
+            
+            const x1 = center.x + Math.cos(angle1) * radius;
+            const z1 = center.z + Math.sin(angle1) * radius;
+            const x2 = center.x + Math.cos(angle2) * radius;
+            const z2 = center.z + Math.sin(angle2) * radius;
+            
+            wallSegments.push({
+              start: new THREE.Vector3(x1, 0, z1),
+              end: new THREE.Vector3(x2, 0, z2)
+            });
+          }
         }
       }
       

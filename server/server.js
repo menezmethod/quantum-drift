@@ -26,8 +26,14 @@ const gameState = {
   players: {},
   projectiles: {},
   gameTime: 0,
-  lastUpdate: Date.now()
+  lastUpdate: Date.now(),
+  map: null // Will be set after generation
 };
+
+// Generate the map immediately
+console.log('🌍 Initializing game state...');
+gameState.map = generateGameMap();
+console.log('🌍 Game state initialized with map:', gameState.map);
 
 // Player management
 class Player {
@@ -76,51 +82,105 @@ class Player {
 
 // Helper function to generate a safe spawn position
 function generateSafeSpawnPosition(players) {
-  const spawnRadius = 5; // Radius in which to avoid other players
-  const spawnAttempts = 10; // Number of attempts to find a safe spot
+  const spawnRadius = 20; // Increased radius for more spread
+  const spawnAttempts = 30; // More attempts to find a safe spot
+  const minDistance = 5; // Increased minimum distance between players
+
+  console.log(`🌍 Generating spawn position for new player. Existing players: ${Object.keys(players).length}`);
 
   for (let i = 0; i < spawnAttempts; i++) {
-    const x = (Math.random() - 0.5) * spawnRadius * 2; // Random X between -spawnRadius and spawnRadius
-    const z = (Math.random() - 0.5) * spawnRadius * 2; // Random Z between -spawnRadius and spawnRadius
+    // Generate random position in a larger area
+    const x = (Math.random() - 0.5) * spawnRadius * 2;
+    const z = (Math.random() - 0.5) * spawnRadius * 2;
     const y = 0.5; // Y is always 0.5 for ground level
 
-    // Check if the generated position is safe (e.g., not too close to any player)
+    // Check if the generated position is safe
     let isSafe = true;
     for (const playerId in players) {
       const player = players[playerId];
-      const distance = Math.sqrt(
-        Math.pow(x - player.position.x, 2) +
-        Math.pow(y - player.position.y, 2) +
-        Math.pow(z - player.position.z, 2)
-      );
-      if (distance < 2) { // Minimum distance of 2 units
-        isSafe = false;
-        break;
+      if (player && player.position) {
+        const distance = Math.sqrt(
+          Math.pow(x - player.position.x, 2) +
+          Math.pow(y - player.position.y, 2) +
+          Math.pow(z - player.position.z, 2)
+        );
+        if (distance < minDistance) {
+          console.log(`🌍 Position ${x.toFixed(2)}, ${z.toFixed(2)} too close to player ${playerId} (distance: ${distance.toFixed(2)})`);
+          isSafe = false;
+          break;
+        }
       }
     }
 
     if (isSafe) {
+      console.log(`🌍 Generated safe spawn position: x=${x.toFixed(2)}, z=${z.toFixed(2)}`);
       return { x, y, z };
     }
   }
-  // Fallback to a default safe position if all attempts fail
-  return { x: 0, y: 0.5, z: 0 };
+  
+  // Fallback: generate a position far from center with more variation
+  const fallbackX = (Math.random() - 0.5) * 30;
+  const fallbackZ = (Math.random() - 0.5) * 30;
+  console.log(`🌍 Using fallback spawn position: x=${fallbackX.toFixed(2)}, z=${fallbackZ.toFixed(2)}`);
+  return { x: fallbackX, y: 0.5, z: fallbackZ };
+}
+
+// Generate a fixed, non-random game map
+function generateGameMap() {
+  console.log('🌍 Generating fixed game map...');
+  
+  const map = {
+    obstacles: [
+      // Box obstacles
+      { type: 'box', position: { x: 10, y: 2, z: 5 }, size: { x: 2, y: 4, z: 2 }, color: 0xff0000 },
+      { type: 'box', position: { x: -8, y: 2.5, z: -3 }, size: { x: 3, y: 5, z: 3 }, color: 0x00ff00 },
+      { type: 'box', position: { x: 5, y: 1.5, z: -8 }, size: { x: 2.5, y: 3, z: 2.5 }, color: 0x0000ff },
+      { type: 'box', position: { x: -12, y: 2, z: 8 }, size: { x: 2, y: 4, z: 2 }, color: 0xffff00 },
+      { type: 'box', position: { x: 15, y: 2.5, z: -5 }, size: { x: 3, y: 5, z: 3 }, color: 0xff00ff },
+      
+      // Cylinder obstacles
+      { type: 'cylinder', position: { x: 0, y: 3, z: 12 }, radius: 1.5, height: 6, color: 0x00ffff },
+      { type: 'cylinder', position: { x: -15, y: 2.5, z: 0 }, radius: 1, height: 5, color: 0xff8800 },
+      { type: 'cylinder', position: { x: 8, y: 3.5, z: -12 }, radius: 2, height: 7, color: 0x8800ff },
+      { type: 'cylinder', position: { x: -5, y: 2, z: 15 }, radius: 1.2, height: 4, color: 0xff0088 },
+      { type: 'cylinder', position: { x: 18, y: 3, z: 2 }, radius: 1.8, height: 6, color: 0x88ff00 },
+      
+      // Sphere obstacles
+      { type: 'sphere', position: { x: -10, y: 2, z: -8 }, radius: 2, color: 0xff4400 },
+      { type: 'sphere', position: { x: 3, y: 1.5, z: 18 }, radius: 1.5, color: 0x44ff00 },
+      { type: 'sphere', position: { x: -18, y: 2.5, z: -5 }, radius: 2.5, color: 0x0044ff },
+      { type: 'sphere', position: { x: 12, y: 2, z: -15 }, radius: 1.8, color: 0xff0044 },
+      { type: 'sphere', position: { x: -2, y: 1.8, z: -18 }, radius: 1.2, color: 0x44ffff },
+      { type: 'sphere', position: { x: 20, y: 2.2, z: 10 }, radius: 2.2, color: 0xffff44 }
+    ]
+  };
+  
+  console.log(`🌍 Generated map with ${map.obstacles.length} obstacles`);
+  return map;
 }
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
   
-  // Create new player
+  // Create new player with random spawn position
+  const spawnPosition = generateSafeSpawnPosition(gameState.players);
   const player = new Player(socket.id, socket);
+  player.position = spawnPosition; // Override default position with random spawn
   gameState.players[socket.id] = player;
+  
+  console.log(`Player ${socket.id} spawned at:`, spawnPosition);
   
   // Send current game state to new player
   socket.emit('gameState', {
     players: Object.values(gameState.players).map(p => p.toJSON()),
     projectiles: gameState.projectiles,
-    gameTime: gameState.gameTime
+    gameTime: gameState.gameTime,
+    map: gameState.map // Send the map to the new player
   });
+  
+  // Also send map data separately for clarity
+  socket.emit('gameMap', gameState.map);
   
   // Notify other players about new player
   socket.broadcast.emit('playerJoined', player.toJSON());
@@ -200,6 +260,7 @@ io.on('connection', (socket) => {
             targetPlayer.rotation = { y: Math.random() * Math.PI * 2 }; // Random rotation
             targetPlayer.spawnTime = Date.now();
             
+            console.log(`🌍 Player ${data.targetId} respawned at:`, spawnPosition);
             io.emit('playerRespawned', targetPlayer.toJSON());
           }
         }, 5000);
@@ -218,13 +279,17 @@ io.on('connection', (socket) => {
   socket.on('requestRespawn', () => {
     const player = gameState.players[socket.id];
     if (player && !player.isAlive) {
+      // Generate random spawn position away from other players
+      const spawnPosition = generateSafeSpawnPosition(gameState.players);
+      
       player.health = player.maxHealth;
       player.energy = player.maxEnergy;
       player.isAlive = true;
-      player.position = { x: 0, y: 0.5, z: 0 };
-      player.rotation = { y: 0 };
+      player.position = spawnPosition;
+      player.rotation = { y: Math.random() * Math.PI * 2 }; // Random rotation
       player.spawnTime = Date.now();
       
+      console.log(`🌍 Player ${socket.id} manually respawned at:`, spawnPosition);
       io.emit('playerRespawned', player.toJSON());
     }
   });

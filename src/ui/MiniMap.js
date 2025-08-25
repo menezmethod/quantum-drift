@@ -53,17 +53,18 @@ export class MiniMap {
   }
   
   /**
-   * Update the mini-map with current game state
+   * Update mini-map
    */
   update() {
-    if (!this.visible || !this.ctx || !this.game.playerShip) return;
+    if (!this.visible || !this.game || !this.game.playerShip) {
+      return; // Not visible or game not ready yet
+    }
     
     // Clear canvas
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     
     // Draw background
-    this.ctx.fillStyle = 'rgba(0, 20, 40, 0.2)';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    this.drawBackground();
     
     // Draw grid lines
     this.drawGridLines();
@@ -71,16 +72,37 @@ export class MiniMap {
     // Draw boundaries
     this.drawBoundaries();
     
-    // Draw obstacles
-    this.drawObstacles();
-    
-    // Draw player
-    this.drawPlayer();
+    // Draw obstacles (only if they exist, are ready, and have valid data)
+    if (this.game.obstacles && 
+        Array.isArray(this.game.obstacles) && 
+        this.game.obstacles.length > 0 &&
+        this.game.obstacles[0] && 
+        this.game.obstacles[0].data) {
+      this.drawObstacles();
+    } else {
+      console.log('🌐 MiniMap: Skipping obstacles - not ready yet:', {
+        hasObstacles: !!this.game.obstacles,
+        isArray: Array.isArray(this.game.obstacles),
+        length: this.game.obstacles ? this.game.obstacles.length : 'undefined',
+        firstObstacle: this.game.obstacles ? this.game.obstacles[0] : 'undefined'
+      });
+    }
     
     // Draw enemies (if any exist)
     if (this.game.enemies) {
       this.drawEnemies();
     }
+    
+    // Draw player (always last so it's on top)
+    this.drawPlayer();
+  }
+  
+  /**
+   * Draw background
+   */
+  drawBackground() {
+    this.ctx.fillStyle = 'rgba(0, 20, 40, 0.2)';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
   
   /**
@@ -155,38 +177,79 @@ export class MiniMap {
    * Draw obstacles on mini-map
    */
   drawObstacles() {
-    if (!this.game.obstacles) return;
-    
-    this.ctx.fillStyle = 'rgba(255, 69, 0, 0.7)';
-    
-    for (const obstacle of this.game.obstacles) {
-      // Get position
-      const x = obstacle.position.x;
-      const z = obstacle.position.z;
+    try {
+      this.ctx.fillStyle = 'rgba(255, 69, 0, 0.7)';
       
-      // Convert to mini-map coordinates
-      const mapX = this.worldToMapX(x);
-      const mapY = this.worldToMapY(z);
-      
-      // Determine size based on obstacle type
-      let size = 4;
-      if (obstacle.geometry) {
-        if (obstacle.geometry.type === 'SphereGeometry') {
-          size = obstacle.geometry.parameters.radius * this.scale;
-        } else if (obstacle.geometry.type === 'CylinderGeometry') {
-          size = obstacle.geometry.parameters.radiusTop * this.scale;
-        } else if (obstacle.geometry.type === 'BoxGeometry') {
-          size = Math.max(
-            obstacle.geometry.parameters.width,
-            obstacle.geometry.parameters.depth
-          ) * this.scale / 2;
-        }
+      if (!this.game.obstacles) {
+        console.log('🌐 MiniMap: No obstacles array found');
+        return; // No obstacles to draw
       }
       
-      // Draw obstacle
-      this.ctx.beginPath();
-      this.ctx.arc(mapX, mapY, size, 0, Math.PI * 2);
-      this.ctx.fill();
+      if (!Array.isArray(this.game.obstacles)) {
+        console.warn('🌐 MiniMap: Obstacles is not an array:', typeof this.game.obstacles);
+        return;
+      }
+      
+      console.log('🌐 MiniMap: Drawing obstacles, count:', this.game.obstacles.length);
+      
+      for (let i = 0; i < this.game.obstacles.length; i++) {
+        const obstacle = this.game.obstacles[i];
+        
+        // Debug each obstacle
+        console.log(`🌐 MiniMap: Obstacle ${i}:`, obstacle);
+        
+        // Check if obstacle has the new structure
+        if (!obstacle) {
+          console.warn(`🌐 MiniMap: Obstacle ${i} is null/undefined`);
+          continue;
+        }
+        
+        if (!obstacle.data) {
+          console.warn(`🌐 MiniMap: Obstacle ${i} has no data property:`, obstacle);
+          continue;
+        }
+        
+        if (!obstacle.data.position) {
+          console.warn(`🌐 MiniMap: Obstacle ${i} has no position:`, obstacle.data);
+          continue;
+        }
+        
+        // Get position from the new structure
+        const x = obstacle.data.position.x;
+        const z = obstacle.data.position.z;
+        
+        if (typeof x !== 'number' || typeof z !== 'number') {
+          console.warn(`🌐 MiniMap: Obstacle ${i} has invalid position values:`, { x, z });
+          continue;
+        }
+        
+        // Convert to mini-map coordinates
+        const mapX = this.worldToMapX(x);
+        const mapY = this.worldToMapY(z);
+        
+        // Determine size based on obstacle type
+        let size = 4;
+        if (obstacle.data.type === 'sphere') {
+          size = obstacle.data.radius * this.scale;
+        } else if (obstacle.data.type === 'cylinder') {
+          size = obstacle.data.radius * this.scale;
+        } else if (obstacle.data.type === 'box') {
+          size = Math.max(
+            obstacle.data.size.x,
+            obstacle.data.size.z
+          ) * this.scale / 2;
+        }
+        
+        // Draw obstacle
+        this.ctx.beginPath();
+        this.ctx.arc(mapX, mapY, size, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        console.log(`🌐 MiniMap: Drew obstacle ${i} at (${x}, ${z}) -> (${mapX}, ${mapY})`);
+      }
+    } catch (error) {
+      console.error('🌐 MiniMap: Error in drawObstacles:', error);
+      console.error('🌐 MiniMap: Game obstacles:', this.game.obstacles);
     }
   }
   

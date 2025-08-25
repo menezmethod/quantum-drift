@@ -689,76 +689,14 @@ class SimpleGame {
   }
   
   createObstacles() {
-    // Create some simple obstacles
+    // Create obstacles from server map data instead of random generation
+    console.log('🌐 Client-side createObstacles called - waiting for server map data');
+    
+    // Initialize empty obstacles array - will be populated from server
     this.obstacles = [];
     
-    // Create 15 random obstacles with more variety
-    for (let i = 0; i < 15; i++) {
-      // Choose a random shape (box, cylinder, or sphere)
-      const shapeType = Math.floor(Math.random() * 3);
-      
-      let geometry;
-      let size;
-      
-      if (shapeType === 0) {
-        // Box
-        size = 1.5 + Math.random() * 3;
-        const height = 3 + Math.random() * 4; // Taller for better visibility
-        geometry = new THREE.BoxGeometry(size, height, size);
-      } else if (shapeType === 1) {
-        // Cylinder
-        const radius = 1 + Math.random() * 2;
-        const height = 4 + Math.random() * 5;
-        geometry = new THREE.CylinderGeometry(radius, radius, height, 16);
-        size = radius * 2;
-      } else {
-        // Sphere
-        const radius = 1.5 + Math.random() * 2;
-        geometry = new THREE.SphereGeometry(radius, 16, 16);
-        size = radius * 2;
-      }
-      
-      // Create neon material with random color
-      const hue = Math.random();
-      const color = new THREE.Color().setHSL(hue, 0.8, 0.6);
-      
-      const material = new THREE.MeshPhongMaterial({
-        color: color,
-        emissive: color.clone().multiplyScalar(0.5),
-        shininess: 100
-      });
-      
-      // Create mesh
-      const obstacle = new THREE.Mesh(geometry, material);
-      
-      // Add a point light inside the obstacle for glow effect
-      const light = new THREE.PointLight(color, 0.5, 5);
-      light.position.set(0, 0, 0);
-      obstacle.add(light);
-      
-      // Random position - avoid overlap with the player spawn position
-      let x, z;
-      let validPosition = false;
-      
-      while (!validPosition) {
-        x = (Math.random() - 0.5) * 45; // Slightly inside boundary
-        z = (Math.random() - 0.5) * 45;
-        
-        // Make sure it's not too close to the origin (player spawn)
-        const distanceFromOrigin = Math.sqrt(x * x + z * z);
-        if (distanceFromOrigin > 10) {
-          validPosition = true;
-        }
-      }
-      
-      // Random height offset to make some float
-      const y = shapeType === 2 ? Math.random() * 3 : size / 2;
-      obstacle.position.set(x, y, z);
-      
-      // Add to scene
-      this.scene.add(obstacle);
-      this.obstacles.push(obstacle);
-    }
+    // Note: Obstacles are now created from server map data via NetworkManager
+    // This prevents each client from generating different random maps
   }
   
   setupControls() {
@@ -1510,8 +1448,13 @@ selectWeapon(weaponType) {
       for (let j = 0; j < this.obstacles.length; j++) {
         const obstacle = this.obstacles[j];
         
+        // Check if obstacle has the new structure
+        if (!obstacle || !obstacle.data || !obstacle.data.position) {
+          continue; // Skip invalid obstacles
+        }
+        
         // Simple distance check
-        if (laser.mesh.position.distanceTo(obstacle.position) < 1.5) {
+        if (laser.mesh.position.distanceTo(obstacle.data.position) < 1.5) {
           // Create enhanced hit effect
           this.createEnhancedHitEffect(laser.mesh.position.clone(), laser.direction.clone());
           
@@ -1629,20 +1572,28 @@ selectWeapon(weaponType) {
   }
   
   checkObstacleCollisions() {
-    if (!this.obstacles) return false;
+    if (!this.obstacles || !Array.isArray(this.obstacles)) return false;
     
     const playerPosition = this.playerShip.position.clone();
     playerPosition.y = 0; // Project to ground plane for collision detection
     const playerRadius = 0.8; // Slightly larger collision radius
     
     for (const obstacle of this.obstacles) {
-      const obstaclePosition = obstacle.position.clone();
+      // Check if obstacle has the new structure
+      if (!obstacle || !obstacle.data || !obstacle.data.position) {
+        console.warn('🚨 Collision check: Skipping obstacle with invalid structure:', obstacle);
+        continue;
+      }
+      
+      const obstaclePosition = new THREE.Vector3(
+        obstacle.data.position.x,
+        0, // Project to ground plane for collision detection
+        obstacle.data.position.z
+      );
       
       // For sphere collisions, we can do a simple distance check
-      if (obstacle.geometry instanceof THREE.SphereGeometry) {
-        const radius = obstacle.geometry.parameters.radius;
-        // Project obstacle to ground plane for collision detection
-        obstaclePosition.y = 0;
+      if (obstacle.data.type === 'sphere') {
+        const radius = obstacle.data.radius;
         
         const distance = playerPosition.distanceTo(obstaclePosition);
         if (distance < (playerRadius + radius)) {
@@ -1650,10 +1601,8 @@ selectWeapon(weaponType) {
         }
       }
       // For cylinders, use radius for distance check
-      else if (obstacle.geometry instanceof THREE.CylinderGeometry) {
-        const radius = obstacle.geometry.parameters.radiusTop;
-        // Project obstacle to ground plane for collision detection
-        obstaclePosition.y = 0;
+      else if (obstacle.data.type === 'cylinder') {
+        const radius = obstacle.data.radius;
         
         const distance = playerPosition.distanceTo(obstaclePosition);
         if (distance < (playerRadius + radius)) {
@@ -1661,24 +1610,10 @@ selectWeapon(weaponType) {
         }
       }
       // For boxes, use a more complex check
-      else {
-        // Project obstacle to ground plane for collision detection
-        obstaclePosition.y = 0;
-        
-        // Get obstacle's bounding box if not already computed
-        if (!obstacle.geometry.boundingBox) {
-          obstacle.geometry.computeBoundingBox();
-        }
-        
-        // Get obstacle's dimensions
-        const box = obstacle.geometry.boundingBox.clone();
-        
-        // Transform bounding box to world space
-        box.applyMatrix4(obstacle.matrixWorld);
-        
-        // Calculate half-widths of the box on the XZ plane
-        const halfWidth = (box.max.x - box.min.x) / 2;
-        const halfDepth = (box.max.z - box.min.z) / 2;
+      else if (obstacle.data.type === 'box') {
+        // Get obstacle's dimensions from data
+        const halfWidth = obstacle.data.size.x / 2;
+        const halfDepth = obstacle.data.size.z / 2;
         
         // Calculate closest point on the rectangle to the player
         const closestX = Math.max(obstaclePosition.x - halfWidth, 
@@ -1946,12 +1881,17 @@ selectWeapon(weaponType) {
     
     // Check for obstacle hits in explosion radius
     for (const obstacle of this.obstacles) {
-      const distance = obstacle.position.distanceTo(explosionCenter);
+      // Check if obstacle has the new structure
+      if (!obstacle || !obstacle.data || !obstacle.data.position) {
+        continue; // Skip invalid obstacles
+      }
+      
+      const distance = obstacle.data.position.distanceTo(explosionCenter);
       if (distance < damageRadius) {
         // Calculate damage based on distance (linear falloff)
         const damagePercent = 1 - (distance / damageRadius);
-        const hitPoint = obstacle.position.clone().add(
-          explosionCenter.clone().sub(obstacle.position).normalize().multiplyScalar(distance * 0.8)
+        const hitPoint = obstacle.data.position.clone().add(
+          explosionCenter.clone().sub(obstacle.data.position).normalize().multiplyScalar(distance * 0.8)
         );
         this.createHitEffect(hitPoint);
       }
@@ -2050,42 +1990,43 @@ selectWeapon(weaponType) {
       let closestNormal = null;
       
       for (const obstacle of this.obstacles) {
-        if (!obstacle.geometry) continue;
+        // Check if obstacle has the new structure
+        if (!obstacle || !obstacle.data || !obstacle.data.position) {
+          continue; // Skip invalid obstacles
+        }
         
         let intersection = null;
         let normal = null;
         
-        if (obstacle.geometry instanceof THREE.SphereGeometry) {
-          const radius = obstacle.geometry.parameters.radius;
+        if (obstacle.data.type === 'sphere') {
+          const radius = obstacle.data.radius;
           intersection = tempRay.intersectSphere(
-            new THREE.Sphere(obstacle.position, radius),
+            new THREE.Sphere(obstacle.data.position, radius),
             tempVector
           );
           if (intersection) {
-            normal = intersection.clone().sub(obstacle.position).normalize();
+            normal = intersection.clone().sub(obstacle.data.position).normalize();
           }
-        } else if (obstacle.geometry instanceof THREE.CylinderGeometry) {
-          const radius = obstacle.geometry.parameters.radiusTop;
+        } else if (obstacle.data.type === 'cylinder') {
+          const radius = obstacle.data.radius;
           intersection = tempRay.intersectSphere(
-            new THREE.Sphere(obstacle.position, radius),
+            new THREE.Sphere(obstacle.data.position, radius),
             tempVector
           );
           if (intersection) {
-            normal = intersection.clone().sub(obstacle.position).normalize();
+            normal = intersection.clone().sub(obstacle.data.position).normalize();
           }
-        } else {
+        } else if (obstacle.data.type === 'box') {
           // For boxes, use bounding sphere as approximation
-          const boundingSphere = obstacle.geometry.boundingSphere;
-          if (!boundingSphere) {
-            obstacle.geometry.computeBoundingSphere();
-          }
+          const maxSize = Math.max(obstacle.data.size.x, obstacle.data.size.y, obstacle.data.size.z);
+          const radius = maxSize / 2;
           const sphere = new THREE.Sphere(
-            obstacle.position,
-            obstacle.geometry.boundingSphere.radius
+            obstacle.data.position,
+            radius
           );
           intersection = tempRay.intersectSphere(sphere, tempVector);
           if (intersection) {
-            normal = intersection.clone().sub(obstacle.position).normalize();
+            normal = intersection.clone().sub(obstacle.data.position).normalize();
           }
         }
         
@@ -2712,6 +2653,11 @@ selectWeapon(weaponType) {
         this.createControlIndicators();
     }
     this.fadeInControls();
+
+    // Create any pending players that joined before game started
+    if (this.networkManager) {
+        this.networkManager.createPendingPlayers();
+    }
 
     // Start animation loop
     this.animate();
