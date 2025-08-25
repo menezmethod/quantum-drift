@@ -64,56 +64,26 @@ class SimpleGame {
     this.maxHealth = 100;
     this.energy = 100;
     this.maxEnergy = 100;
-    this.energyRechargeRate = 20; // Units per second
-    this.healthRegenRate = 10; // 10% per second (10 units per second)
-    this.currentWeapon = 'LASER';
+    
+    // Health regeneration system
+    this.healthRegenerationRate = 2; // HP per second (2% of max health) - Reduced from 10 for better balance
+    this.healthRegenerationInterval = 1000; // 1 second
+    this.lastHealthRegeneration = Date.now();
+    this.isHealthRegenerating = false;
+    
+    // Energy regeneration system  
+    this.energyRegenerationRate = 5; // Energy per second (5% of max energy)
+    this.energyRegenerationInterval = 1000; // 1 second
+    this.lastEnergyRegeneration = Date.now();
+    this.isEnergyRegenerating = false;
     
     // Initialize available weapons
+    this.currentWeapon = 'LASER';
     this.availableWeapons = ['LASER', 'GRENADE', 'BOUNCE'];
     this.weaponIndex = 0; // Start with LASER
     
-    // Centralized weapon configuration system
-    this.weaponConfig = {
-      LASER: {
-        name: 'Laser',
-        damage: 20,           // Balanced damage
-        energyCost: 20,       // 5 shots per full energy
-        cooldown: 200,        // Fast firing rate
-        speed: 50,            // Fast projectile
-        range: 100,           // Long range
-        accuracy: 0.98,       // High accuracy
-        damageType: 'energy',
-        criticalChance: 0.15, // 15% crit chance
-        criticalMultiplier: 1.5
-      },
-      BOUNCE: {
-        name: 'Bounce Laser',
-        damage: 25,           // Higher damage than laser
-        energyCost: 35,       // ~3 shots per full energy
-        cooldown: 400,        // Medium firing rate
-        speed: 30,            // Medium speed
-        range: 80,            // Medium range
-        accuracy: 0.85,       // Lower accuracy due to bounce
-        damageType: 'energy',
-        criticalChance: 0.20, // 20% crit chance
-        criticalMultiplier: 1.8,
-        bounces: 3            // Number of bounces
-      },
-      GRENADE: {
-        name: 'Grenade',
-        damage: 40,           // High base damage
-        energyCost: 80,       // 1-2 shots per full energy
-        cooldown: 800,        // Slow firing rate
-        speed: 15,            // Slow projectile
-        range: 60,            // Medium range
-        accuracy: 0.70,       // Lower accuracy
-        damageType: 'explosive',
-        criticalChance: 0.25, // 25% crit chance
-        criticalMultiplier: 2.0,
-        explosionRadius: 8,   // Area of effect
-        damageFalloff: 0.8    // Damage reduction per unit from center
-      }
-    };
+    // Weapon cooldowns
+    this.weaponCooldowns = new Map();
     
     // Load assets
     this.loadAssets();
@@ -1387,6 +1357,32 @@ selectWeapon(weaponType) {
   }
   
   updatePlayer(deltaTime) {
+    // Update player movement
+    this.updatePlayerMovement(deltaTime);
+    
+    // Update energy regeneration
+    this.updateEnergyRegeneration(deltaTime);
+    
+    // Update health regeneration
+    this.updateHealthRegeneration(deltaTime);
+    
+    // Update weapon cooldowns
+    this.updateWeaponCooldowns(deltaTime);
+    
+    // Check for collisions
+    if (this.checkObstacleCollisions()) {
+      // Handle collision
+      this.handlePlayerCollision();
+    }
+    
+    // Constrain player to bounds
+    this.constrainToBounds();
+    
+    // Update camera
+    this.updateCamera();
+  }
+  
+  updatePlayerMovement(deltaTime) {
     // Apply rotation when left/right keys are pressed
     if (this.keys.left) {
       this.playerShip.rotation.y += this.rotationSpeed;
@@ -1456,175 +1452,91 @@ selectWeapon(weaponType) {
     this.updateControlIndicators();
   }
   
-  updateLasers() {
-    if (!this.lasers) return;
+  updateEnergyRegeneration(deltaTime) {
+    // Validate parameters
+    if (typeof deltaTime !== 'number' || deltaTime < 0) {
+        console.warn('Invalid deltaTime in updateEnergy:', deltaTime);
+        return;
+    }
+
+    // Initialize energy values if undefined
+    if (typeof this.energy !== 'number') this.energy = 0;
+    if (typeof this.maxEnergy !== 'number') this.maxEnergy = 100;
+    if (typeof this.energyRegenerationRate !== 'number') this.energyRegenerationRate = 20;
+
+    // Store old energy for change detection
+    const oldEnergy = this.energy;
+
+    // Calculate recharge amount
+    const rechargeAmount = this.energyRegenerationRate * deltaTime;
     
-    for (let i = this.lasers.length - 1; i >= 0; i--) {
-      const laser = this.lasers[i];
-      
-      // Move laser
-      laser.mesh.position.add(laser.direction.clone().multiplyScalar(laser.speed));
-      
-      // Update trail effect
-      laser.trailPoints.push(laser.mesh.position.clone());
-      if (laser.trailPoints.length > 8) { // Reduced trail length for better performance
-        laser.trailPoints.shift();
-      }
-      
-      // Update trail geometry
-      const positions = new Float32Array(laser.trailPoints.length * 3);
-      for (let j = 0; j < laser.trailPoints.length; j++) {
-        positions[j * 3] = laser.trailPoints[j].x;
-        positions[j * 3 + 1] = laser.trailPoints[j].y;
-        positions[j * 3 + 2] = laser.trailPoints[j].z;
-      }
-      laser.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      
-      // Pulse effect
-      laser.pulsePhase += 0.3;
-      const pulse = Math.sin(laser.pulsePhase) * 0.2 + 0.8;
-      laser.mesh.material.opacity = pulse;
-      const light = laser.mesh.children[0];
-      if (light) {
-        light.intensity = pulse * 2;
-      }
-      
-      // Increment lifetime
-      laser.lifeTime++;
-      
-      // Remove old lasers
-      if (laser.lifeTime > laser.maxLifeTime) {
-        this.scene.remove(laser.mesh);
-        this.scene.remove(laser.trail);
-        this.lasers.splice(i, 1);
-        continue;
-      }
-      
-      // Check for collisions with obstacles
-      for (let j = 0; j < this.obstacles.length; j++) {
-        const obstacle = this.obstacles[j];
-        
-        // Check if obstacle has the new structure
-        if (!obstacle || !obstacle.data || !obstacle.data.position) {
-          continue; // Skip invalid obstacles
+    // Apply recharge with bounds checking
+    this.energy = Math.min(this.maxEnergy, this.energy + rechargeAmount);
+
+    // Update UI only if energy changed
+    if (this.energy !== oldEnergy) {
+        if (this.ui && typeof this.ui.updateEnergy === 'function') {
+            this.ui.updateEnergy(this.energy, this.maxEnergy);
         }
-        
-        // Simple distance check
-        if (laser.mesh.position.distanceTo(obstacle.data.position) < 1.5) {
-          // Create enhanced hit effect
-          this.createEnhancedHitEffect(laser.mesh.position.clone(), laser.direction.clone());
-          
-          // Remove laser
-          this.scene.remove(laser.mesh);
-          this.scene.remove(laser.trail);
-          this.lasers.splice(i, 1);
-          break;
+
+        // Log significant energy changes (more than 1 unit) for debugging
+        if (Math.abs(this.energy - oldEnergy) > 1) {
+            console.log(`⚡ Energy regenerated: ${oldEnergy.toFixed(1)} -> ${this.energy.toFixed(1)} (Δ${deltaTime.toFixed(3)}s)`);
         }
-      }
     }
   }
-
-  createEnhancedHitEffect(position, direction) {
-    // Create a burst of particles
-    const particleCount = 15;
-    const particles = [];
-    
-    // Create particle material
-    const particleMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ffff,
-      transparent: true,
-      opacity: 0.8,
-      side: THREE.DoubleSide
-    });
-
-    for (let i = 0; i < particleCount; i++) {
-      // Create small particle geometry
-      const particleGeometry = new THREE.PlaneGeometry(0.1, 0.1);
-      const particle = new THREE.Mesh(particleGeometry, particleMaterial.clone());
-      
-      // Position at hit point
-      particle.position.copy(position);
-      
-      // Random velocity based on impact direction
-      const spread = Math.PI / 2; // 90 degree spread
-      const angle = Math.random() * spread - spread/2;
-      const speed = 0.2 + Math.random() * 0.3;
-      
-      // Calculate velocity
-      const velocity = direction.clone()
-        .applyAxisAngle(new THREE.Vector3(0, 1, 0), angle)
-        .multiplyScalar(speed);
-      
-      particle.userData.velocity = velocity;
-      particle.userData.life = 1.0; // Full life
-      
-      this.scene.add(particle);
-      particles.push(particle);
+  
+  updateHealthRegeneration(deltaTime) {
+    // Validate parameters
+    if (typeof deltaTime !== 'number' || deltaTime < 0) {
+        console.warn('Invalid deltaTime in updateHealth:', deltaTime);
+        return;
     }
 
-    // Add impact flash
-    const flashGeometry = new THREE.CircleGeometry(0.3, 16);
-    const flashMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ffff,
-      transparent: true,
-      opacity: 0.8,
-      side: THREE.DoubleSide
-    });
+    // Initialize health values if undefined
+    if (typeof this.health !== 'number') this.health = 0;
+    if (typeof this.maxHealth !== 'number') this.maxHealth = 100;
+    if (typeof this.healthRegenerationRate !== 'number') this.healthRegenerationRate = 10;
+
+    // Store old health for change detection
+    const oldHealth = this.health;
+
+    // Calculate regeneration amount
+    const regenerationAmount = this.healthRegenerationRate * deltaTime;
     
-    const flash = new THREE.Mesh(flashGeometry, flashMaterial);
-    flash.position.copy(position);
-    flash.lookAt(position.clone().add(direction));
-    this.scene.add(flash);
+    // Apply regeneration with bounds checking
+    this.health = Math.min(this.maxHealth, this.health + regenerationAmount);
 
-    // Add point light
-    const light = new THREE.PointLight(0x00ffff, 2, 4);
-    light.position.copy(position);
-    this.scene.add(light);
-
-    // Animate particles
-    let frame = 0;
-    const animate = () => {
-      frame++;
-      
-      // Update particles
-      for (let i = particles.length - 1; i >= 0; i--) {
-        const particle = particles[i];
-        
-        // Move particle
-        particle.position.add(particle.userData.velocity);
-        
-        // Reduce life
-        particle.userData.life -= 0.05;
-        
-        // Update opacity
-        particle.material.opacity = particle.userData.life;
-        
-        // Remove dead particles
-        if (particle.userData.life <= 0) {
-          this.scene.remove(particle);
-          particles.splice(i, 1);
+    // Update UI only if health changed
+    if (this.health !== oldHealth) {
+        if (this.ui && typeof this.ui.updateHealth === 'function') {
+            this.ui.updateHealth(this.health, this.maxHealth);
         }
+
+        // Log significant health changes (more than 1 unit) for debugging
+        if (Math.abs(this.health - oldHealth) > 1) {
+            console.log(`❤️ Health regenerated: ${oldHealth.toFixed(1)} -> ${this.health.toFixed(1)} (Δ${deltaTime.toFixed(3)}s)`);
+        }
+    }
+  }
+  
+  updateWeaponCooldowns(deltaTime) {
+    // Validate parameters
+    if (typeof deltaTime !== 'number' || deltaTime < 0) {
+        console.warn('Invalid deltaTime in updateWeaponCooldowns:', deltaTime);
+        return;
+    }
+
+    // Initialize cooldowns if undefined
+    if (!(this.weaponCooldowns instanceof Map)) this.weaponCooldowns = new Map();
+
+    // Update cooldowns for all weapons
+    for (const [weapon, cooldown] of this.weaponCooldowns.entries()) {
+      if (cooldown > 0) {
+        // Reduce cooldown by elapsed time
+        this.weaponCooldowns.set(weapon, Math.max(0, cooldown - (deltaTime * 1000)));
       }
-
-      // Update flash
-      flash.scale.addScalar(0.2);
-      flashMaterial.opacity *= 0.8;
-
-      // Update light
-      light.intensity *= 0.8;
-
-      // Continue animation if particles remain
-      if (particles.length > 0 && frame < 20) {
-        requestAnimationFrame(animate);
-      } else {
-        // Clean up
-        this.scene.remove(flash);
-        this.scene.remove(light);
-      }
-    };
-
-    // Start animation
-    animate();
+    }
   }
   
   checkObstacleCollisions() {
@@ -1816,13 +1728,13 @@ selectWeapon(weaponType) {
     // Initialize energy values if undefined
     if (typeof this.energy !== 'number') this.energy = 0;
     if (typeof this.maxEnergy !== 'number') this.maxEnergy = 100;
-    if (typeof this.energyRechargeRate !== 'number') this.energyRechargeRate = 20;
+    if (typeof this.energyRegenerationRate !== 'number') this.energyRegenerationRate = 20;
 
     // Store old energy for change detection
     const oldEnergy = this.energy;
 
     // Calculate recharge amount
-    const rechargeAmount = this.energyRechargeRate * deltaTime;
+    const rechargeAmount = this.energyRegenerationRate * deltaTime;
     
     // Apply recharge with bounds checking
     this.energy = Math.min(this.maxEnergy, this.energy + rechargeAmount);
@@ -1836,34 +1748,6 @@ selectWeapon(weaponType) {
         // Log significant energy changes (more than 1 unit) for debugging
         if (Math.abs(this.energy - oldEnergy) > 1) {
             console.log(`Energy updated: ${oldEnergy.toFixed(1)} -> ${this.energy.toFixed(1)} (Δ${deltaTime.toFixed(3)}s)`);
-        }
-    }
-
-    // Health regeneration (10% per second)
-    if (typeof this.health !== 'number') this.health = 100;
-    if (typeof this.maxHealth !== 'number') this.maxHealth = 100;
-    if (typeof this.healthRegenRate !== 'number') this.healthRegenRate = 10;
-
-    // Store old health for change detection
-    const oldHealth = this.health;
-
-    // Calculate health regeneration amount (10% per second)
-    const healthRegenAmount = this.healthRegenRate * deltaTime;
-    
-    // Apply health regeneration with bounds checking (only if not at max health)
-    if (this.health < this.maxHealth) {
-        this.health = Math.min(this.maxHealth, this.health + healthRegenAmount);
-    }
-
-    // Update UI only if health changed
-    if (this.health !== oldHealth) {
-        if (this.ui && typeof this.ui.updateHealth === 'function') {
-            this.ui.updateHealth(this.health, this.maxHealth);
-        }
-
-        // Log significant health changes for debugging
-        if (Math.abs(this.health - oldHealth) > 1) {
-            console.log(`Health regenerated: ${oldHealth.toFixed(1)} -> ${this.health.toFixed(1)} (Δ${deltaTime.toFixed(3)}s)`);
         }
     }
   }
@@ -2795,24 +2679,29 @@ fireCurrentWeapon(direction) {
         return;
     }
 
-    // Get weapon configuration
-    const weapon = this.weaponConfig[this.currentWeapon];
-    if (!weapon) {
-        console.error(`Unknown weapon type: ${this.currentWeapon}`);
-        return;
-    }
+    // Define energy costs for each weapon
+    const energyCosts = {
+        'LASER': 25,    // 4 shots (100/25 = 4)
+        'BOUNCE': 50,   // 2-3 shots (100/40 = 2.5)
+        'GRENADE': 100  // 1 shot (requires full energy)
+    };
 
     // Check if we have enough energy
-    if (this.energy < weapon.energyCost) {
-        console.log(`Not enough energy for ${this.currentWeapon} (${this.energy}/${weapon.energyCost})`);
+    const energyCost = energyCosts[this.currentWeapon];
+    if (this.energy < energyCost) {
+        console.log(`Not enough energy for ${this.currentWeapon}`);
         return;
     }
 
-    // Set cooldown based on weapon configuration
-    this.weaponCooldowns.set(this.currentWeapon, now + weapon.cooldown);
+    // Set cooldown based on weapon type
+    const cooldownTime = this.currentWeapon === 'GRENADE' ? 1000 :
+                        this.currentWeapon === 'BOUNCE' ? 500 :
+                        250; // Slightly increased laser cooldown for balance
+
+    this.weaponCooldowns.set(this.currentWeapon, now + cooldownTime);
 
     // Consume energy
-    this.energy = Math.max(0, this.energy - weapon.energyCost);
+    this.energy = Math.max(0, this.energy - energyCost);
     
     // Update UI with energy change
     if (this.ui && typeof this.ui.updateEnergy === 'function') {
@@ -2824,20 +2713,13 @@ fireCurrentWeapon(direction) {
     const position = this.playerShip.position.clone().add(shipDirection.multiplyScalar(1.5));
     position.y = 0.5; // Set height
 
-    // Calculate damage with critical hit system
-    const isCritical = Math.random() < weapon.criticalChance;
-    const finalDamage = isCritical ? Math.floor(weapon.damage * weapon.criticalMultiplier) : weapon.damage;
-    
-    // Log weapon firing with damage info
-    console.log(`🔥 ${this.currentWeapon} fired: ${finalDamage} damage${isCritical ? ' (CRITICAL!)' : ''}, Energy: ${this.energy}/${this.maxEnergy}`);
-
     // Create weapon effect based on type
     switch (this.currentWeapon) {
         case 'LASER':
-            this.fireLaser(position, shipDirection.normalize(), finalDamage, isCritical);
+            this.fireLaser(position, shipDirection.normalize());
             break;
         case 'BOUNCE':
-            this.fireBouncingLaser(position, shipDirection.normalize(), finalDamage, isCritical);
+            this.fireBouncingLaser(position, shipDirection.normalize());
             break;
         case 'GRENADE':
             // Grenades are handled separately through handleGrenadeTargeting
@@ -2854,22 +2736,37 @@ fireCurrentWeapon(direction) {
     this.playSound(soundMap[this.currentWeapon]);
 
     // Visual feedback for firing
-    this.createMuzzleFlash(position, shipDirection, isCritical);
+    this.createMuzzleFlash(position, shipDirection);
 
     // Send network event for weapon firing
     if (this.networkManager && this.networkManager.isConnected) {
+        const weaponDamage = {
+            'LASER': 35,    // Increased from 25 for more lethal combat
+            'BOUNCE': 45,   // Increased from 30 for tactical advantage
+            'GRENADE': 75   // Increased from 50 for devastating hits
+        };
+        
+        // Use actual weapon speeds to match local projectile movement
+        const weaponSpeed = {
+            'LASER': 50,    // Match RegularLaser speed
+            'BOUNCE': 30,   // Match BounceLaser speed
+            'GRENADE': 15   // Match GrenadeLaser speed
+        };
+        
         this.networkManager.sendWeaponFired(
             this.currentWeapon,
             position,
             shipDirection.normalize(),
-            weapon.speed,
-            finalDamage,
-            isCritical
+            weaponSpeed[this.currentWeapon] || 50,  // Use actual weapon speed
+            weaponDamage[this.currentWeapon] || 25
         );
     }
+
+    // Log energy state for debugging
+    console.log(`Weapon fired: ${this.currentWeapon}, Energy remaining: ${this.energy}/${this.maxEnergy}`);
 }
 
-createMuzzleFlash(position, direction, isCritical) {
+createMuzzleFlash(position, direction) {
     // Create a quick flash effect at the firing position
     const flashGeometry = new THREE.CircleGeometry(0.3, 16);
     const flashMaterial = new THREE.MeshBasicMaterial({
@@ -2901,7 +2798,7 @@ createMuzzleFlash(position, direction, isCritical) {
     animate();
 }
 
-  fireLaser(position, direction, damage, isCritical) {
+  fireLaser(position, direction) {
     // Create laser geometry - make it longer and thinner for better visual
     const geometry = new THREE.CylinderGeometry(0.05, 0.05, 3, 8);
     geometry.rotateX(-Math.PI / 2); // Changed rotation to negative to flip direction
@@ -2957,7 +2854,7 @@ createMuzzleFlash(position, direction, isCritical) {
     });
   }
 
-  fireBouncingLaser(position, direction, damage, isCritical) {
+  fireBouncingLaser(position, direction) {
     // Create bouncing laser geometry - using a smaller sphere for better visuals
     const geometry = new THREE.SphereGeometry(0.15, 16, 16);
     const material = new THREE.MeshBasicMaterial({
@@ -3065,6 +2962,177 @@ createMuzzleFlash(position, direction, isCritical) {
     this.scene.add(light);
 
     // Animate particles and effects
+    let frame = 0;
+    const animate = () => {
+      frame++;
+      
+      // Update particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const particle = particles[i];
+        
+        // Move particle
+        particle.position.add(particle.userData.velocity);
+        
+        // Reduce life
+        particle.userData.life -= 0.05;
+        
+        // Update opacity
+        particle.material.opacity = particle.userData.life;
+        
+        // Remove dead particles
+        if (particle.userData.life <= 0) {
+          this.scene.remove(particle);
+          particles.splice(i, 1);
+        }
+      }
+
+      // Update flash
+      flash.scale.addScalar(0.2);
+      flashMaterial.opacity *= 0.8;
+
+      // Update light
+      light.intensity *= 0.8;
+
+      // Continue animation if particles remain
+      if (particles.length > 0 && frame < 20) {
+        requestAnimationFrame(animate);
+      } else {
+        // Clean up
+        this.scene.remove(flash);
+        this.scene.remove(light);
+      }
+    };
+
+    // Start animation
+    animate();
+  }
+
+  updateLasers() {
+    if (!this.lasers) return;
+    
+    for (let i = this.lasers.length - 1; i >= 0; i--) {
+      const laser = this.lasers[i];
+      
+      // Move laser
+      laser.mesh.position.add(laser.direction.clone().multiplyScalar(laser.speed));
+      
+      // Update trail effect
+      laser.trailPoints.push(laser.mesh.position.clone());
+      if (laser.trailPoints.length > 8) { // Reduced trail length for better performance
+        laser.trailPoints.shift();
+      }
+      
+      // Update trail geometry
+      const positions = new Float32Array(laser.trailPoints.length * 3);
+      for (let j = 0; j < laser.trailPoints.length; j++) {
+        positions[j * 3] = laser.trailPoints[j].x;
+        positions[j * 3 + 1] = laser.trailPoints[j].y;
+        positions[j * 3 + 2] = laser.trailPoints[j].z;
+      }
+      laser.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      
+      // Pulse effect
+      laser.pulsePhase += 0.3;
+      const pulse = Math.sin(laser.pulsePhase) * 0.2 + 0.8;
+      laser.mesh.material.opacity = pulse;
+      const light = laser.mesh.children[0];
+      if (light) {
+        light.intensity = pulse * 2;
+      }
+      
+      // Increment lifetime
+      laser.lifeTime++;
+      
+      // Remove old lasers
+      if (laser.lifeTime > laser.maxLifeTime) {
+        this.scene.remove(laser.mesh);
+        this.scene.remove(laser.trail);
+        this.lasers.splice(i, 1);
+        continue;
+      }
+      
+      // Check for collisions with obstacles
+      for (let j = 0; j < this.obstacles.length; j++) {
+        const obstacle = this.obstacles[j];
+        
+        // Check if obstacle has the new structure
+        if (!obstacle || !obstacle.data || !obstacle.data.position) {
+          continue; // Skip invalid obstacles
+        }
+        
+        // Simple distance check
+        if (laser.mesh.position.distanceTo(obstacle.data.position) < 1.5) {
+          // Create enhanced hit effect
+          this.createEnhancedHitEffect(laser.mesh.position.clone(), laser.direction.clone());
+          
+          // Remove laser
+          this.scene.remove(laser.mesh);
+          this.scene.remove(laser.trail);
+          this.lasers.splice(i, 1);
+          break;
+        }
+      }
+    }
+  }
+
+  createEnhancedHitEffect(position, direction) {
+    // Create a burst of particles
+    const particleCount = 15;
+    const particles = [];
+    
+    // Create particle material
+    const particleMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    });
+
+    for (let i = 0; i < particleCount; i++) {
+      // Create small particle geometry
+      const particleGeometry = new THREE.PlaneGeometry(0.1, 0.1);
+      const particle = new THREE.Mesh(particleGeometry, particleMaterial.clone());
+      
+      // Position at hit point
+      particle.position.copy(position);
+      
+      // Random velocity based on impact direction
+      const spread = Math.PI / 2; // 90 degree spread
+      const angle = Math.random() * spread - spread/2;
+      const speed = 0.2 + Math.random() * 0.3;
+      
+      // Calculate velocity
+      const velocity = direction.clone()
+        .applyAxisAngle(new THREE.Vector3(0, 1, 0), angle)
+        .multiplyScalar(speed);
+      
+      particle.userData.velocity = velocity;
+      particle.userData.life = 1.0; // Full life
+      
+      this.scene.add(particle);
+      particles.push(particle);
+    }
+
+    // Add impact flash
+    const flashGeometry = new THREE.CircleGeometry(0.3, 16);
+    const flashMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    });
+    
+    const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+    flash.position.copy(position);
+    flash.lookAt(position.clone().add(direction));
+    this.scene.add(flash);
+
+    // Add point light
+    const light = new THREE.PointLight(0x00ffff, 2, 4);
+    light.position.copy(position);
+    this.scene.add(light);
+
+    // Animate particles
     let frame = 0;
     const animate = () => {
       frame++;

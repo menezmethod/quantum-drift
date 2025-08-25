@@ -29,6 +29,7 @@ export class NetworkManager {
     this.pingInterval = null;
     this.lastUpdateTime = 0;
     this.updateRate = 50; // 20 FPS updates
+    this.lastHealthUpdate = Date.now();
     
     // Event handlers
     this.eventHandlers = new Map();
@@ -471,8 +472,7 @@ export class NetworkManager {
   handlePlayerDamaged(data) {
     console.log('🌐 Player damaged event received:', data);
     console.log('🌐 Target ID:', data.targetId, 'Local player ID:', this.playerId);
-    console.log('🌐 Damage:', data.damage, 'Original:', data.originalDamage, 'Type:', data.damageType);
-    console.log('🌐 Critical:', data.isCritical, 'Distance:', data.distance, 'Armor Reduction:', data.armorReduction);
+    console.log('🌐 Damage:', data.damage, 'New health:', data.newHealth);
     
     // Update player health
     const player = this.otherPlayers.get(data.targetId);
@@ -493,49 +493,12 @@ export class NetworkManager {
         const maxHealth = this.game.maxHealth || 100; // Fallback to 100 if undefined
         console.log('🌐 UI found, updating health bar to:', data.newHealth, '/', maxHealth);
         this.game.ui.updateHealth(this.game.health, maxHealth);
-        
-        // Show damage feedback
-        this.showDamageFeedback(data);
       } else {
         console.error('❌ No UI found to update health!');
       }
     } else {
       console.log('🌐 Not local player, skipping health bar update');
     }
-  }
-  
-  // Show visual damage feedback
-  showDamageFeedback(damageData) {
-    // Create damage number popup
-    const damagePopup = document.createElement('div');
-    damagePopup.className = 'damage-popup';
-    damagePopup.textContent = `-${damageData.damage}`;
-    
-    // Style based on damage type and critical hits
-    if (damageData.isCritical) {
-      damagePopup.classList.add('critical');
-      damagePopup.textContent = `-${damageData.damage} (CRITICAL!)`;
-    }
-    
-    if (damageData.damageType === 'explosive') {
-      damagePopup.classList.add('explosive');
-    } else if (damageData.damageType === 'energy') {
-      damagePopup.classList.add('energy');
-    }
-    
-    // Position the popup
-    damagePopup.style.position = 'fixed';
-    damagePopup.style.left = '50%';
-    damagePopup.style.top = '40%';
-    damagePopup.style.transform = 'translate(-50%, -50%)';
-    damagePopup.style.zIndex = '1000';
-    
-    document.body.appendChild(damagePopup);
-    
-    // Animate and remove
-    setTimeout(() => {
-      damagePopup.remove();
-    }, 2000);
   }
   
   handlePlayerKilled(data) {
@@ -813,25 +776,66 @@ export class NetworkManager {
       clearInterval(this.updateInterval);
     }
     
+    // Send player updates every 50ms (20 FPS)
     this.updateInterval = setInterval(() => {
       if (this.isConnected && this.game && this.game.playerShip) {
+        // Update health regeneration
+        this.updateHealthRegeneration();
+        
         // Send player update to server
-        const updateData = {
-          position: this.game.playerShip.position,
-          rotation: { y: this.game.playerShip.rotation.y },
-          health: this.game.health,
-          energy: this.game.energy,
-          currentWeapon: this.game.currentWeapon
-        };
-        
-        this.socket.emit('playerUpdate', updateData);
-        
-        // Periodically sync world state (every 5 seconds)
-        if (Date.now() % 5000 < 50) { // Every ~5 seconds
-          this.syncWorldWithServer();
-        }
+        this.sendPlayerUpdate();
       }
-    }, this.updateRate);
+    }, 50);
+    
+    // Sync world with server every 5 seconds
+    this.worldSyncInterval = setInterval(() => {
+      if (this.isConnected && this.game && this.game.playerShip) {
+        this.syncWorldWithServer();
+      }
+    }, 5000);
+  }
+  
+  sendPlayerUpdate() {
+    if (!this.isConnected || !this.game || !this.game.playerShip) return;
+    
+    const updateData = {
+      position: this.game.playerShip.position,
+      rotation: { y: this.game.playerShip.rotation.y },
+      health: this.game.health,
+      energy: this.game.energy,
+      currentWeapon: this.game.currentWeapon
+    };
+    
+    this.socket.emit('playerUpdate', updateData);
+  }
+  
+  updateHealthRegeneration() {
+    if (!this.game || typeof this.game.health !== 'number') return;
+    
+    const now = Date.now();
+    const timeSinceLastUpdate = now - (this.lastHealthUpdate || now);
+    this.lastHealthUpdate = now;
+    
+    // Convert to seconds
+    const deltaTime = timeSinceLastUpdate / 1000;
+    
+    // Health regeneration rate: 2 HP per second (2% of max health) - Balanced for combat
+    const regenerationRate = 2;
+    const regenerationAmount = regenerationRate * deltaTime;
+    
+    // Apply regeneration
+    const oldHealth = this.game.health;
+    this.game.health = Math.min(this.game.maxHealth || 100, this.game.health + regenerationAmount);
+    
+    // Update UI if health changed significantly
+    if (Math.abs(this.game.health - oldHealth) > 0.1) {
+      if (this.game.ui && typeof this.game.ui.updateHealth === 'function') {
+        this.game.ui.updateHealth(this.game.health, this.game.maxHealth || 100);
+      }
+      
+      // Log health regeneration for debugging
+      console.log(`🌐 Network health regenerated: ${oldHealth.toFixed(1)} -> ${this.game.health.toFixed(1)} (Δ${deltaTime.toFixed(3)}s)`);
+    }
   }
   
   stopPlayerUpdates() {
@@ -839,29 +843,14 @@ export class NetworkManager {
       clearInterval(this.updateInterval);
       this.updateInterval = null;
     }
+    
+    if (this.worldSyncInterval) {
+      clearInterval(this.worldSyncInterval);
+      this.worldSyncInterval = null;
+    }
   }
   
-  sendPlayerUpdate() {
-    if (!this.socket || !this.isConnected || !this.game.playerShip) return;
-    
-    const update = {
-      position: {
-        x: this.game.playerShip.position.x,
-        y: this.game.playerShip.position.y,
-        z: this.game.playerShip.position.z
-      },
-      rotation: {
-        y: this.game.playerShip.rotation.y
-      },
-      health: this.game.health,
-      energy: this.game.energy,
-      currentWeapon: this.game.currentWeapon
-    };
-    
-    this.socket.emit('playerUpdate', update);
-  }
-  
-  sendWeaponFired(weaponType, position, direction, speed, damage, isCritical = false) {
+  sendWeaponFired(weaponType, position, direction, speed, damage) {
     if (!this.socket || !this.isConnected) return;
     
     const data = {
@@ -869,12 +858,9 @@ export class NetworkManager {
       position,
       direction,
       speed,
-      damage,
-      isCritical,
-      timestamp: Date.now()
+      damage
     };
     
-    console.log(`🌐 Sending weapon fired: ${weaponType}, ${damage} damage${isCritical ? ' (CRITICAL)' : ''}`);
     this.socket.emit('weaponFired', data);
   }
   

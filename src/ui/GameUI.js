@@ -4,7 +4,6 @@
 export class GameUI {
   constructor() {
     this.uiContainer = null;
-    this.lastHealth = 100; // Track last health value for regeneration detection
     this.controlsInfo = null;
     this.healthBar = null;
     this.energyBar = null;
@@ -49,7 +48,8 @@ export class GameUI {
     healthBarContainer.appendChild(healthBarOuter);
     
     this.healthBar = document.createElement('div');
-    this.healthBar.className = 'bar-inner health-bar';
+    this.healthBar.className = 'bar-inner health-bar healthy';
+    this.healthBar.style.width = '100%'; // Ensure initial width is set
     healthBarOuter.appendChild(this.healthBar);
     
     // Create health percentage display
@@ -97,41 +97,8 @@ export class GameUI {
     this.weaponName.textContent = 'LASER';
     this.weaponIndicator.appendChild(this.weaponName);
     
-    // Create combat stats display
-    this.createCombatStats();
-    
     // Initially hide the UI
     this.uiContainer.classList.add('hidden');
-  }
-  
-  createCombatStats() {
-    const statsContainer = document.createElement('div');
-    statsContainer.className = 'combat-stats';
-    this.uiContainer.appendChild(statsContainer);
-    
-    // Damage dealt
-    this.damageDealtElement = document.createElement('div');
-    this.damageDealtElement.className = 'stat-item';
-    this.damageDealtElement.innerHTML = '<span class="stat-label">💥 Damage:</span> <span class="stat-value" id="damage-dealt">0</span>';
-    statsContainer.appendChild(this.damageDealtElement);
-    
-    // Damage taken
-    this.damageTakenElement = document.createElement('div');
-    this.damageTakenElement.className = 'stat-item';
-    this.damageTakenElement.innerHTML = '<span class="stat-label">🛡️ Taken:</span> <span class="stat-value" id="damage-taken">0</span>';
-    statsContainer.appendChild(this.damageTakenElement);
-    
-    // Critical hits
-    this.criticalHitsElement = document.createElement('div');
-    this.criticalHitsElement.className = 'stat-item';
-    this.criticalHitsElement.innerHTML = '<span class="stat-label">⚡ Crits:</span> <span class="stat-value" id="critical-hits">0</span>';
-    statsContainer.appendChild(this.criticalHitsElement);
-    
-    // K/D ratio
-    this.kdRatioElement = document.createElement('div');
-    this.kdRatioElement.className = 'stat-item';
-    this.kdRatioElement.innerHTML = '<span class="stat-label">🎯 K/D:</span> <span class="stat-value" id="kd-ratio">0.00</span>';
-    statsContainer.appendChild(this.kdRatioElement);
   }
   
   /**
@@ -161,32 +128,45 @@ export class GameUI {
    * @param {number} health - Current health value
    * @param {number} maxHealth - Maximum health value
    */
-  updateHealth(health, maxHealth) {
-    const percentage = (health / maxHealth) * 100;
-    this.healthBar.style.width = `${percentage}%`;
+  updateHealth(currentHealth, maxHealth) {
+    if (!this.healthBar || !this.healthPercentage) return;
     
-    // Change color based on health level
-    if (percentage < 30) {
-      this.healthBar.classList.add('critical');
-      this.healthBar.classList.remove('warning', 'regenerating');
-    } else if (percentage < 60) {
-      this.healthBar.classList.remove('critical', 'regenerating');
+    const percentage = Math.max(0, Math.min(100, (currentHealth / maxHealth) * 100));
+    
+    console.log(`🩺 UI Health Update: ${currentHealth}/${maxHealth} = ${percentage}%`);
+    
+    // Update health bar width
+    this.healthBar.style.width = `${percentage}%`;
+    console.log(`🩺 Health bar width set to: ${percentage}%`);
+    
+    // Update percentage text
+    this.healthPercentage.textContent = `${percentage.toFixed(0)}%`;
+    
+    // Add visual feedback for regeneration
+    if (currentHealth < maxHealth) {
+      // Add pulsing effect when regenerating
+      this.healthBar.classList.add('regenerating');
+      
+      // Remove pulsing effect when at full health
+      if (currentHealth >= maxHealth) {
+        this.healthBar.classList.remove('regenerating');
+      }
+    } else {
+      this.healthBar.classList.remove('regenerating');
+    }
+    
+    // Update health bar color based on health level - preserve bar-inner class
+    this.healthBar.className = 'bar-inner health-bar';
+    if (percentage > 60) {
+      this.healthBar.classList.add('healthy');
+    } else if (percentage > 30) {
       this.healthBar.classList.add('warning');
     } else {
-      this.healthBar.classList.remove('critical', 'warning', 'regenerating');
+      this.healthBar.classList.add('critical');
     }
     
-    // Add regeneration effect if health is increasing
-    if (health > this.lastHealth) {
-      this.healthBar.classList.add('regenerating');
-      // Remove regeneration effect after a short delay
-      setTimeout(() => {
-        this.healthBar.classList.remove('regenerating');
-      }, 500);
-    }
-    
-    this.healthPercentage.textContent = `${percentage.toFixed(0)}%`;
-    this.lastHealth = health;
+    console.log(`🩺 Health bar classes:`, this.healthBar.className);
+    console.log(`🩺 Health bar style width:`, this.healthBar.style.width);
   }
   
   /**
@@ -201,7 +181,6 @@ export class GameUI {
     // Change color based on energy level
     if (percentage < 30) {
       this.energyBar.classList.add('critical');
-      this.energyBar.classList.remove('warning');
     } else if (percentage < 60) {
       this.energyBar.classList.remove('critical');
       this.energyBar.classList.add('warning');
@@ -213,42 +192,26 @@ export class GameUI {
   }
   
   /**
-   * Update weapon display
-   * @param {string} weaponName - Name of current weapon
+   * Update weapon indicator
+   * @param {string} weaponName - Name of the current weapon
    */
   updateWeapon(weaponName) {
-    if (this.weaponName) {
-      this.weaponName.textContent = weaponName;
-      this.weaponName.className = `weapon-name ${weaponName.toLowerCase()}`;
-    }
-  }
-  
-  /**
-   * Update combat statistics
-   * @param {object} stats - Combat statistics object
-   */
-  updateCombatStats(stats) {
-    if (stats.damageDealt !== undefined) {
-      const element = document.getElementById('damage-dealt');
-      if (element) element.textContent = stats.damageDealt;
-    }
+    this.weaponName.textContent = weaponName;
     
-    if (stats.damageTaken !== undefined) {
-      const element = document.getElementById('damage-taken');
-      if (element) element.textContent = stats.damageTaken;
-    }
+    // Remove all weapon classes
+    this.weaponName.classList.remove('laser', 'grenade', 'bounce');
     
-    if (stats.criticalHits !== undefined) {
-      const element = document.getElementById('critical-hits');
-      if (element) element.textContent = stats.criticalHits;
-    }
-    
-    if (stats.kills !== undefined && stats.deaths !== undefined) {
-      const element = document.getElementById('kd-ratio');
-      if (element) {
-        const ratio = stats.deaths > 0 ? (stats.kills / stats.deaths).toFixed(2) : stats.kills.toFixed(2);
-        element.textContent = ratio;
-      }
+    // Add the appropriate class for styling
+    switch(weaponName.toLowerCase()) {
+      case 'laser':
+        this.weaponName.classList.add('laser');
+        break;
+      case 'grenade':
+        this.weaponName.classList.add('grenade');
+        break;
+      case 'bounce':
+        this.weaponName.classList.add('bounce');
+        break;
     }
   }
 } 
