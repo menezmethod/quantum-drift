@@ -705,8 +705,8 @@ export class NetworkManager {
     // Create canvas-based text sprite for player name
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
-    canvas.width = 128;
-    canvas.height = 32;
+    canvas.width = 256; // Higher resolution for crisp text
+    canvas.height = 64; // Taller for better text rendering
     
     // Draw background
     context.fillStyle = 'rgba(0, 0, 0, 0.8)';
@@ -714,15 +714,35 @@ export class NetworkManager {
     
     // Draw border
     context.strokeStyle = `#${playerColor.toString(16).padStart(6, '0')}`;
-    context.lineWidth = 2;
-    context.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+    context.lineWidth = 3;
+    context.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
     
     // Draw text
     context.fillStyle = `#${playerColor.toString(16).padStart(6, '0')}`;
-    context.font = 'bold 16px Arial';
+    context.font = 'bold 32px Arial'; // Larger font for better readability
     context.textAlign = 'center';
     context.textBaseline = 'middle';
+    
+    // Add text shadow for better readability
+    context.shadowColor = 'rgba(0, 0, 0, 0.8)';
+    context.shadowBlur = 4;
+    context.shadowOffsetX = 2;
+    context.shadowOffsetY = 2;
+    
     context.fillText(`Player-${playerData.id.substring(0, 6)}`, canvas.width / 2, canvas.height / 2);
+    
+    // Add subtle glow effect
+    context.shadowColor = `#${playerColor.toString(16).padStart(6, '0')}`;
+    context.shadowBlur = 8;
+    context.shadowOffsetX = 0;
+    context.shadowOffsetY = 0;
+    context.fillText(`Player-${playerData.id.substring(0, 6)}`, canvas.width / 2, canvas.height / 2);
+    
+    // Reset shadow for border
+    context.shadowColor = 'transparent';
+    context.shadowBlur = 0;
+    context.shadowOffsetX = 0;
+    context.shadowOffsetY = 0;
     
     // Create texture and sprite
     const texture = new THREE.CanvasTexture(canvas);
@@ -733,7 +753,7 @@ export class NetworkManager {
     });
     const sprite = new THREE.Sprite(spriteMaterial);
     sprite.position.set(0, 1.5, 0);
-    sprite.scale.set(2, 0.5, 1);
+    sprite.scale.set(0.8, 0.2, 1); // Much smaller scale for proper size
     shipGroup.add(sprite);
     
     console.log('🌐 Created colored ship model at position:', shipGroup.position);
