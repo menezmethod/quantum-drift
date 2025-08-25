@@ -1,6 +1,5 @@
 import { io } from 'socket.io-client';
 import * as THREE from 'three';
-import { CSS2DObject } from '@three/examples/renderers/CSS2DRenderer';
 
 console.log('🌐 NetworkManager.js file loaded and imported - VERSION 2.0 -', new Date().toISOString());
 
@@ -472,7 +471,8 @@ export class NetworkManager {
   handlePlayerDamaged(data) {
     console.log('🌐 Player damaged event received:', data);
     console.log('🌐 Target ID:', data.targetId, 'Local player ID:', this.playerId);
-    console.log('🌐 Damage:', data.damage, 'New health:', data.newHealth);
+    console.log('🌐 Damage:', data.damage, 'Original:', data.originalDamage, 'Type:', data.damageType);
+    console.log('🌐 Critical:', data.isCritical, 'Distance:', data.distance, 'Armor Reduction:', data.armorReduction);
     
     // Update player health
     const player = this.otherPlayers.get(data.targetId);
@@ -493,12 +493,49 @@ export class NetworkManager {
         const maxHealth = this.game.maxHealth || 100; // Fallback to 100 if undefined
         console.log('🌐 UI found, updating health bar to:', data.newHealth, '/', maxHealth);
         this.game.ui.updateHealth(this.game.health, maxHealth);
+        
+        // Show damage feedback
+        this.showDamageFeedback(data);
       } else {
         console.error('❌ No UI found to update health!');
       }
     } else {
       console.log('🌐 Not local player, skipping health bar update');
     }
+  }
+  
+  // Show visual damage feedback
+  showDamageFeedback(damageData) {
+    // Create damage number popup
+    const damagePopup = document.createElement('div');
+    damagePopup.className = 'damage-popup';
+    damagePopup.textContent = `-${damageData.damage}`;
+    
+    // Style based on damage type and critical hits
+    if (damageData.isCritical) {
+      damagePopup.classList.add('critical');
+      damagePopup.textContent = `-${damageData.damage} (CRITICAL!)`;
+    }
+    
+    if (damageData.damageType === 'explosive') {
+      damagePopup.classList.add('explosive');
+    } else if (damageData.damageType === 'energy') {
+      damagePopup.classList.add('energy');
+    }
+    
+    // Position the popup
+    damagePopup.style.position = 'fixed';
+    damagePopup.style.left = '50%';
+    damagePopup.style.top = '40%';
+    damagePopup.style.transform = 'translate(-50%, -50%)';
+    damagePopup.style.zIndex = '1000';
+    
+    document.body.appendChild(damagePopup);
+    
+    // Animate and remove
+    setTimeout(() => {
+      damagePopup.remove();
+    }, 2000);
   }
   
   handlePlayerKilled(data) {
@@ -610,69 +647,34 @@ export class NetworkManager {
     console.log('🌐 World coordinates - Network player:', 
       `x=${playerData.position.x.toFixed(2)}, z=${playerData.position.z.toFixed(2)}`);
     
-    // Create ship model (similar to local player but different color)
-    // Use a cone geometry as a ship placeholder, but make it look more ship-like
-    const geometry = new THREE.ConeGeometry(0.4, 1.2, 8);
+    // Create player mesh (similar to local player but different color)
+    const geometry = new THREE.ConeGeometry(0.5, 1, 8);
     geometry.rotateX(Math.PI / 2);
     
-    // Generate a unique color for each player based on their ID
-    const playerColors = [
-      0xff0000, // Red
-      0x00ff00, // Green
-      0x0000ff, // Blue
-      0xffff00, // Yellow
-      0xff00ff, // Magenta
-      0x00ffff, // Cyan
-      0xff8800, // Orange
-      0x8800ff, // Purple
-      0xff0088, // Pink
-      0x88ff00   // Lime
-    ];
-    
-    const colorIndex = parseInt(playerData.id.slice(-1), 16) % playerColors.length;
-    const playerColor = playerColors[colorIndex];
-    
     const material = new THREE.MeshPhongMaterial({
-      color: playerColor,
-      emissive: playerColor,
-      emissiveIntensity: 0.3,
+      color: 0xff0000, // Red for other players
+      emissive: 0x660000,
       shininess: 100
     });
     
-    const shipMesh = new THREE.Mesh(geometry, material);
-    shipMesh.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
-    shipMesh.rotation.y = playerData.rotation.y;
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
+    mesh.rotation.y = playerData.rotation.y;
     
-    // Add engine glow effect
-    const engineGlow = new THREE.PointLight(playerColor, 0.8, 3);
-    engineGlow.position.set(0, 0, -0.6);
-    shipMesh.add(engineGlow);
-    
-    console.log('🌐 Created ship mesh at position:', shipMesh.position);
-    console.log('🌐 Adding ship to scene...');
+    console.log('🌐 Created mesh at position:', mesh.position);
+    console.log('🌐 Adding mesh to scene...');
     
     // Add to scene
-    this.game.scene.add(shipMesh);
+    this.game.scene.add(mesh);
     
-    console.log('🌐 Ship added to scene. Scene children count:', this.game.scene.children.length);
-    console.log('🌐 Ship visible:', shipMesh.visible);
-    console.log('🌐 Ship position after adding:', shipMesh.position);
-    
-    // Create player name label
-    const nameDiv = document.createElement('div');
-    nameDiv.className = 'player-name-label';
-    nameDiv.textContent = `Player-${playerData.id.slice(-4)}`;
-    nameDiv.style.color = `#${playerColor.toString(16).padStart(6, '0')}`;
-    
-    const nameLabel = new CSS2DObject(nameDiv);
-    nameLabel.position.set(0, 1.5, 0); // Position above the ship
-    shipMesh.add(nameLabel);
+    console.log('🌐 Mesh added to scene. Scene children count:', this.game.scene.children.length);
+    console.log('🌐 Mesh visible:', mesh.visible);
+    console.log('🌐 Mesh position after adding:', mesh.position);
     
     // Store player data
     this.otherPlayers.set(playerData.id, {
       id: playerData.id,
-      mesh: shipMesh,
-      nameLabel: nameLabel,
+      mesh: mesh,
       position: playerData.position,
       rotation: playerData.rotation,
       health: playerData.health,
@@ -690,16 +692,8 @@ export class NetworkManager {
   
   removeOtherPlayer(playerId) {
     const player = this.otherPlayers.get(playerId);
-    if (player) {
-      if (player.mesh) {
-        this.game.scene.remove(player.mesh);
-      }
-      if (player.nameLabel) {
-        // Remove the name label from the DOM
-        if (player.nameLabel.element && player.nameLabel.element.parentNode) {
-          player.nameLabel.element.parentNode.removeChild(player.nameLabel.element);
-        }
-      }
+    if (player && player.mesh) {
+      this.game.scene.remove(player.mesh);
       this.otherPlayers.delete(playerId);
     }
   }
@@ -867,7 +861,7 @@ export class NetworkManager {
     this.socket.emit('playerUpdate', update);
   }
   
-  sendWeaponFired(weaponType, position, direction, speed, damage) {
+  sendWeaponFired(weaponType, position, direction, speed, damage, isCritical = false) {
     if (!this.socket || !this.isConnected) return;
     
     const data = {
@@ -875,9 +869,12 @@ export class NetworkManager {
       position,
       direction,
       speed,
-      damage
+      damage,
+      isCritical,
+      timestamp: Date.now()
     };
     
+    console.log(`🌐 Sending weapon fired: ${weaponType}, ${damage} damage${isCritical ? ' (CRITICAL)' : ''}`);
     this.socket.emit('weaponFired', data);
   }
   

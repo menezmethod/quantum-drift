@@ -51,6 +51,22 @@ class Player {
     this.lastUpdate = Date.now();
     this.isAlive = true;
     this.spawnTime = Date.now();
+    
+    // Damage resistance system
+    this.armor = 0; // Base armor value
+    this.damageResistances = {
+      energy: 0.1,      // 10% resistance to energy weapons (lasers)
+      explosive: 0.2,   // 20% resistance to explosive weapons (grenades)
+      kinetic: 0.0      // No resistance to kinetic weapons
+    };
+    
+    // Combat stats
+    this.damageDealt = 0;
+    this.damageTaken = 0;
+    this.kills = 0;
+    this.deaths = 0;
+    this.criticalHits = 0;
+    this.criticalHitsTaken = 0;
   }
 
   update(data) {
@@ -58,9 +74,39 @@ class Player {
     if (data.rotation) this.rotation = data.rotation;
     if (data.health !== undefined) this.health = data.health;
     if (data.energy !== undefined) this.energy = data.energy;
-    if (data.currentWeapon) this.currentWeapon = this.currentWeapon;
+    if (data.currentWeapon) this.currentWeapon = data.currentWeapon;
     if (data.team !== undefined) this.team = data.team;
     this.lastUpdate = Date.now();
+  }
+
+  // Enhanced damage calculation with resistances
+  takeDamage(amount, damageType = 'energy', isCritical = false) {
+    if (!this.isAlive) return 0;
+    
+    // Apply armor reduction
+    let finalDamage = Math.max(1, amount - this.armor);
+    
+    // Apply damage type resistance
+    const resistance = this.damageResistances[damageType] || 0;
+    finalDamage = Math.floor(finalDamage * (1 - resistance));
+    
+    // Apply critical hit multiplier
+    if (isCritical) {
+      finalDamage = Math.floor(finalDamage * 1.5);
+      this.criticalHitsTaken++;
+    }
+    
+    // Ensure minimum damage
+    finalDamage = Math.max(1, finalDamage);
+    
+    // Apply damage
+    this.health = Math.max(0, this.health - finalDamage);
+    this.damageTaken += finalDamage;
+    
+    // Log damage for debugging
+    console.log(`🌍 Player ${this.id} took ${finalDamage} damage (${damageType})${isCritical ? ' (CRITICAL)' : ''}`);
+    
+    return finalDamage;
   }
 
   // Health regeneration method
@@ -217,7 +263,7 @@ io.on('connection', (socket) => {
     const player = gameState.players[socket.id];
     if (!player || !player.isAlive) return;
     
-    // Create projectile
+    // Create projectile with enhanced data
     const projectileId = `${socket.id}_${Date.now()}`;
     const projectile = {
       id: projectileId,
@@ -227,6 +273,8 @@ io.on('connection', (socket) => {
       direction: data.direction,
       speed: data.speed,
       damage: data.damage,
+      isCritical: data.isCritical || false,
+      timestamp: data.timestamp || Date.now(),
       createdAt: Date.now()
     };
     
@@ -347,18 +395,67 @@ setInterval(() => {
             Math.pow(projectile.position.z - player.position.z, 2)
           );
           
-          if (distance < 1.0) { // Collision threshold
-            // Handle collision
-            player.health = Math.max(0, player.health - projectile.damage);
+          // Dynamic collision threshold based on weapon type
+          const collisionThreshold = projectile.weaponType === 'GRENADE' ? 2.0 : 1.0;
+          
+          if (distance < collisionThreshold) {
+            // Calculate damage with falloff based on distance
+            let finalDamage = projectile.damage;
+            
+            // Determine damage type based on weapon
+            let damageType = 'energy'; // Default
+            if (projectile.weaponType === 'GRENADE') {
+              damageType = 'explosive';
+            } else if (projectile.weaponType === 'LASER' || projectile.weaponType === 'BOUNCE') {
+              damageType = 'energy';
+            }
+            
+            // Apply damage falloff for different weapon types
+            if (projectile.weaponType === 'GRENADE') {
+              // Grenades have area damage with falloff
+              const maxRadius = 8; // Maximum explosion radius
+              if (distance <= maxRadius) {
+                const falloffFactor = 1 - (distance / maxRadius);
+                finalDamage = Math.floor(projectile.damage * falloffFactor);
+              } else {
+                finalDamage = 0; // Outside explosion radius
+              }
+            } else if (projectile.weaponType === 'LASER') {
+              // Lasers have minimal falloff over long distances
+              const maxRange = 100;
+              if (distance > maxRange) {
+                const falloffFactor = 1 - ((distance - maxRange) / maxRange) * 0.3;
+                finalDamage = Math.floor(projectile.damage * Math.max(0.7, falloffFactor));
+              }
+            } else if (projectile.weaponType === 'BOUNCE') {
+              // Bounce lasers have moderate falloff
+              const maxRange = 80;
+              if (distance > maxRange) {
+                const falloffFactor = 1 - ((distance - maxRange) / maxRange) * 0.5;
+                finalDamage = Math.floor(projectile.damage * Math.max(0.5, falloffFactor));
+              }
+            }
+            
+            // Ensure minimum damage
+            finalDamage = Math.max(1, finalDamage);
+            
+            // Handle collision using the new damage system
+            const actualDamage = player.takeDamage(finalDamage, damageType, projectile.isCritical);
             
             // Remove projectile
             delete gameState.projectiles[projectileId];
             
-            // Notify all players
+            // Notify all players with enhanced damage info
             io.emit('projectileHit', {
               projectileId: projectileId,
               targetId: player.id,
-              damage: projectile.damage
+              damage: actualDamage,
+              originalDamage: projectile.damage,
+              isCritical: projectile.isCritical,
+              weaponType: projectile.weaponType,
+              damageType: damageType,
+              distance: Math.round(distance * 100) / 100,
+              armorReduction: finalDamage - actualDamage
             });
             
             if (player.health <= 0) {
@@ -368,7 +465,10 @@ setInterval(() => {
               io.emit('playerKilled', {
                 killerId: projectile.playerId,
                 victimId: player.id,
-                weaponType: projectile.weaponType
+                weaponType: projectile.weaponType,
+                damage: finalDamage,
+                isCritical: projectile.isCritical,
+                distance: Math.round(distance * 100) / 100
               });
             }
           }

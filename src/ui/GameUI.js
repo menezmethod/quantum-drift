@@ -97,8 +97,41 @@ export class GameUI {
     this.weaponName.textContent = 'LASER';
     this.weaponIndicator.appendChild(this.weaponName);
     
+    // Create combat stats display
+    this.createCombatStats();
+    
     // Initially hide the UI
     this.uiContainer.classList.add('hidden');
+  }
+  
+  createCombatStats() {
+    const statsContainer = document.createElement('div');
+    statsContainer.className = 'combat-stats';
+    this.uiContainer.appendChild(statsContainer);
+    
+    // Damage dealt
+    this.damageDealtElement = document.createElement('div');
+    this.damageDealtElement.className = 'stat-item';
+    this.damageDealtElement.innerHTML = '<span class="stat-label">💥 Damage:</span> <span class="stat-value" id="damage-dealt">0</span>';
+    statsContainer.appendChild(this.damageDealtElement);
+    
+    // Damage taken
+    this.damageTakenElement = document.createElement('div');
+    this.damageTakenElement.className = 'stat-item';
+    this.damageTakenElement.innerHTML = '<span class="stat-label">🛡️ Taken:</span> <span class="stat-value" id="damage-taken">0</span>';
+    statsContainer.appendChild(this.damageTakenElement);
+    
+    // Critical hits
+    this.criticalHitsElement = document.createElement('div');
+    this.criticalHitsElement.className = 'stat-item';
+    this.criticalHitsElement.innerHTML = '<span class="stat-label">⚡ Crits:</span> <span class="stat-value" id="critical-hits">0</span>';
+    statsContainer.appendChild(this.criticalHitsElement);
+    
+    // K/D ratio
+    this.kdRatioElement = document.createElement('div');
+    this.kdRatioElement.className = 'stat-item';
+    this.kdRatioElement.innerHTML = '<span class="stat-label">🎯 K/D:</span> <span class="stat-value" id="kd-ratio">0.00</span>';
+    statsContainer.appendChild(this.kdRatioElement);
   }
   
   /**
@@ -168,6 +201,7 @@ export class GameUI {
     // Change color based on energy level
     if (percentage < 30) {
       this.energyBar.classList.add('critical');
+      this.energyBar.classList.remove('warning');
     } else if (percentage < 60) {
       this.energyBar.classList.remove('critical');
       this.energyBar.classList.add('warning');
@@ -179,26 +213,42 @@ export class GameUI {
   }
   
   /**
-   * Update weapon indicator
-   * @param {string} weaponName - Name of the current weapon
+   * Update weapon display
+   * @param {string} weaponName - Name of current weapon
    */
   updateWeapon(weaponName) {
-    this.weaponName.textContent = weaponName;
+    if (this.weaponName) {
+      this.weaponName.textContent = weaponName;
+      this.weaponName.className = `weapon-name ${weaponName.toLowerCase()}`;
+    }
+  }
+  
+  /**
+   * Update combat statistics
+   * @param {object} stats - Combat statistics object
+   */
+  updateCombatStats(stats) {
+    if (stats.damageDealt !== undefined) {
+      const element = document.getElementById('damage-dealt');
+      if (element) element.textContent = stats.damageDealt;
+    }
     
-    // Remove all weapon classes
-    this.weaponName.classList.remove('laser', 'grenade', 'bounce');
+    if (stats.damageTaken !== undefined) {
+      const element = document.getElementById('damage-taken');
+      if (element) element.textContent = stats.damageTaken;
+    }
     
-    // Add the appropriate class for styling
-    switch(weaponName.toLowerCase()) {
-      case 'laser':
-        this.weaponName.classList.add('laser');
-        break;
-      case 'grenade':
-        this.weaponName.classList.add('grenade');
-        break;
-      case 'bounce':
-        this.weaponName.classList.add('bounce');
-        break;
+    if (stats.criticalHits !== undefined) {
+      const element = document.getElementById('critical-hits');
+      if (element) element.textContent = stats.criticalHits;
+    }
+    
+    if (stats.kills !== undefined && stats.deaths !== undefined) {
+      const element = document.getElementById('kd-ratio');
+      if (element) {
+        const ratio = stats.deaths > 0 ? (stats.kills / stats.deaths).toFixed(2) : stats.kills.toFixed(2);
+        element.textContent = ratio;
+      }
     }
   }
 } 

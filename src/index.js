@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { CSS2DRenderer, CSS2DObject } from '@three/examples/renderers/CSS2DRenderer';
 import './styles/main.css';
 import { GameUI } from './ui/GameUI';
 import { MiniMap } from './ui/MiniMap';
@@ -57,9 +56,6 @@ class SimpleGame {
     // Create game UI
     this.ui = new GameUI();
     
-    // Initialize label renderer for player names
-    this.labelRenderer = null;
-    
     // Game properties
     this.boundarySize = 100; // Size of the playable area
     
@@ -75,6 +71,49 @@ class SimpleGame {
     // Initialize available weapons
     this.availableWeapons = ['LASER', 'GRENADE', 'BOUNCE'];
     this.weaponIndex = 0; // Start with LASER
+    
+    // Centralized weapon configuration system
+    this.weaponConfig = {
+      LASER: {
+        name: 'Laser',
+        damage: 20,           // Balanced damage
+        energyCost: 20,       // 5 shots per full energy
+        cooldown: 200,        // Fast firing rate
+        speed: 50,            // Fast projectile
+        range: 100,           // Long range
+        accuracy: 0.98,       // High accuracy
+        damageType: 'energy',
+        criticalChance: 0.15, // 15% crit chance
+        criticalMultiplier: 1.5
+      },
+      BOUNCE: {
+        name: 'Bounce Laser',
+        damage: 25,           // Higher damage than laser
+        energyCost: 35,       // ~3 shots per full energy
+        cooldown: 400,        // Medium firing rate
+        speed: 30,            // Medium speed
+        range: 80,            // Medium range
+        accuracy: 0.85,       // Lower accuracy due to bounce
+        damageType: 'energy',
+        criticalChance: 0.20, // 20% crit chance
+        criticalMultiplier: 1.8,
+        bounces: 3            // Number of bounces
+      },
+      GRENADE: {
+        name: 'Grenade',
+        damage: 40,           // High base damage
+        energyCost: 80,       // 1-2 shots per full energy
+        cooldown: 800,        // Slow firing rate
+        speed: 15,            // Slow projectile
+        range: 60,            // Medium range
+        accuracy: 0.70,       // Lower accuracy
+        damageType: 'explosive',
+        criticalChance: 0.25, // 25% crit chance
+        criticalMultiplier: 2.0,
+        explosionRadius: 8,   // Area of effect
+        damageFalloff: 0.8    // Damage reduction per unit from center
+      }
+    };
     
     // Load assets
     this.loadAssets();
@@ -120,14 +159,6 @@ class SimpleGame {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(this.renderer.domElement);
-    
-    // Setup label renderer for player names
-    this.labelRenderer = new CSS2DRenderer();
-    this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
-    this.labelRenderer.domElement.style.position = 'absolute';
-    this.labelRenderer.domElement.style.top = '0';
-    this.labelRenderer.domElement.style.pointerEvents = 'none';
-    document.body.appendChild(this.labelRenderer.domElement);
     
     // Add lights
     const ambientLight = new THREE.AmbientLight(0x404040);
@@ -819,12 +850,6 @@ class SimpleGame {
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(window.innerWidth, window.innerHeight);
-      
-      // Resize label renderer
-      if (this.labelRenderer) {
-        this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
-      }
-      
       this.resizeTimer = null;
     }, 100);
   }
@@ -1359,11 +1384,6 @@ selectWeapon(weaponType) {
     
     // Render scene
     this.renderer.render(this.scene, this.camera);
-    
-    // Render labels (player names)
-    if (this.labelRenderer) {
-      this.labelRenderer.render(this.scene, this.camera);
-    }
   }
   
   updatePlayer(deltaTime) {
@@ -2775,29 +2795,24 @@ fireCurrentWeapon(direction) {
         return;
     }
 
-    // Define energy costs for each weapon
-    const energyCosts = {
-        'LASER': 25,    // 4 shots (100/25 = 4)
-        'BOUNCE': 50,   // 2-3 shots (100/40 = 2.5)
-        'GRENADE': 100  // 1 shot (requires full energy)
-    };
-
-    // Check if we have enough energy
-    const energyCost = energyCosts[this.currentWeapon];
-    if (this.energy < energyCost) {
-        console.log(`Not enough energy for ${this.currentWeapon}`);
+    // Get weapon configuration
+    const weapon = this.weaponConfig[this.currentWeapon];
+    if (!weapon) {
+        console.error(`Unknown weapon type: ${this.currentWeapon}`);
         return;
     }
 
-    // Set cooldown based on weapon type
-    const cooldownTime = this.currentWeapon === 'GRENADE' ? 1000 :
-                        this.currentWeapon === 'BOUNCE' ? 500 :
-                        250; // Slightly increased laser cooldown for balance
+    // Check if we have enough energy
+    if (this.energy < weapon.energyCost) {
+        console.log(`Not enough energy for ${this.currentWeapon} (${this.energy}/${weapon.energyCost})`);
+        return;
+    }
 
-    this.weaponCooldowns.set(this.currentWeapon, now + cooldownTime);
+    // Set cooldown based on weapon configuration
+    this.weaponCooldowns.set(this.currentWeapon, now + weapon.cooldown);
 
     // Consume energy
-    this.energy = Math.max(0, this.energy - energyCost);
+    this.energy = Math.max(0, this.energy - weapon.energyCost);
     
     // Update UI with energy change
     if (this.ui && typeof this.ui.updateEnergy === 'function') {
@@ -2809,13 +2824,20 @@ fireCurrentWeapon(direction) {
     const position = this.playerShip.position.clone().add(shipDirection.multiplyScalar(1.5));
     position.y = 0.5; // Set height
 
+    // Calculate damage with critical hit system
+    const isCritical = Math.random() < weapon.criticalChance;
+    const finalDamage = isCritical ? Math.floor(weapon.damage * weapon.criticalMultiplier) : weapon.damage;
+    
+    // Log weapon firing with damage info
+    console.log(`🔥 ${this.currentWeapon} fired: ${finalDamage} damage${isCritical ? ' (CRITICAL!)' : ''}, Energy: ${this.energy}/${this.maxEnergy}`);
+
     // Create weapon effect based on type
     switch (this.currentWeapon) {
         case 'LASER':
-            this.fireLaser(position, shipDirection.normalize());
+            this.fireLaser(position, shipDirection.normalize(), finalDamage, isCritical);
             break;
         case 'BOUNCE':
-            this.fireBouncingLaser(position, shipDirection.normalize());
+            this.fireBouncingLaser(position, shipDirection.normalize(), finalDamage, isCritical);
             break;
         case 'GRENADE':
             // Grenades are handled separately through handleGrenadeTargeting
@@ -2832,37 +2854,22 @@ fireCurrentWeapon(direction) {
     this.playSound(soundMap[this.currentWeapon]);
 
     // Visual feedback for firing
-    this.createMuzzleFlash(position, shipDirection);
+    this.createMuzzleFlash(position, shipDirection, isCritical);
 
     // Send network event for weapon firing
     if (this.networkManager && this.networkManager.isConnected) {
-        const weaponDamage = {
-            'LASER': 25,
-            'BOUNCE': 30,
-            'GRENADE': 50
-        };
-        
-        // Use actual weapon speeds to match local projectile movement
-        const weaponSpeed = {
-            'LASER': 50,    // Match RegularLaser speed
-            'BOUNCE': 30,   // Match BounceLaser speed
-            'GRENADE': 15   // Match GrenadeLaser speed
-        };
-        
         this.networkManager.sendWeaponFired(
             this.currentWeapon,
             position,
             shipDirection.normalize(),
-            weaponSpeed[this.currentWeapon] || 50,  // Use actual weapon speed
-            weaponDamage[this.currentWeapon] || 25
+            weapon.speed,
+            finalDamage,
+            isCritical
         );
     }
-
-    // Log energy state for debugging
-    console.log(`Weapon fired: ${this.currentWeapon}, Energy remaining: ${this.energy}/${this.maxEnergy}`);
 }
 
-createMuzzleFlash(position, direction) {
+createMuzzleFlash(position, direction, isCritical) {
     // Create a quick flash effect at the firing position
     const flashGeometry = new THREE.CircleGeometry(0.3, 16);
     const flashMaterial = new THREE.MeshBasicMaterial({
@@ -2894,7 +2901,7 @@ createMuzzleFlash(position, direction) {
     animate();
 }
 
-  fireLaser(position, direction) {
+  fireLaser(position, direction, damage, isCritical) {
     // Create laser geometry - make it longer and thinner for better visual
     const geometry = new THREE.CylinderGeometry(0.05, 0.05, 3, 8);
     geometry.rotateX(-Math.PI / 2); // Changed rotation to negative to flip direction
@@ -2950,7 +2957,7 @@ createMuzzleFlash(position, direction) {
     });
   }
 
-  fireBouncingLaser(position, direction) {
+  fireBouncingLaser(position, direction, damage, isCritical) {
     // Create bouncing laser geometry - using a smaller sphere for better visuals
     const geometry = new THREE.SphereGeometry(0.15, 16, 16);
     const material = new THREE.MeshBasicMaterial({
