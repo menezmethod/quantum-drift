@@ -1381,6 +1381,50 @@ selectWeapon(weaponType) {
     // Update camera
     this.updateCamera();
   }
+
+  handlePlayerCollision() {
+    // Handle player collision with obstacles
+    // This method is called when checkObstacleCollisions() returns true
+    
+    // Reduce health slightly on collision (optional)
+    if (this.health > 0) {
+      this.health = Math.max(0, this.health - 5);
+      
+      // Update UI
+      if (this.ui && typeof this.ui.updateHealth === 'function') {
+        this.ui.updateHealth(this.health, this.maxHealth);
+      }
+      
+      // Log collision
+      console.log(`💥 Player collision! Health: ${this.health.toFixed(1)}/${this.maxHealth}`);
+    }
+    
+    // Flash collision warning
+    this.flashCollisionWarning();
+  }
+
+  flashCollisionWarning() {
+    // Flash the player ship red to indicate collision
+    if (this.playerShip && this.playerShip.material) {
+      // Store original color
+      const originalColor = this.playerShip.material.color.clone();
+      
+      // Flash red
+      this.playerShip.material.color.setHex(0xff0000);
+      
+      // Reset color after 200ms
+      setTimeout(() => {
+        if (this.playerShip && this.playerShip.material) {
+          this.playerShip.material.color.copy(originalColor);
+        }
+      }, 200);
+    }
+    
+    // Also flash the health bar if UI exists
+    if (this.ui && typeof this.ui.flashHealthBar === 'function') {
+      this.ui.flashHealthBar();
+    }
+  }
   
   updatePlayerMovement(deltaTime) {
     // Apply rotation when left/right keys are pressed
@@ -1450,6 +1494,103 @@ selectWeapon(weaponType) {
     
     // Update visual indicators for active controls
     this.updateControlIndicators();
+  }
+
+  updateThrusterEffects() {
+    // Update thruster particle effects based on movement
+    // This is a placeholder for future thruster effects
+    // For now, just log that it's called
+    if (this.keys.forward || this.keys.backward || this.keys.strafeLeft || this.keys.strafeRight) {
+      // Player is moving - could add thruster particles here
+      // console.log('🚀 Thruster effects active');
+    }
+  }
+
+  updateControlIndicators() {
+    // Update visual indicators for active controls
+    // This is a placeholder for future control indicators
+    // For now, just log that it's called
+    if (this.keys.forward || this.keys.backward || this.keys.left || this.keys.right || 
+        this.keys.strafeLeft || this.keys.strafeRight) {
+      // Controls are active - could add visual feedback here
+      // console.log('🎮 Control indicators active');
+    }
+  }
+
+  updateLasers() {
+    // Update regular laser projectiles
+    if (this.lasers && this.lasers.length > 0) {
+      for (let i = this.lasers.length - 1; i >= 0; i--) {
+        const laser = this.lasers[i];
+        
+        // Update laser position
+        laser.mesh.position.add(laser.direction.clone().multiplyScalar(laser.speed * 0.016)); // Assuming 60 FPS
+        
+        // Check if laser is out of bounds
+        if (Math.abs(laser.mesh.position.x) > 50 || Math.abs(laser.mesh.position.z) > 50) {
+          // Remove out of bounds laser
+          this.scene.remove(laser.mesh);
+          this.lasers.splice(i, 1);
+        }
+      }
+    }
+  }
+
+  createEnhancedHitEffect(position, direction) {
+    // Create an enhanced hit effect at the specified position
+    // This is a placeholder for future hit effects
+    
+    // Create a small explosion effect
+    const explosionGeometry = new THREE.SphereGeometry(0.5, 8, 6);
+    const explosionMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff6600,
+      transparent: true,
+      opacity: 0.8
+    });
+    
+    const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+    explosion.position.copy(position);
+    this.scene.add(explosion);
+    
+    console.log(`💥 Enhanced hit effect created at:`, position);
+  }
+
+  updateBouncingLasers() {
+    // Update bouncing laser projectiles
+    if (this.bouncingLasers && this.bouncingLasers.length > 0) {
+      for (let i = this.bouncingLasers.length - 1; i >= 0; i--) {
+        const laser = this.bouncingLasers[i];
+        
+        // Update laser position
+        laser.mesh.position.add(laser.direction.clone().multiplyScalar(laser.speed * 0.016));
+        
+        // Check if laser is out of bounds
+        if (Math.abs(laser.mesh.position.x) > 50 || Math.abs(laser.mesh.position.z) > 50) {
+          // Remove out of bounds laser
+          this.scene.remove(laser.mesh);
+          this.bouncingLasers.splice(i, 1);
+        }
+      }
+    }
+  }
+
+  updateGrenades() {
+    // Update grenade projectiles
+    if (this.grenades && this.grenades.length > 0) {
+      for (let i = this.grenades.length - 1; i >= 0; i--) {
+        const grenade = this.grenades[i];
+        
+        // Update grenade position
+        grenade.mesh.position.add(grenade.direction.clone().multiplyScalar(grenade.speed * 0.016));
+        
+        // Check if grenade is out of bounds
+        if (Math.abs(grenade.mesh.position.x) > 50 || Math.abs(grenade.mesh.position.z) > 50) {
+          // Remove out of bounds grenade
+          this.scene.remove(grenade.mesh);
+          this.grenades.splice(i, 1);
+        }
+      }
+    }
   }
   
   updateEnergyRegeneration(deltaTime) {
