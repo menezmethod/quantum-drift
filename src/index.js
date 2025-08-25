@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CSS2DRenderer, CSS2DObject } from '@three/examples/renderers/CSS2DRenderer';
 import './styles/main.css';
 import { GameUI } from './ui/GameUI';
 import { MiniMap } from './ui/MiniMap';
@@ -55,6 +56,9 @@ class SimpleGame {
     
     // Create game UI
     this.ui = new GameUI();
+    
+    // Initialize label renderer for player names
+    this.labelRenderer = null;
     
     // Game properties
     this.boundarySize = 100; // Size of the playable area
@@ -116,6 +120,14 @@ class SimpleGame {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(this.renderer.domElement);
+    
+    // Setup label renderer for player names
+    this.labelRenderer = new CSS2DRenderer();
+    this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    this.labelRenderer.domElement.style.position = 'absolute';
+    this.labelRenderer.domElement.style.top = '0';
+    this.labelRenderer.domElement.style.pointerEvents = 'none';
+    document.body.appendChild(this.labelRenderer.domElement);
     
     // Add lights
     const ambientLight = new THREE.AmbientLight(0x404040);
@@ -807,6 +819,12 @@ class SimpleGame {
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(window.innerWidth, window.innerHeight);
+      
+      // Resize label renderer
+      if (this.labelRenderer) {
+        this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
+      }
+      
       this.resizeTimer = null;
     }, 100);
   }
@@ -1341,6 +1359,11 @@ selectWeapon(weaponType) {
     
     // Render scene
     this.renderer.render(this.scene, this.camera);
+    
+    // Render labels (player names)
+    if (this.labelRenderer) {
+      this.labelRenderer.render(this.scene, this.camera);
+    }
   }
   
   updatePlayer(deltaTime) {

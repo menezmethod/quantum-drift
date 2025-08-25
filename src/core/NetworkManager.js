@@ -1,5 +1,6 @@
 import { io } from 'socket.io-client';
 import * as THREE from 'three';
+import { CSS2DObject } from '@three/examples/renderers/CSS2DRenderer';
 
 console.log('🌐 NetworkManager.js file loaded and imported - VERSION 2.0 -', new Date().toISOString());
 
@@ -609,72 +610,69 @@ export class NetworkManager {
     console.log('🌐 World coordinates - Network player:', 
       `x=${playerData.position.x.toFixed(2)}, z=${playerData.position.z.toFixed(2)}`);
     
-    // Create enhanced ship model for other players
-    const shipGroup = new THREE.Group();
+    // Create ship model (similar to local player but different color)
+    // Use a cone geometry as a ship placeholder, but make it look more ship-like
+    const geometry = new THREE.ConeGeometry(0.4, 1.2, 8);
+    geometry.rotateX(Math.PI / 2);
     
-    // Create main ship body (more detailed than simple cone)
-    const bodyGeometry = new THREE.ConeGeometry(0.4, 1.2, 6);
-    bodyGeometry.rotateX(Math.PI / 2);
+    // Generate a unique color for each player based on their ID
+    const playerColors = [
+      0xff0000, // Red
+      0x00ff00, // Green
+      0x0000ff, // Blue
+      0xffff00, // Yellow
+      0xff00ff, // Magenta
+      0x00ffff, // Cyan
+      0xff8800, // Orange
+      0x8800ff, // Purple
+      0xff0088, // Pink
+      0x88ff00   // Lime
+    ];
     
-    // Generate unique color for each player based on ID
-    const playerIdHash = playerData.id.split('').reduce((a, b) => {
-      a = ((a << 5) - a) + b.charCodeAt(0);
-      return a & a;
-    }, 0);
-    const shipColor = new THREE.Color().setHSL(Math.abs(playerIdHash) % 360 / 360, 0.7, 0.6);
+    const colorIndex = parseInt(playerData.id.slice(-1), 16) % playerColors.length;
+    const playerColor = playerColors[colorIndex];
     
-    const bodyMaterial = new THREE.MeshPhongMaterial({
-      color: shipColor,
-      emissive: shipColor.clone().multiplyScalar(0.3),
-      shininess: 100,
-      specular: 0x444444
+    const material = new THREE.MeshPhongMaterial({
+      color: playerColor,
+      emissive: playerColor,
+      emissiveIntensity: 0.3,
+      shininess: 100
     });
     
-    const shipBody = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    shipGroup.add(shipBody);
+    const shipMesh = new THREE.Mesh(geometry, material);
+    shipMesh.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
+    shipMesh.rotation.y = playerData.rotation.y;
     
     // Add engine glow effect
-    const engineGlow = new THREE.PointLight(shipColor, 0.8, 3);
+    const engineGlow = new THREE.PointLight(playerColor, 0.8, 3);
     engineGlow.position.set(0, 0, -0.6);
-    shipGroup.add(engineGlow);
+    shipMesh.add(engineGlow);
     
-    // Add wing details
-    const wingGeometry = new THREE.BoxGeometry(0.8, 0.1, 0.4);
-    const wingMaterial = new THREE.MeshPhongMaterial({
-      color: shipColor.clone().multiplyScalar(0.8),
-      emissive: shipColor.clone().multiplyScalar(0.1)
-    });
-    
-    const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
-    leftWing.position.set(-0.4, 0, 0);
-    shipGroup.add(leftWing);
-    
-    const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
-    rightWing.position.set(0.4, 0, 0);
-    shipGroup.add(rightWing);
-    
-    // Set position and rotation
-    shipGroup.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
-    shipGroup.rotation.y = playerData.rotation.y;
-    
-    console.log('🌐 Created enhanced ship at position:', shipGroup.position);
+    console.log('🌐 Created ship mesh at position:', shipMesh.position);
     console.log('🌐 Adding ship to scene...');
     
     // Add to scene
-    this.game.scene.add(shipGroup);
+    this.game.scene.add(shipMesh);
     
     console.log('🌐 Ship added to scene. Scene children count:', this.game.scene.children.length);
-    console.log('🌐 Ship visible:', shipGroup.visible);
-    console.log('🌐 Ship position after adding:', shipGroup.position);
+    console.log('🌐 Ship visible:', shipMesh.visible);
+    console.log('🌐 Ship position after adding:', shipMesh.position);
     
-    // Create player tag (name label)
-    const playerTag = this.createPlayerTag(playerData.id, shipColor);
-    shipGroup.add(playerTag);
+    // Create player name label
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'player-name-label';
+    nameDiv.textContent = `Player-${playerData.id.slice(-4)}`;
+    nameDiv.style.color = `#${playerColor.toString(16).padStart(6, '0')}`;
+    
+    const nameLabel = new CSS2DObject(nameDiv);
+    nameLabel.position.set(0, 1.5, 0); // Position above the ship
+    shipMesh.add(nameLabel);
     
     // Store player data
     this.otherPlayers.set(playerData.id, {
       id: playerData.id,
-      mesh: shipGroup,
+      mesh: shipMesh,
+      nameLabel: nameLabel,
       position: playerData.position,
       rotation: playerData.rotation,
       health: playerData.health,
@@ -690,82 +688,18 @@ export class NetworkManager {
     console.log('🌐 Other players count:', this.otherPlayers.size);
   }
   
-  /**
-   * Create a player tag (name label) for other players
-   * @param {string} playerId - The player's ID
-   * @param {THREE.Color} shipColor - The ship's color for consistent styling
-   * @returns {THREE.Group} - The player tag group
-   */
-  createPlayerTag(playerId, shipColor) {
-    // Create a group to hold the tag elements
-    const tagGroup = new THREE.Group();
-    
-    // Create background plate for the tag
-    const plateGeometry = new THREE.PlaneGeometry(2, 0.6);
-    const plateMaterial = new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      transparent: true,
-      opacity: 0.8,
-      side: THREE.DoubleSide
-    });
-    
-    const backgroundPlate = new THREE.Mesh(plateGeometry, plateMaterial);
-    backgroundPlate.position.set(0, 1.5, 0);
-    backgroundPlate.rotation.x = -Math.PI / 2; // Face upward
-    tagGroup.add(backgroundPlate);
-    
-    // Create border for the tag
-    const borderGeometry = new THREE.PlaneGeometry(2.1, 0.7);
-    const borderMaterial = new THREE.MeshBasicMaterial({
-      color: shipColor,
-      transparent: true,
-      opacity: 0.9,
-      side: THREE.DoubleSide
-    });
-    
-    const border = new THREE.Mesh(borderGeometry, borderMaterial);
-    border.position.set(0, 1.5, 0.01);
-    border.rotation.x = -Math.PI / 2;
-    tagGroup.add(border);
-    
-    // Create player name text (simplified - just a colored box for now)
-    // In a full implementation, you'd use TextGeometry or HTML overlays
-    const textGeometry = new THREE.BoxGeometry(1.8, 0.1, 0.5);
-    const textMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.9
-    });
-    
-    const textBox = new THREE.Mesh(textGeometry, textMaterial);
-    textBox.position.set(0, 1.5, 0.02);
-    tagGroup.add(textBox);
-    
-    // Add a small indicator dot
-    const dotGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-    const dotMaterial = new THREE.MeshBasicMaterial({
-      color: shipColor,
-      emissive: shipColor.clone().multiplyScalar(0.5)
-    });
-    
-    const indicatorDot = new THREE.Mesh(dotGeometry, dotMaterial);
-    indicatorDot.position.set(-0.8, 1.5, 0.03);
-    tagGroup.add(indicatorDot);
-    
-    // Make tag always face the camera
-    tagGroup.userData = { 
-      isPlayerTag: true, 
-      playerId: playerId,
-      shipColor: shipColor 
-    };
-    
-    return tagGroup;
-  }
-  
   removeOtherPlayer(playerId) {
     const player = this.otherPlayers.get(playerId);
-    if (player && player.mesh) {
-      this.game.scene.remove(player.mesh);
+    if (player) {
+      if (player.mesh) {
+        this.game.scene.remove(player.mesh);
+      }
+      if (player.nameLabel) {
+        // Remove the name label from the DOM
+        if (player.nameLabel.element && player.nameLabel.element.parentNode) {
+          player.nameLabel.element.parentNode.removeChild(player.nameLabel.element);
+        }
+      }
       this.otherPlayers.delete(playerId);
     }
   }
@@ -1061,18 +995,6 @@ export class NetworkManager {
             player.targetRotation.y,
             deltaTime * 10
           );
-        }
-        
-        // Make player tags always face the camera
-        if (this.game.camera) {
-          player.mesh.traverse(child => {
-            if (child.userData && child.userData.isPlayerTag) {
-              // Make the tag face the camera
-              child.lookAt(this.game.camera.position);
-              // Adjust rotation to face upward
-              child.rotation.x = -Math.PI / 2;
-            }
-          });
         }
       }
     });
