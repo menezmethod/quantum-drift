@@ -51,6 +51,7 @@ export class NetworkManager {
     this.eventHandlers.set('playerKilled', this.handlePlayerKilled.bind(this));
     this.eventHandlers.set('playerRespawned', this.handlePlayerRespawned.bind(this));
     this.eventHandlers.set('projectileHit', this.handleProjectileHit.bind(this));
+    this.eventHandlers.set('grenadeExploded', this.handleGrenadeExplosion.bind(this));
   }
   
   connect() {
@@ -126,6 +127,7 @@ export class NetworkManager {
       this.socket.on('playerKilled', this.handlePlayerKilled.bind(this));
       this.socket.on('playerRespawned', this.handlePlayerRespawned.bind(this));
       this.socket.on('projectileHit', this.handleProjectileHit.bind(this));
+      this.socket.on('grenadeExploded', this.handleGrenadeExplosion.bind(this));
       
       // Start ping interval
       this.startPingInterval();
@@ -598,6 +600,22 @@ export class NetworkManager {
     }
   }
   
+  handleGrenadeExplosion(data) {
+    // Create visual explosion effect for network grenades
+    if (this.game && this.game.scene && data.position) {
+      const explosionPos = new THREE.Vector3(
+        data.position.x || data.position[0] || 0,
+        data.position.y || data.position[1] || 0.5,
+        data.position.z || data.position[2] || 0
+      );
+      
+      // Create explosion visual
+      if (this.game.createHitEffect) {
+        this.game.createHitEffect(explosionPos);
+      }
+    }
+  }
+  
   createOtherPlayer(playerData) {
     // Safety check: don't create the local player as an "other player"
     if (playerData.id === this.playerId) {
@@ -1026,6 +1044,12 @@ export class NetworkManager {
     };
     
     this.socket.emit('playerDamaged', data);
+  }
+  
+  sendGrenadeExplosion(explosionData) {
+    if (!this.socket || !this.isConnected) return;
+    
+    this.socket.emit('grenadeExploded', explosionData);
   }
   
   requestRespawn() {

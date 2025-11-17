@@ -2367,7 +2367,16 @@ selectWeapon(weaponType) {
       }
     }
     
-    // Check for player damage
+    // Send explosion event to server for multiplayer damage
+    if (this.networkManager && this.networkManager.isConnected) {
+      this.networkManager.sendGrenadeExplosion({
+        position: explosionCenter,
+        radius: damageRadius,
+        maxDamage: maxDamage
+      });
+    }
+    
+    // Check for local player damage
     const playerPosition = this.playerShip.position.clone();
     playerPosition.y = 0; // Project to ground plane
     const grenadePosition = explosionCenter.clone();
@@ -2390,6 +2399,22 @@ selectWeapon(weaponType) {
       // Visual feedback
       this.flashCollisionWarning();
       this.createHitEffect(playerPosition);
+    }
+    
+    // Check for damage to other players (client-side check for immediate feedback)
+    if (this.networkManager && this.networkManager.otherPlayers) {
+      this.networkManager.otherPlayers.forEach((otherPlayer, playerId) => {
+        if (otherPlayer.mesh && otherPlayer.mesh.position) {
+          const otherPlayerPos = otherPlayer.mesh.position.clone();
+          otherPlayerPos.y = 0;
+          const distance = grenadePosition.distanceTo(otherPlayerPos);
+          
+          if (distance < damageRadius) {
+            // Create hit effect on other player
+            this.createHitEffect(otherPlayerPos);
+          }
+        }
+      });
     }
     
     // Play explosion sound
@@ -2972,8 +2997,27 @@ selectWeapon(weaponType) {
       progress: 0,
       exploded: false,
       explosionRadius: 4,
-      trailPoints: []
+      trailPoints: [],
+      playerId: this.networkManager ? this.networkManager.playerId : null // Store player ID for networking
     });
+    
+    // Send grenade launch to server for networking
+    if (this.networkManager && this.networkManager.isConnected) {
+      const weaponDamage = {
+        'LASER': 35,
+        'BOUNCE': 45,
+        'GRENADE': 75
+      };
+      
+      // Send grenade as a projectile that will explode at target
+      this.networkManager.sendWeaponFired(
+        'GRENADE',
+        grenade.position,
+        endPos.clone().sub(startPos).normalize(),
+        15, // Grenade speed
+        weaponDamage['GRENADE']
+      );
+    }
   }
   
   // Add a method to show targeting indicator for all weapons

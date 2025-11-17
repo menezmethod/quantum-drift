@@ -439,6 +439,71 @@ io.on('connection', (socket) => {
     }
   });
   
+  // Handle grenade explosions
+  socket.on('grenadeExploded', (data) => {
+    const explosionPos = data.position;
+    const explosionRadius = data.radius || 4;
+    const maxDamage = data.maxDamage || 75;
+    const attackerId = socket.id;
+    
+    // Check all players in explosion radius
+    for (const playerId in gameState.players) {
+      const player = gameState.players[playerId];
+      if (!player || !player.isAlive || playerId === attackerId) continue;
+      
+      // Calculate distance from explosion
+      const playerPos = player.position;
+      const distance = Math.sqrt(
+        Math.pow(explosionPos.x - playerPos.x, 2) +
+        Math.pow(explosionPos.y - playerPos.y, 2) +
+        Math.pow(explosionPos.z - playerPos.z, 2)
+      );
+      
+      if (distance < explosionRadius) {
+        // Calculate damage with distance falloff
+        const damagePercent = 1 - (distance / explosionRadius);
+        const damage = Math.floor(maxDamage * damagePercent);
+        
+        // Apply damage
+        player.health = Math.max(0, player.health - damage);
+        
+        if (player.health <= 0) {
+          player.isAlive = false;
+          player.deathTime = Date.now();
+          
+          // Notify all players about the kill
+          io.emit('playerKilled', {
+            killerId: attackerId,
+            victimId: playerId,
+            weaponType: 'GRENADE'
+          });
+          
+          // Respawn player after 5 seconds
+          setTimeout(() => {
+            if (gameState.players[playerId]) {
+              const spawnPosition = generateSafeSpawnPosition(gameState.players);
+              player.health = player.maxHealth;
+              player.energy = player.maxEnergy;
+              player.isAlive = true;
+              player.position = spawnPosition;
+              player.rotation = { y: Math.random() * Math.PI * 2 };
+              player.spawnTime = Date.now();
+              io.emit('playerRespawned', player.toJSON());
+            }
+          }, 5000);
+        } else {
+          // Broadcast damage to all players
+          io.emit('playerDamaged', {
+            targetId: playerId,
+            damage: damage,
+            newHealth: player.health,
+            weaponType: 'GRENADE'
+          });
+        }
+      }
+    }
+  });
+  
   // Handle player respawn request
   socket.on('requestRespawn', () => {
     const player = gameState.players[socket.id];
