@@ -449,12 +449,41 @@ export class NetworkManager {
       }
       if (data.health !== undefined) {
         player.health = data.health;
+        player.maxHealth = data.maxHealth || 100; // Store max health for health bar
       }
       if (data.energy !== undefined) {
         player.energy = data.energy;
       }
       if (data.currentWeapon) {
+        const oldWeapon = player.currentWeapon;
         player.currentWeapon = data.currentWeapon;
+        
+        // Visual feedback for weapon switching (change emissive color briefly)
+        if (oldWeapon !== data.currentWeapon && player.mesh) {
+          player.mesh.traverse((child) => {
+            if (child.isMesh && child.material) {
+              // Flash the weapon color
+              const weaponColors = {
+                'LASER': 0xff0000,
+                'BOUNCE': 0x00ff00,
+                'GRENADE': 0xff8800
+              };
+              const flashColor = weaponColors[data.currentWeapon] || 0xffffff;
+              
+              const originalEmissive = child.material.emissive.clone();
+              child.material.emissive.setHex(flashColor);
+              child.material.emissiveIntensity = 1.0;
+              
+              // Reset after 200ms
+              setTimeout(() => {
+                if (child.material) {
+                  child.material.emissive.copy(originalEmissive);
+                  child.material.emissiveIntensity = 0.3;
+                }
+              }, 200);
+            }
+          });
+        }
       }
     }
   }
@@ -615,19 +644,81 @@ export class NetworkManager {
     console.log('🌐 World coordinates - Network player:', 
       `x=${playerData.position.x.toFixed(2)}, z=${playerData.position.z.toFixed(2)}`);
     
-    // Create player mesh (similar to local player but different color)
-    const geometry = new THREE.ConeGeometry(0.5, 1, 8);
-    geometry.rotateX(Math.PI / 2);
+    // Generate unique color for this player based on their ID
+    const playerColors = [
+      0xff0000, // Red
+      0x00ff00, // Green
+      0x0000ff, // Blue
+      0xffff00, // Yellow
+      0xff00ff, // Magenta
+      0x00ffff, // Cyan
+      0xff8800, // Orange
+      0x8800ff, // Purple
+    ];
+    const colorIndex = playerData.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % playerColors.length;
+    const playerColor = playerColors[colorIndex];
     
-    const material = new THREE.MeshPhongMaterial({
-      color: 0xff0000, // Red for other players
-      emissive: 0x660000,
-      shininess: 100
-    });
+    // Try to use the same ship model as local player, fallback to colored cone
+    let mesh;
+    let shipModelSource = null;
     
-    const mesh = new THREE.Mesh(geometry, material);
+    // Check if ship model is available (could be in game.shipModel or playerShip.children)
+    if (this.game.shipModel) {
+      shipModelSource = this.game.shipModel;
+    } else if (this.game.playerShip) {
+      // Try to find ship model in playerShip children
+      this.game.playerShip.traverse((child) => {
+        if (child.name && child.name.includes('avrocar') && !shipModelSource) {
+          shipModelSource = child;
+        }
+      });
+    }
+    
+    if (shipModelSource) {
+      // Clone the ship model for this player
+      mesh = shipModelSource.clone();
+      
+      // Apply unique color to the ship
+      mesh.traverse((child) => {
+        if (child.isMesh && child.material) {
+          // Clone material to avoid affecting other players
+          child.material = child.material.clone();
+          child.material.color.setHex(playerColor);
+          child.material.emissive.setHex(playerColor);
+          child.material.emissiveIntensity = 0.3; // Slightly less emissive for other players
+          child.material.needsUpdate = true;
+        }
+      });
+      
+      // Scale and position (match local player settings)
+      mesh.scale.set(0.9, 0.9, 0.9);
+      mesh.rotation.y = Math.PI;
+    } else {
+      // Fallback: create a colored cone if ship model not available
+      const geometry = new THREE.ConeGeometry(0.5, 1, 8);
+      geometry.rotateX(Math.PI / 2);
+      
+      const material = new THREE.MeshPhongMaterial({
+        color: playerColor,
+        emissive: playerColor,
+        emissiveIntensity: 0.3,
+        shininess: 100
+      });
+      
+      mesh = new THREE.Mesh(geometry, material);
+      console.log('🌐 Using fallback cone geometry for player (ship model not loaded yet)');
+    }
+    
     mesh.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
     mesh.rotation.y = playerData.rotation.y;
+    
+    // Add player name label
+    const nameLabel = this.createPlayerLabel(playerData.id, playerColor);
+    mesh.add(nameLabel);
+    
+    // Add health indicator (colored bar above player)
+    const healthIndicator = this.createHealthIndicator();
+    mesh.add(healthIndicator);
     
     console.log('🌐 Created mesh at position:', mesh.position);
     console.log('🌐 Adding mesh to scene...');
@@ -646,6 +737,7 @@ export class NetworkManager {
       position: playerData.position,
       rotation: playerData.rotation,
       health: playerData.health,
+      maxHealth: playerData.maxHealth || 100,
       energy: playerData.energy,
       currentWeapon: playerData.currentWeapon,
       team: playerData.team,
@@ -656,6 +748,46 @@ export class NetworkManager {
     });
     
     console.log('🌐 Other players count:', this.otherPlayers.size);
+  }
+
+  createPlayerLabel(playerId, color) {
+    // Create a simple colored sphere above the player as a label indicator
+    const labelGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+    const labelMaterial = new THREE.MeshBasicMaterial({
+      color: color,
+      transparent: true,
+      opacity: 0.8
+    });
+    const labelMesh = new THREE.Mesh(labelGeometry, labelMaterial);
+    labelMesh.position.set(0, 2.2, 0); // Above the ship
+    labelMesh.name = `playerLabel_${playerId}`;
+    
+    // Store player ID in userData for reference
+    labelMesh.userData.playerId = playerId;
+    labelMesh.userData.isLabel = true;
+    
+    return labelMesh;
+  }
+
+  createHealthIndicator() {
+    // Create a health bar above the player
+    const healthBarGeometry = new THREE.PlaneGeometry(1, 0.1);
+    const healthBarMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ff00, // Green for healthy
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide
+    });
+    const healthBar = new THREE.Mesh(healthBarGeometry, healthBarMaterial);
+    healthBar.position.set(0, 2, 0); // Below the label
+    healthBar.name = 'healthIndicator';
+    healthBar.lookAt(0, 0, 0); // Face camera (will be updated in update loop)
+    
+    // Store reference for updating
+    healthBar.userData.isHealthBar = true;
+    healthBar.userData.maxWidth = 1;
+    
+    return healthBar;
   }
   
   removeOtherPlayer(playerId) {
@@ -678,29 +810,31 @@ export class NetworkManager {
         geometry = new THREE.CylinderGeometry(0.15, 0.15, 4, 8);
         // Don't rotate - let it be vertical (Y-axis) by default
         material = new THREE.MeshBasicMaterial({ 
-          color: 0xff0000, // Bright red for network projectiles
+          color: 0xff0000, // Bright red for network LASER projectiles
           transparent: true, 
-          opacity: 0.0, // Make invisible - we only need collision detection
+          opacity: 0.9, // Make visible!
           emissive: 0xff0000,
-          emissiveIntensity: 0.0 // No glow
+          emissiveIntensity: 1.0 // Bright glow so you can see enemy lasers
         });
         break;
       case 'BOUNCE':
         geometry = new THREE.SphereGeometry(0.25, 16, 16);
         material = new THREE.MeshBasicMaterial({ 
-          color: 0x00ff00, // Bright green
+          color: 0x00ff00, // Bright green for BOUNCE projectiles
           transparent: true, 
-          opacity: 0.0, // Make invisible
+          opacity: 0.9, // Make visible!
           emissive: 0x00ff00,
-          emissiveIntensity: 0.0 // No glow
+          emissiveIntensity: 1.0 // Bright glow
         });
         break;
       case 'GRENADE':
         geometry = new THREE.SphereGeometry(0.4, 16, 16);
         material = new THREE.MeshPhongMaterial({ 
-          color: 0xff4500, 
+          color: 0xff4500, // Orange for GRENADE projectiles
           emissive: 0xff2000,
-          emissiveIntensity: 0.0 // No glow
+          emissiveIntensity: 1.0, // Bright glow
+          transparent: true,
+          opacity: 0.9 // Make visible!
         });
         break;
       default:
@@ -983,6 +1117,34 @@ export class NetworkManager {
             player.targetRotation.y,
             deltaTime * 10
           );
+        }
+        
+        // Update health indicator
+        if (player.health !== undefined && player.mesh) {
+          player.mesh.traverse((child) => {
+            if (child.userData && child.userData.isHealthBar) {
+              const healthPercent = Math.max(0, Math.min(1, (player.health || 100) / (player.maxHealth || 100)));
+              
+              // Update health bar width
+              child.scale.x = healthPercent;
+              
+              // Update health bar color based on health
+              if (child.material) {
+                if (healthPercent > 0.6) {
+                  child.material.color.setHex(0x00ff00); // Green
+                } else if (healthPercent > 0.3) {
+                  child.material.color.setHex(0xffff00); // Yellow
+                } else {
+                  child.material.color.setHex(0xff0000); // Red
+                }
+              }
+              
+              // Make health bar face camera
+              if (this.game && this.game.camera) {
+                child.lookAt(this.game.camera.position);
+              }
+            }
+          });
         }
       }
     });

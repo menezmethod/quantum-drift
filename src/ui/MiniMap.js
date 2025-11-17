@@ -93,6 +93,11 @@ export class MiniMap {
       this.drawEnemies();
     }
     
+    // Draw other players (multiplayer)
+    if (this.game.networkManager && this.game.networkManager.otherPlayers) {
+      this.drawOtherPlayers();
+    }
+    
     // Draw player (always last so it's on top)
     this.drawPlayer();
   }
@@ -326,6 +331,68 @@ export class MiniMap {
       this.ctx.arc(mapX, mapY, 2, 0, Math.PI * 2);
       this.ctx.fill();
     }
+  }
+
+  /**
+   * Draw other players on mini-map (multiplayer)
+   */
+  drawOtherPlayers() {
+    const networkManager = this.game.networkManager;
+    if (!networkManager || !networkManager.otherPlayers) return;
+    
+    networkManager.otherPlayers.forEach((player, playerId) => {
+      if (!player.mesh || !player.isAlive) return;
+      
+      // Get position from mesh
+      const x = player.mesh.position.x;
+      const z = player.mesh.position.z;
+      
+      // Convert to mini-map coordinates
+      const mapX = this.worldToMapX(x);
+      const mapY = this.worldToMapY(z);
+      
+      // Get player color (from mesh material if available)
+      let playerColor = '#ff0000'; // Default red
+      if (player.mesh) {
+        player.mesh.traverse((child) => {
+          if (child.isMesh && child.material && child.material.color) {
+            const color = child.material.color;
+            playerColor = `#${color.getHexString()}`;
+          }
+        });
+      }
+      
+      // Draw player dot with their unique color
+      this.ctx.fillStyle = playerColor;
+      this.ctx.beginPath();
+      this.ctx.arc(mapX, mapY, 3, 0, Math.PI * 2);
+      this.ctx.fill();
+      
+      // Draw player glow
+      this.ctx.strokeStyle = playerColor + '80'; // Add transparency
+      this.ctx.lineWidth = 1;
+      this.ctx.beginPath();
+      this.ctx.arc(mapX, mapY, 5, 0, Math.PI * 2);
+      this.ctx.stroke();
+      
+      // Draw direction indicator if rotation is available
+      if (player.mesh.rotation && player.mesh.rotation.y !== undefined) {
+        const angle = player.mesh.rotation.y;
+        this.ctx.save();
+        this.ctx.translate(mapX, mapY);
+        this.ctx.rotate(-angle);
+        
+        this.ctx.fillStyle = playerColor + '60';
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, -8);
+        this.ctx.lineTo(-4, 0);
+        this.ctx.lineTo(4, 0);
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        this.ctx.restore();
+      }
+    });
   }
   
   /**
