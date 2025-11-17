@@ -1369,11 +1369,14 @@ selectWeapon(weaponType) {
     // Update weapon cooldowns
     this.updateWeaponCooldowns(deltaTime);
     
-    // Check for collisions
+    // Check for collisions with obstacles
     if (this.checkObstacleCollisions()) {
       // Handle collision
       this.handlePlayerCollision();
     }
+    
+    // Check for collisions with other players
+    this.checkPlayerCollisions();
     
     // Constrain player to bounds
     this.constrainToBounds();
@@ -1392,6 +1395,59 @@ selectWeapon(weaponType) {
     
     // Optional: Add a subtle bounce effect or sound here in the future
     // For now, obstacles just push the player away smoothly
+  }
+
+  checkPlayerCollisions() {
+    // Check for collisions with other players and push them apart smoothly
+    // This works in conjunction with checkCollisionAtPosition() which prevents movement into players
+    if (!this.networkManager || !this.networkManager.otherPlayers || !this.playerShip) {
+      return;
+    }
+    
+    const localPlayerPos = new THREE.Vector3(
+      this.playerShip.position.x,
+      0,
+      this.playerShip.position.z
+    );
+    const localPlayerRadius = 0.8;
+    
+    for (const [playerId, otherPlayer] of this.networkManager.otherPlayers) {
+      if (!otherPlayer.mesh || !otherPlayer.isAlive) continue;
+      
+      const otherPlayerPos = new THREE.Vector3(
+        otherPlayer.mesh.position.x,
+        0,
+        otherPlayer.mesh.position.z
+      );
+      
+      const distance = localPlayerPos.distanceTo(otherPlayerPos);
+      const otherPlayerRadius = 0.8;
+      const minDistance = localPlayerRadius + otherPlayerRadius;
+      
+      if (distance < minDistance && distance > 0.001) {
+        // Collision detected - push players apart smoothly
+        const pushDirection = localPlayerPos.clone().sub(otherPlayerPos);
+        pushDirection.normalize();
+        
+        // Calculate how much to push (smooth push-out)
+        const overlap = minDistance - distance;
+        const pushDistance = overlap * 0.6; // Push local player 60% of overlap (other player's client will push them 60% too)
+        
+        // Smoothly push local player away
+        this.playerShip.position.x += pushDirection.x * pushDistance;
+        this.playerShip.position.z += pushDirection.z * pushDistance;
+        
+        // The wall sliding system will handle smooth movement along player surfaces
+        // via checkCollisionAtPosition() which now checks for player collisions
+      } else if (distance < minDistance + 0.2) {
+        // Near collision - apply slight repulsion to prevent getting too close
+        const pushDirection = localPlayerPos.clone().sub(otherPlayerPos);
+        pushDirection.normalize();
+        const repulsionStrength = 0.01 * (1 - (distance / (minDistance + 0.2)));
+        this.playerShip.position.x += pushDirection.x * repulsionStrength;
+        this.playerShip.position.z += pushDirection.z * repulsionStrength;
+      }
+    }
   }
 
   flashCollisionWarning() {
@@ -1585,15 +1641,44 @@ selectWeapon(weaponType) {
   }
 
   checkCollisionAtPosition(position, playerRadius) {
-    // Check if a position would collide with any obstacle
+    // Check if a position would collide with any obstacle or other players
     // Returns { hit: boolean, normal: Vector3 }
-    
-    if (!this.obstacles || !Array.isArray(this.obstacles)) {
-      return { hit: false, normal: new THREE.Vector3() };
-    }
     
     const playerPos = position.clone();
     playerPos.y = 0; // Project to ground plane
+    
+    // First check player-to-player collisions
+    if (this.networkManager && this.networkManager.otherPlayers) {
+      for (const [playerId, otherPlayer] of this.networkManager.otherPlayers) {
+        if (!otherPlayer.mesh || !otherPlayer.isAlive) continue;
+        
+        const otherPlayerPos = new THREE.Vector3(
+          otherPlayer.mesh.position.x,
+          0,
+          otherPlayer.mesh.position.z
+        );
+        
+        const distance = playerPos.distanceTo(otherPlayerPos);
+        const otherPlayerRadius = 0.8; // Same as local player radius
+        const minDistance = playerRadius + otherPlayerRadius;
+        
+        if (distance < minDistance && distance > 0.001) {
+          // Collision detected with another player
+          const normal = playerPos.clone().sub(otherPlayerPos);
+          if (normal.length() < 0.001) {
+            normal.set(1, 0, 0); // Default normal if positions are identical
+          } else {
+            normal.normalize();
+          }
+          return { hit: true, normal: normal };
+        }
+      }
+    }
+    
+    // Then check obstacle collisions
+    if (!this.obstacles || !Array.isArray(this.obstacles)) {
+      return { hit: false, normal: new THREE.Vector3() };
+    }
     
     for (const obstacle of this.obstacles) {
       if (!obstacle || !obstacle.data || !obstacle.data.position) {
