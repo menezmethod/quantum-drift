@@ -285,26 +285,17 @@ export class NetworkManager {
   
   // Handle map data from server
   handleGameMap(mapData) {
-    console.log('🌐 Received game map:', mapData);
-    console.log('🌐 Map contains', mapData.obstacles.length, 'obstacles');
+    if (!mapData || !mapData.obstacles) {
+      console.error('❌ Invalid map data received:', mapData);
+      return;
+    }
     
     if (!this.game || !this.game.scene) {
-      console.log('🌐 Game not ready yet, storing map data for later');
       this.pendingMap = mapData;
       return;
     }
     
-    // Check if scene is fully initialized
-    if (this.game.scene.children.length < 5) {
-      console.log('🌐 Scene not fully initialized yet, waiting...');
-      setTimeout(() => {
-        console.log('🌐 Retrying obstacle creation after delay...');
-        this.createObstaclesFromMap(mapData);
-      }, 1000);
-      return;
-    }
-    
-    // Create obstacles from map data
+    // Create obstacles immediately (don't wait for scene to be "fully initialized")
     this.createObstaclesFromMap(mapData);
   }
   
@@ -1333,28 +1324,34 @@ export class NetworkManager {
 
   // Create obstacles from server map data
   createObstaclesFromMap(mapData) {
-    console.log('🌐 Creating obstacles from server map data...');
-    console.log('🌐 Map data received:', mapData);
-    
-    if (!this.game) {
-      console.error('❌ Cannot create obstacles - game object not available');
+    if (!this.game || !this.game.scene) {
+      console.error('❌ Cannot create obstacles - game or scene not available');
       return;
     }
     
-    if (!this.game.scene) {
-      console.error('❌ Cannot create obstacles - game scene not available');
+    if (!mapData || !mapData.obstacles || !Array.isArray(mapData.obstacles)) {
+      console.error('❌ Invalid map data:', mapData);
       return;
     }
     
-    console.log('🌐 Game scene available:', this.game.scene);
-    console.log('🌐 Scene children count before:', this.game.scene.children.length);
-    
-    // Clear any existing obstacles
-    if (this.game.obstacles) {
-      console.log('🌐 Clearing existing obstacles:', this.game.obstacles.length);
+    // Clear any existing obstacles completely
+    if (this.game.obstacles && Array.isArray(this.game.obstacles)) {
       this.game.obstacles.forEach(obstacle => {
-        if (obstacle.mesh) {
+        if (obstacle && obstacle.mesh) {
+          // Remove all children (lights, etc.)
+          while (obstacle.mesh.children.length > 0) {
+            obstacle.mesh.remove(obstacle.mesh.children[0]);
+          }
           this.game.scene.remove(obstacle.mesh);
+          // Dispose geometry and material
+          if (obstacle.mesh.geometry) obstacle.mesh.geometry.dispose();
+          if (obstacle.mesh.material) {
+            if (Array.isArray(obstacle.mesh.material)) {
+              obstacle.mesh.material.forEach(mat => mat.dispose());
+            } else {
+              obstacle.mesh.material.dispose();
+            }
+          }
         }
       });
     }
@@ -1362,15 +1359,21 @@ export class NetworkManager {
     // Initialize obstacles array
     this.game.obstacles = [];
     
-    // Create obstacles from map data
+    // Create obstacles from map data (server provides exact colors)
     mapData.obstacles.forEach((obstacleData, index) => {
-      console.log(`🌐 Creating obstacle ${index + 1}:`, obstacleData);
+      if (!obstacleData || !obstacleData.type || !obstacleData.position) {
+        console.warn('⚠️ Skipping invalid obstacle data:', obstacleData);
+        return;
+      }
       
       let geometry;
-      let material;
       
       switch (obstacleData.type) {
         case 'box':
+          if (!obstacleData.size) {
+            console.warn('⚠️ Box obstacle missing size:', obstacleData);
+            return;
+          }
           geometry = new THREE.BoxGeometry(
             obstacleData.size.x, 
             obstacleData.size.y, 
@@ -1378,6 +1381,10 @@ export class NetworkManager {
           );
           break;
         case 'cylinder':
+          if (!obstacleData.radius || !obstacleData.height) {
+            console.warn('⚠️ Cylinder obstacle missing radius/height:', obstacleData);
+            return;
+          }
           geometry = new THREE.CylinderGeometry(
             obstacleData.radius, 
             obstacleData.radius, 
@@ -1386,17 +1393,24 @@ export class NetworkManager {
           );
           break;
         case 'sphere':
+          if (!obstacleData.radius) {
+            console.warn('⚠️ Sphere obstacle missing radius:', obstacleData);
+            return;
+          }
           geometry = new THREE.SphereGeometry(obstacleData.radius, 16, 16);
           break;
         default:
-          console.warn('🌐 Unknown obstacle type:', obstacleData.type);
+          console.warn('⚠️ Unknown obstacle type:', obstacleData.type);
           return;
       }
       
-      // Create material with the specified color
-      material = new THREE.MeshPhongMaterial({
-        color: obstacleData.color,
-        emissive: new THREE.Color(obstacleData.color).multiplyScalar(0.5),
+      // Use EXACT color from server (no modification)
+      const obstacleColor = obstacleData.color || 0xffffff; // Fallback to white if missing
+      
+      // Create material with the EXACT color from server
+      const material = new THREE.MeshPhongMaterial({
+        color: obstacleColor,
+        emissive: new THREE.Color(obstacleColor).multiplyScalar(0.5),
         shininess: 100
       });
       
@@ -1404,33 +1418,26 @@ export class NetworkManager {
       const obstacle = new THREE.Mesh(geometry, material);
       obstacle.position.set(
         obstacleData.position.x,
-        obstacleData.position.y,
+        obstacleData.position.y || 0,
         obstacleData.position.z
       );
       
-      console.log(`🌐 Obstacle ${index + 1} mesh created at:`, obstacle.position);
-      
-      // Add point light for glow effect
-      const light = new THREE.PointLight(obstacleData.color, 0.5, 5);
+      // Add point light for glow effect (using exact server color)
+      const light = new THREE.PointLight(obstacleColor, 0.5, 5);
       light.position.set(0, 0, 0);
       obstacle.add(light);
       
       // Add to scene
       this.game.scene.add(obstacle);
-      console.log(`🌐 Obstacle ${index + 1} added to scene`);
       
-      // Store obstacle data
+      // Store obstacle data with EXACT server data
       this.game.obstacles.push({
         mesh: obstacle,
-        data: obstacleData
+        data: obstacleData // Store exact server data
       });
-      
-      console.log(`🌐 Obstacle ${index + 1} stored in obstacles array`);
     });
     
-    console.log(`🌐 Created ${this.game.obstacles.length} obstacles from map data`);
-    console.log('🌐 Scene children count after:', this.game.scene.children.length);
-    console.log('🌐 Final obstacles array:', this.game.obstacles);
+    console.log(`✅ Created ${this.game.obstacles.length} obstacles from server map`);
   }
 
   // Position and show the local player when game starts
