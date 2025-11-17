@@ -437,32 +437,31 @@ canvas {
 /* Weapon Selector */
 .weapon-selector {
   display: flex;
-  gap: 4px;
-  margin-top: 6px;
-  padding: 4px 6px;
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 6px;
+  gap: 3px;
+  margin-top: 4px;
+  padding: 3px 4px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  flex-wrap: wrap;
-  justify-content: center;
   align-items: center;
+  justify-content: space-between;
 }
 
 .weapon-button {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  padding: 4px 8px;
+  gap: 4px;
+  padding: 3px 6px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  border-radius: 3px;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 50px;
-  max-width: 60px;
+  flex: 1 1 0;
+  min-width: 0;
   position: relative;
-  flex: 1 1 auto;
 }
 
 .weapon-button:hover {
@@ -497,19 +496,17 @@ canvas {
 }
 
 .weapon-key {
-  position: absolute;
-  top: 2px;
-  right: 2px;
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: bold;
-  padding: 1px 4px;
-  border-radius: 3px;
+  padding: 1px 3px;
+  border-radius: 2px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  min-width: 16px;
+  min-width: 14px;
   text-align: center;
-  line-height: 1.2;
+  line-height: 1.1;
+  flex-shrink: 0;
 }
 
 .weapon-button.active .weapon-key {
@@ -518,18 +515,22 @@ canvas {
 }
 
 .weapon-emoji {
-  font-size: 16px;
-  margin: 2px 0;
+  font-size: 12px;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .weapon-label-text {
-  font-size: 8px;
+  font-size: 7px;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
   color: rgba(255, 255, 255, 0.7);
-  margin-top: 1px;
-  line-height: 1.1;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
 .weapon-button.active .weapon-label-text {
@@ -540,28 +541,29 @@ canvas {
 .weapon-cycle-hint {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
+  gap: 3px;
+  padding: 3px 5px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  font-size: 9px;
+  border-radius: 3px;
+  font-size: 8px;
   color: rgba(255, 255, 255, 0.6);
-  margin-left: auto;
+  margin-left: 3px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .cycle-key {
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: bold;
-  padding: 1px 4px;
-  border-radius: 3px;
+  padding: 1px 3px;
+  border-radius: 2px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  min-width: 16px;
+  min-width: 14px;
   text-align: center;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 /* Health bar shine effect */
@@ -598,27 +600,28 @@ canvas {
   }
   
   .weapon-selector {
-    gap: 3px;
-    padding: 3px 4px;
+    gap: 2px;
+    padding: 2px 3px;
+    flex-wrap: wrap;
   }
   
   .weapon-button {
-    min-width: 45px;
-    max-width: 55px;
-    padding: 3px 6px;
+    padding: 2px 4px;
+    min-width: 0;
   }
   
   .weapon-emoji {
-    font-size: 14px;
+    font-size: 10px;
   }
   
   .weapon-label-text {
-    font-size: 7px;
+    font-size: 6px;
+    display: none; /* Hide text on very small screens */
   }
   
   .weapon-cycle-hint {
-    font-size: 8px;
-    padding: 3px 5px;
+    font-size: 7px;
+    padding: 2px 4px;
   }
 }
 
