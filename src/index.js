@@ -1386,6 +1386,15 @@ selectWeapon(weaponType) {
     // Handle player collision with obstacles
     // This method is called when checkObstacleCollisions() returns true
     
+    // Prevent damage spam with cooldown (only take damage once per second when stuck)
+    const now = Date.now();
+    if (this.lastCollisionDamage && (now - this.lastCollisionDamage) < 1000) {
+      // Still in cooldown, skip damage but still flash
+      this.flashCollisionWarning();
+      return;
+    }
+    this.lastCollisionDamage = now;
+    
     // Reduce health slightly on collision (optional)
     if (this.health > 0) {
       this.health = Math.max(0, this.health - 5);
@@ -1404,23 +1413,37 @@ selectWeapon(weaponType) {
   }
 
   flashCollisionWarning() {
+    // Prevent multiple flashes at once with cooldown
+    const now = Date.now();
+    if (this.lastCollisionFlash && (now - this.lastCollisionFlash) < 500) {
+      return; // Still in cooldown, skip flash
+    }
+    this.lastCollisionFlash = now;
+    
     // Flash the player ship red to indicate collision
     if (this.playerShip && this.playerShip.material) {
-      // Store original color
-      const originalColor = this.playerShip.material.color.clone();
+      // Store original color if not already stored
+      if (!this.originalShipColor) {
+        this.originalShipColor = this.playerShip.material.color.clone();
+      }
       
       // Flash red
       this.playerShip.material.color.setHex(0xff0000);
       
       // Reset color after 200ms
-      setTimeout(() => {
-        if (this.playerShip && this.playerShip.material) {
-          this.playerShip.material.color.copy(originalColor);
+      if (this.collisionFlashTimeout) {
+        clearTimeout(this.collisionFlashTimeout);
+      }
+      
+      this.collisionFlashTimeout = setTimeout(() => {
+        if (this.playerShip && this.playerShip.material && this.originalShipColor) {
+          this.playerShip.material.color.copy(this.originalShipColor);
         }
+        this.collisionFlashTimeout = null;
       }, 200);
     }
     
-    // Also flash the health bar if UI exists
+    // Also flash the health bar if UI exists (with cooldown)
     if (this.ui && typeof this.ui.flashHealthBar === 'function') {
       this.ui.flashHealthBar();
     }
@@ -1700,13 +1723,23 @@ selectWeapon(weaponType) {
         obstacle.data.position.z
       );
       
+      let collisionDetected = false;
+      let pushDirection = null;
+      
       // For sphere collisions, we can do a simple distance check
       if (obstacle.data.type === 'sphere') {
         const radius = obstacle.data.radius;
         
         const distance = playerPosition.distanceTo(obstaclePosition);
         if (distance < (playerRadius + radius)) {
-          return true;
+          collisionDetected = true;
+          // Calculate push direction away from obstacle
+          if (distance > 0.01) {
+            pushDirection = playerPosition.clone().sub(obstaclePosition).normalize();
+          } else {
+            // If player is exactly at obstacle center, push in a random direction
+            pushDirection = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+          }
         }
       }
       // For cylinders, use radius for distance check
@@ -1715,7 +1748,13 @@ selectWeapon(weaponType) {
         
         const distance = playerPosition.distanceTo(obstaclePosition);
         if (distance < (playerRadius + radius)) {
-          return true;
+          collisionDetected = true;
+          // Calculate push direction away from obstacle
+          if (distance > 0.01) {
+            pushDirection = playerPosition.clone().sub(obstaclePosition).normalize();
+          } else {
+            pushDirection = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+          }
         }
       }
       // For boxes, use a more complex check
@@ -1737,8 +1776,31 @@ selectWeapon(weaponType) {
         
         // Collision detected if distance is less than player radius
         if (distanceSquared < (playerRadius * playerRadius)) {
-          return true;
+          collisionDetected = true;
+          // Calculate push direction away from closest point
+          const distance = Math.sqrt(distanceSquared);
+          if (distance > 0.01) {
+            pushDirection = new THREE.Vector3(distanceX / distance, 0, distanceZ / distance);
+          } else {
+            // If player is exactly at closest point, push away from obstacle center
+            pushDirection = playerPosition.clone().sub(obstaclePosition).normalize();
+            if (pushDirection.length() < 0.01) {
+              pushDirection = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+            }
+          }
         }
+      }
+      
+      // If collision detected, push player out
+      if (collisionDetected && pushDirection) {
+        const pushDistance = (playerRadius + (obstacle.data.radius || obstacle.data.size?.x / 2 || 1)) - 
+                            playerPosition.distanceTo(obstaclePosition) + 0.5; // Extra 0.5 to push out
+        
+        // Push player out of obstacle
+        this.playerShip.position.x += pushDirection.x * pushDistance;
+        this.playerShip.position.z += pushDirection.z * pushDistance;
+        
+        return true;
       }
     }
     

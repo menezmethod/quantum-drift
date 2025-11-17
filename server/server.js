@@ -80,10 +80,69 @@ class Player {
   }
 }
 
+// Helper function to check if a position collides with an obstacle
+function checkObstacleCollision(x, z, obstacles) {
+  if (!obstacles || !obstacles.obstacles) return false;
+  
+  const playerRadius = 1.0; // Player collision radius
+  const playerY = 0.5; // Player Y position
+  
+  for (const obstacle of obstacles.obstacles) {
+    const obsPos = obstacle.position;
+    const obsX = obsPos.x || obsPos[0];
+    const obsY = obsPos.y || obsPos[1];
+    const obsZ = obsPos.z || obsPos[2];
+    
+    // Check horizontal distance (X-Z plane)
+    const horizontalDist = Math.sqrt(
+      Math.pow(x - obsX, 2) + Math.pow(z - obsZ, 2)
+    );
+    
+    if (obstacle.type === 'box') {
+      const size = obstacle.size;
+      const sizeX = size.x || size[0] || 2;
+      const sizeZ = size.z || size[2] || 2;
+      const sizeY = size.y || size[1] || 4;
+      
+      // Check if player is within box bounds (with player radius)
+      const halfSizeX = sizeX / 2 + playerRadius;
+      const halfSizeZ = sizeZ / 2 + playerRadius;
+      const halfSizeY = sizeY / 2;
+      
+      if (Math.abs(x - obsX) < halfSizeX && 
+          Math.abs(z - obsZ) < halfSizeZ &&
+          Math.abs(playerY - obsY) < halfSizeY) {
+        return true; // Collision detected
+      }
+    } else if (obstacle.type === 'cylinder') {
+      const radius = obstacle.radius || 1;
+      const height = obstacle.height || 5;
+      
+      // Check if player is within cylinder bounds
+      if (horizontalDist < radius + playerRadius &&
+          Math.abs(playerY - obsY) < height / 2) {
+        return true; // Collision detected
+      }
+    } else if (obstacle.type === 'sphere') {
+      const radius = obstacle.radius || 1;
+      
+      // Check if player is within sphere bounds
+      const verticalDist = Math.abs(playerY - obsY);
+      const totalDist = Math.sqrt(horizontalDist * horizontalDist + verticalDist * verticalDist);
+      
+      if (totalDist < radius + playerRadius) {
+        return true; // Collision detected
+      }
+    }
+  }
+  
+  return false; // No collision
+}
+
 // Helper function to generate a safe spawn position
 function generateSafeSpawnPosition(players) {
   const spawnRadius = 20; // Increased radius for more spread
-  const spawnAttempts = 30; // More attempts to find a safe spot
+  const spawnAttempts = 50; // More attempts to find a safe spot
   const minDistance = 5; // Increased minimum distance between players
 
   console.log(`🌍 Generating spawn position for new player. Existing players: ${Object.keys(players).length}`);
@@ -94,7 +153,7 @@ function generateSafeSpawnPosition(players) {
     const z = (Math.random() - 0.5) * spawnRadius * 2;
     const y = 0.5; // Y is always 0.5 for ground level
 
-    // Check if the generated position is safe
+    // Check if the generated position is safe from other players
     let isSafe = true;
     for (const playerId in players) {
       const player = players[playerId];
@@ -111,6 +170,14 @@ function generateSafeSpawnPosition(players) {
         }
       }
     }
+    
+    // Check if the position collides with obstacles
+    if (isSafe && gameState.map) {
+      if (checkObstacleCollision(x, z, gameState.map)) {
+        console.log(`🌍 Position ${x.toFixed(2)}, ${z.toFixed(2)} collides with obstacle`);
+        isSafe = false;
+      }
+    }
 
     if (isSafe) {
       console.log(`🌍 Generated safe spawn position: x=${x.toFixed(2)}, z=${z.toFixed(2)}`);
@@ -118,11 +185,21 @@ function generateSafeSpawnPosition(players) {
     }
   }
   
-  // Fallback: generate a position far from center with more variation
-  const fallbackX = (Math.random() - 0.5) * 30;
-  const fallbackZ = (Math.random() - 0.5) * 30;
-  console.log(`🌍 Using fallback spawn position: x=${fallbackX.toFixed(2)}, z=${fallbackZ.toFixed(2)}`);
-  return { x: fallbackX, y: 0.5, z: fallbackZ };
+  // Fallback: try positions further from center, avoiding obstacles
+  for (let i = 0; i < 20; i++) {
+    const fallbackX = (Math.random() - 0.5) * 40;
+    const fallbackZ = (Math.random() - 0.5) * 40;
+    
+    // Check obstacle collision for fallback
+    if (!gameState.map || !checkObstacleCollision(fallbackX, fallbackZ, gameState.map)) {
+      console.log(`🌍 Using fallback spawn position: x=${fallbackX.toFixed(2)}, z=${fallbackZ.toFixed(2)}`);
+      return { x: fallbackX, y: 0.5, z: fallbackZ };
+    }
+  }
+  
+  // Last resort: spawn at origin (should be safe if map is designed correctly)
+  console.log(`🌍 Using origin as last resort spawn position`);
+  return { x: 0, y: 0.5, z: 0 };
 }
 
 // Generate a fixed, non-random game map
