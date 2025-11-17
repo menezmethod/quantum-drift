@@ -1472,23 +1472,17 @@ selectWeapon(weaponType) {
       // Normalize so diagonal movement isn't faster
       moveDirection.normalize();
       
-      // Apply movement speed
-      moveDirection.multiplyScalar(this.shipSpeed);
+      // Apply movement speed (convert to units per second for frame-rate independence)
+      // Original speed was per-frame, so multiply by ~60 for similar feel at 60fps
+      const speedPerSecond = this.shipSpeed * 60; // Convert per-frame to per-second
+      moveDirection.multiplyScalar(speedPerSecond * deltaTime);
       
       // Save current position for collision detection
       const oldPosition = this.playerShip.position.clone();
       
-      // Update position
-      this.playerShip.position.add(moveDirection);
-      
-      // Check for collisions with obstacles after movement (don't push, just check)
-      // If collision detected, revert to old position to prevent moving into obstacle
-      // This creates a smooth "bounce" effect - player can't move into obstacles
-      if (this.checkObstacleCollisions(false)) { // false = don't push, just check
-        // Revert position to prevent entering obstacle
-        this.playerShip.position.copy(oldPosition);
-        // No red flash - obstacles just prevent movement, no damage
-      }
+      // Try to move with wall sliding (smooth collision response)
+      const newPosition = this.moveWithWallSliding(oldPosition, moveDirection);
+      this.playerShip.position.copy(newPosition);
       
       // Keep within boundaries
       this.constrainToBounds();
@@ -1499,6 +1493,175 @@ selectWeapon(weaponType) {
     
     // Update visual indicators for active controls
     this.updateControlIndicators();
+  }
+
+  moveWithWallSliding(startPosition, moveDirection) {
+    // Wall sliding collision response - allows smooth movement along walls
+    // This is how modern games handle collisions (Quake, Half-Life, etc.)
+    
+    if (!this.obstacles || !Array.isArray(this.obstacles)) {
+      // No obstacles, just move normally
+      return startPosition.clone().add(moveDirection);
+    }
+    
+    const playerRadius = 0.8;
+    let currentPosition = startPosition.clone();
+    let remainingMove = moveDirection.clone();
+    const maxIterations = 3; // Prevent infinite loops
+    
+    // Try to move, sliding along walls if needed
+    for (let iteration = 0; iteration < maxIterations && remainingMove.length() > 0.001; iteration++) {
+      // Try to move in the desired direction
+      const testPosition = currentPosition.clone().add(remainingMove);
+      
+      // Check for collision at the new position
+      const collision = this.checkCollisionAtPosition(testPosition, playerRadius);
+      
+      if (!collision.hit) {
+        // No collision, move freely
+        currentPosition = testPosition;
+        break;
+      } else {
+        // Collision detected - calculate slide direction
+        const collisionNormal = collision.normal;
+        
+        // Project movement vector onto the wall surface
+        // Remove the component perpendicular to the wall
+        const dotProduct = remainingMove.dot(collisionNormal);
+        const slideDirection = remainingMove.clone().sub(
+          collisionNormal.clone().multiplyScalar(dotProduct)
+        );
+        
+        // Try to move along the wall (sliding)
+        const slideDistance = slideDirection.length();
+        if (slideDistance > 0.001) {
+          // Normalize and try sliding
+          slideDirection.normalize();
+          
+          // Try sliding with reduced distance (to prevent getting stuck)
+          const slideMove = slideDirection.multiplyScalar(slideDistance * 0.9);
+          const slidePosition = currentPosition.clone().add(slideMove);
+          
+          // Check if sliding position is valid
+          const slideCollision = this.checkCollisionAtPosition(slidePosition, playerRadius);
+          if (!slideCollision.hit) {
+            currentPosition = slidePosition;
+            break;
+          } else {
+            // Can't slide either, try X and Z separately (axis-aligned sliding)
+            const xMove = new THREE.Vector3(remainingMove.x, 0, 0);
+            const zMove = new THREE.Vector3(0, 0, remainingMove.z);
+            
+            // Try X movement
+            if (Math.abs(xMove.x) > 0.001) {
+              const xTestPos = currentPosition.clone().add(xMove);
+              if (!this.checkCollisionAtPosition(xTestPos, playerRadius).hit) {
+                currentPosition = xTestPos;
+                remainingMove = zMove;
+                continue;
+              }
+            }
+            
+            // Try Z movement
+            if (Math.abs(zMove.z) > 0.001) {
+              const zTestPos = currentPosition.clone().add(zMove);
+              if (!this.checkCollisionAtPosition(zTestPos, playerRadius).hit) {
+                currentPosition = zTestPos;
+                break;
+              }
+            }
+            
+            // Can't move in any direction, stop
+            break;
+          }
+        } else {
+          // Movement is completely blocked
+          break;
+        }
+      }
+    }
+    
+    return currentPosition;
+  }
+
+  checkCollisionAtPosition(position, playerRadius) {
+    // Check if a position would collide with any obstacle
+    // Returns { hit: boolean, normal: Vector3 }
+    
+    if (!this.obstacles || !Array.isArray(this.obstacles)) {
+      return { hit: false, normal: new THREE.Vector3() };
+    }
+    
+    const playerPos = position.clone();
+    playerPos.y = 0; // Project to ground plane
+    
+    for (const obstacle of this.obstacles) {
+      if (!obstacle || !obstacle.data || !obstacle.data.position) {
+        continue;
+      }
+      
+      const obstaclePosition = new THREE.Vector3(
+        obstacle.data.position.x,
+        0,
+        obstacle.data.position.z
+      );
+      
+      let collisionDetected = false;
+      let collisionNormal = new THREE.Vector3();
+      
+      if (obstacle.data.type === 'sphere') {
+        const radius = obstacle.data.radius;
+        const distance = playerPos.distanceTo(obstaclePosition);
+        
+        if (distance < (playerRadius + radius) && distance > 0.001) {
+          collisionDetected = true;
+          collisionNormal = playerPos.clone().sub(obstaclePosition).normalize();
+        }
+      } else if (obstacle.data.type === 'cylinder') {
+        const radius = obstacle.data.radius;
+        const distance = playerPos.distanceTo(obstaclePosition);
+        
+        if (distance < (playerRadius + radius) && distance > 0.001) {
+          collisionDetected = true;
+          collisionNormal = playerPos.clone().sub(obstaclePosition).normalize();
+        }
+      } else if (obstacle.data.type === 'box') {
+        const halfWidth = obstacle.data.size.x / 2;
+        const halfDepth = obstacle.data.size.z / 2;
+        
+        // Calculate closest point on the rectangle
+        const closestX = Math.max(obstaclePosition.x - halfWidth, 
+                           Math.min(playerPos.x, obstaclePosition.x + halfWidth));
+        const closestZ = Math.max(obstaclePosition.z - halfDepth, 
+                           Math.min(playerPos.z, obstaclePosition.z + halfDepth));
+        
+        const distanceX = playerPos.x - closestX;
+        const distanceZ = playerPos.z - closestZ;
+        const distanceSquared = distanceX * distanceX + distanceZ * distanceZ;
+        
+        if (distanceSquared < (playerRadius * playerRadius)) {
+          collisionDetected = true;
+          const distance = Math.sqrt(distanceSquared);
+          if (distance > 0.001) {
+            collisionNormal = new THREE.Vector3(distanceX / distance, 0, distanceZ / distance);
+          } else {
+            // Player is exactly at closest point, use direction to obstacle center
+            collisionNormal = playerPos.clone().sub(obstaclePosition);
+            if (collisionNormal.length() < 0.001) {
+              collisionNormal = new THREE.Vector3(1, 0, 0); // Default normal
+            } else {
+              collisionNormal.normalize();
+            }
+          }
+        }
+      }
+      
+      if (collisionDetected) {
+        return { hit: true, normal: collisionNormal };
+      }
+    }
+    
+    return { hit: false, normal: new THREE.Vector3() };
   }
 
   updateThrusterEffects() {
