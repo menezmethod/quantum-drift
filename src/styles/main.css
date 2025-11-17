@@ -434,6 +434,129 @@ canvas {
   color: #0f6;
 }
 
+/* Weapon Selector */
+.weapon-selector {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+}
+
+.weapon-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 70px;
+  position: relative;
+}
+
+.weapon-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.weapon-button.active {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: currentColor;
+  box-shadow: 0 0 10px currentColor;
+  transform: translateY(-2px) scale(1.05);
+}
+
+.weapon-button.active.laser {
+  border-color: #0ff;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+  color: #0ff;
+}
+
+.weapon-button.active.grenade {
+  border-color: #f70;
+  box-shadow: 0 0 15px rgba(255, 119, 0, 0.5);
+  color: #f70;
+}
+
+.weapon-button.active.bounce {
+  border-color: #0f6;
+  box-shadow: 0 0 15px rgba(0, 255, 102, 0.5);
+  color: #0f6;
+}
+
+.weapon-key {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  min-width: 18px;
+  text-align: center;
+}
+
+.weapon-button.active .weapon-key {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: currentColor;
+}
+
+.weapon-emoji {
+  font-size: 20px;
+  margin: 4px 0;
+}
+
+.weapon-label-text {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 2px;
+}
+
+.weapon-button.active .weapon-label-text {
+  color: currentColor;
+  font-weight: bold;
+}
+
+.weapon-cycle-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-left: auto;
+}
+
+.cycle-key {
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  min-width: 18px;
+  text-align: center;
+}
+
 /* Health bar shine effect */
 .bar-inner::after {
   content: '';

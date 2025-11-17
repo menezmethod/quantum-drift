@@ -97,6 +97,49 @@ export class GameUI {
     this.weaponName.textContent = 'LASER';
     this.weaponIndicator.appendChild(this.weaponName);
     
+    // Create weapon selector with shortcuts
+    this.weaponSelector = document.createElement('div');
+    this.weaponSelector.className = 'weapon-selector';
+    this.uiContainer.appendChild(this.weaponSelector);
+    
+    // Create weapon buttons
+    this.weaponButtons = [];
+    const weapons = [
+      { name: 'LASER', key: '1', emoji: '🔫', color: '#0ff' },
+      { name: 'GRENADE', key: '2', emoji: '💣', color: '#f70' },
+      { name: 'BOUNCE', key: '3', emoji: '↗️↘️', color: '#0f6' }
+    ];
+    
+    weapons.forEach((weapon, index) => {
+      const weaponButton = document.createElement('div');
+      weaponButton.className = 'weapon-button';
+      weaponButton.dataset.weapon = weapon.name;
+      
+      const keyBadge = document.createElement('div');
+      keyBadge.className = 'weapon-key';
+      keyBadge.textContent = weapon.key;
+      weaponButton.appendChild(keyBadge);
+      
+      const weaponEmoji = document.createElement('div');
+      weaponEmoji.className = 'weapon-emoji';
+      weaponEmoji.textContent = weapon.emoji;
+      weaponButton.appendChild(weaponEmoji);
+      
+      const weaponLabel = document.createElement('div');
+      weaponLabel.className = 'weapon-label-text';
+      weaponLabel.textContent = weapon.name;
+      weaponButton.appendChild(weaponLabel);
+      
+      this.weaponSelector.appendChild(weaponButton);
+      this.weaponButtons.push(weaponButton);
+    });
+    
+    // Add cycle hint
+    const cycleHint = document.createElement('div');
+    cycleHint.className = 'weapon-cycle-hint';
+    cycleHint.innerHTML = '<span class="cycle-key">X</span> Cycle';
+    this.weaponSelector.appendChild(cycleHint);
+    
     // Initially hide the UI
     this.uiContainer.classList.add('hidden');
   }
@@ -212,6 +255,25 @@ export class GameUI {
       case 'bounce':
         this.weaponName.classList.add('bounce');
         break;
+    }
+    
+    // Update weapon selector buttons
+    if (this.weaponButtons) {
+      this.weaponButtons.forEach(button => {
+        button.classList.remove('active', 'laser', 'grenade', 'bounce');
+        if (button.dataset.weapon === weaponName.toUpperCase()) {
+          button.classList.add('active');
+          // Add color class for styling
+          const weaponLower = weaponName.toLowerCase();
+          if (weaponLower === 'laser') {
+            button.classList.add('laser');
+          } else if (weaponLower === 'grenade') {
+            button.classList.add('grenade');
+          } else if (weaponLower === 'bounce') {
+            button.classList.add('bounce');
+          }
+        }
+      });
     }
   }
 } 
