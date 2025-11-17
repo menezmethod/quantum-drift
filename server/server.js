@@ -161,33 +161,47 @@ function checkObstacleCollision(x, z, obstacles) {
 
 // Helper function to generate a safe spawn position
 function generateSafeSpawnPosition(players) {
-  const spawnRadius = 30; // Increased radius for much more spread
-  const spawnAttempts = 100; // More attempts to find a safe spot
-  const minDistance = 10; // Much larger minimum distance between players (was 5)
+  const boundarySize = 25; // Match client boundary size
+  const spawnRadius = boundarySize - 2; // Stay 2 units inside boundary
+  const spawnAttempts = 150; // More attempts to find a safe spot
+  const minDistance = 12; // Larger minimum distance between players for better spread
 
   console.log(`🌍 Generating spawn position for new player. Existing players: ${Object.keys(players).length}`);
 
-  // If no other players, spawn at a random position away from center
+  // If no other players, try multiple positions away from center
   if (Object.keys(players).length === 0) {
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 15 + Math.random() * 10; // 15-25 units from center
-    const x = Math.cos(angle) * distance;
-    const z = Math.sin(angle) * distance;
-    const y = 0.5;
-    
-    // Check obstacle collision
-    if (!gameState.map || !checkObstacleCollision(x, z, gameState.map)) {
-      console.log(`🌍 Generated initial spawn position: x=${x.toFixed(2)}, z=${z.toFixed(2)}`);
-      return { x, y, z };
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 12 + Math.random() * 8; // 12-20 units from center (within boundary)
+      const x = Math.cos(angle) * distance;
+      const z = Math.sin(angle) * distance;
+      const y = 0.5;
+      
+      // Ensure within boundary
+      if (Math.abs(x) > boundarySize - 2 || Math.abs(z) > boundarySize - 2) {
+        continue;
+      }
+      
+      // Check obstacle collision
+      if (!gameState.map || !checkObstacleCollision(x, z, gameState.map)) {
+        console.log(`🌍 Generated initial spawn position: x=${x.toFixed(2)}, z=${z.toFixed(2)}`);
+        return { x, y, z };
+      }
     }
+    // If all attempts failed, fall through to main spawn logic
   }
 
   // Try to find a position far from all existing players
   for (let i = 0; i < spawnAttempts; i++) {
-    // Generate random position in a larger area
+    // Generate random position within boundary (stay 2 units inside)
     const x = (Math.random() - 0.5) * spawnRadius * 2;
     const z = (Math.random() - 0.5) * spawnRadius * 2;
     const y = 0.5; // Y is always 0.5 for ground level
+    
+    // Ensure position is within bounds
+    if (Math.abs(x) > boundarySize - 2 || Math.abs(z) > boundarySize - 2) {
+      continue; // Skip positions outside boundary
+    }
 
     // Check if the generated position is safe from other players
     let isSafe = true;
@@ -224,22 +238,29 @@ function generateSafeSpawnPosition(players) {
     }
   }
   
-  // Fallback: try positions in a circle pattern, avoiding obstacles
+  // Fallback: try positions in a circle pattern, avoiding obstacles and players
   const existingPlayerCount = Object.keys(players).length;
-  for (let i = 0; i < 30; i++) {
-    // Distribute players in a circle pattern
-    const angle = (i / 30) * Math.PI * 2 + (existingPlayerCount * Math.PI / 4);
-    const distance = 20 + Math.random() * 5; // 20-25 units from center
+  // Try more positions with better distribution
+  for (let i = 0; i < 50; i++) {
+    // Distribute players evenly around circle, with some randomness
+    const baseAngle = (existingPlayerCount * Math.PI * 2 / 8) + (i * Math.PI * 2 / 50);
+    const angle = baseAngle + (Math.random() - 0.5) * 0.5; // Add some randomness
+    const distance = 15 + Math.random() * 8; // 15-23 units from center (within boundary)
     const fallbackX = Math.cos(angle) * distance;
     const fallbackZ = Math.sin(angle) * distance;
     
-    // Check obstacle collision and player distance
-    let isSafeFallback = true;
+    // Ensure within boundary
+    if (Math.abs(fallbackX) > boundarySize - 2 || Math.abs(fallbackZ) > boundarySize - 2) {
+      continue; // Skip positions outside boundary
+    }
+    
+    // Check obstacle collision first (faster check)
     if (gameState.map && checkObstacleCollision(fallbackX, fallbackZ, gameState.map)) {
-      isSafeFallback = false;
+      continue; // Skip this position
     }
     
     // Check distance from other players
+    let tooClose = false;
     for (const playerId in players) {
       const player = players[playerId];
       if (player && player.position) {
@@ -248,13 +269,13 @@ function generateSafeSpawnPosition(players) {
           Math.pow(fallbackZ - player.position.z, 2)
         );
         if (distance < minDistance) {
-          isSafeFallback = false;
+          tooClose = true;
           break;
         }
       }
     }
     
-    if (isSafeFallback) {
+    if (!tooClose) {
       console.log(`🌍 Using fallback spawn position: x=${fallbackX.toFixed(2)}, z=${fallbackZ.toFixed(2)}`);
       return { x: fallbackX, y: 0.5, z: fallbackZ };
     }
