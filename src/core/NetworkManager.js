@@ -246,29 +246,26 @@ export class NetworkManager {
         this.pendingPlayers.set(playerData.id, playerData);
       });
       
-      // If game has already started, create players immediately
-      // OR if there are other players (meaning game is active), create them
-      const sceneReady = this.game && this.game.scene && this.game.scene.children.length > 0;
-      const hasOtherPlayers = data.players.length > 1;
-      
-      if (this.gameStarted || (hasOtherPlayers && sceneReady)) {
-        // If game scene is ready, create other players immediately
-        if (sceneReady) {
-          console.log('🌐 Creating other players from gameState (scene ready):', data.players.length);
-          // Create other players (not local player)
-          data.players.forEach(playerData => {
-            if (playerData.id !== this.playerId) {
+      // Always try to create other players if scene exists
+      if (this.game && this.game.scene) {
+        console.log('🌐 Creating other players from gameState:', data.players.length);
+        // Create other players (not local player)
+        data.players.forEach(playerData => {
+          if (playerData.id !== this.playerId) {
+            try {
               this.createOtherPlayer(playerData);
+            } catch (error) {
+              console.error('❌ Error creating player from gameState:', error, playerData);
             }
-          });
-          this.updatePlayerCount();
-        } else if (this.gameStarted) {
-          // Game started but scene not ready yet - use normal flow
-          console.log('🌐 Game started but scene not ready, using createPendingPlayers');
-          this.createPendingPlayers();
-        }
+          }
+        });
+        this.updatePlayerCount();
+      } else if (this.gameStarted) {
+        // Game started but scene not ready yet - use normal flow
+        console.log('🌐 Game started but scene not ready, using createPendingPlayers');
+        this.createPendingPlayers();
       } else {
-        console.log('🌐 Storing players as pending (game not started, scene not ready)');
+        console.log('🌐 Storing players as pending (scene not ready)');
       }
     }
     
@@ -319,17 +316,20 @@ export class NetworkManager {
     
     this.pendingPlayers.set(playerData.id, playerData);
     
-    // Create other players immediately if:
-    // 1. Game has started, OR
-    // 2. Game scene is ready (so late joiners can see existing players)
+    // Always try to create other players if scene exists (even if not fully ready)
     if (playerData.id !== this.playerId) {
-      const sceneReady = this.game && this.game.scene && this.game.scene.children.length > 0;
-      if (this.gameStarted || sceneReady) {
-        console.log('🌐 Creating other player immediately:', playerData.id, 'gameStarted:', this.gameStarted, 'sceneReady:', sceneReady);
-        this.createOtherPlayer(playerData);
-        this.updatePlayerCount(); // Update count when player joins
+      const canCreate = this.game && this.game.scene;
+      if (canCreate) {
+        console.log('🌐 Creating other player immediately:', playerData.id);
+        try {
+          this.createOtherPlayer(playerData);
+          this.updatePlayerCount();
+        } catch (error) {
+          console.error('❌ Error creating other player:', error, playerData);
+          // Store as pending to retry later
+        }
       } else {
-        console.log('🌐 Storing player as pending (game not ready):', playerData.id);
+        console.log('🌐 Storing player as pending (scene not ready):', playerData.id);
       }
     }
   }
@@ -657,19 +657,15 @@ export class NetworkManager {
       return;
     }
     
-    // Use color from server (MUST be provided for sync - no client-side calculation)
-    const playerColor = playerData.color;
+    // Use color from server (preferred) or calculate consistent fallback
+    let playerColor = playerData.color;
     if (!playerColor) {
-      console.error('❌ Player missing color from server - this should not happen!', playerData.id, playerData);
-      // Try to get color from stored player data (if player was already created)
-      const storedPlayer = this.otherPlayers.get(playerData.id);
-      if (storedPlayer && storedPlayer.color) {
-        console.warn('⚠️ Using stored color for existing player:', playerData.id);
-        return; // Don't recreate, just update existing player
-      } else {
-        console.error('❌ Cannot create player without color from server:', playerData.id);
-        return; // Don't create player without server color - prevents color mismatches
-      }
+      console.warn('⚠️ Player missing color from server, using fallback:', playerData.id);
+      // Use same calculation as server for consistency
+      const PLAYER_COLORS = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff, 0xff8800, 0x8800ff];
+      const colorIndex = playerData.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % PLAYER_COLORS.length;
+      playerColor = PLAYER_COLORS[colorIndex];
+      console.warn('⚠️ Calculated fallback color:', playerColor.toString(16), 'for player:', playerData.id);
     }
     
     // Try to use the same ship model as local player, fallback to colored cone
