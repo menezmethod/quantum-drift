@@ -987,8 +987,6 @@ export class NetworkManager {
         this.game.ui.updateHealth(this.game.health, this.game.maxHealth || 100);
       }
       
-      // Log health regeneration for debugging
-      console.log(`🌐 Network health regenerated: ${oldHealth.toFixed(1)} -> ${this.game.health.toFixed(1)} (Δ${deltaTime.toFixed(3)}s)`);
     }
   }
   
@@ -1247,19 +1245,6 @@ export class NetworkManager {
       return;
     }
     
-    console.log('🌐 Local player position before sync:', this.game.playerShip.position);
-    console.log('🌐 Local player visible before sync:', this.game.playerShip.visible);
-    
-    // Log all pending players to sync
-    if (this.pendingPlayers && this.pendingPlayers.size > 0) {
-      console.log('🌐 All pending players to sync:');
-      this.pendingPlayers.forEach((playerData, id) => {
-        const isLocal = id === this.playerId;
-        console.log(`  ${isLocal ? '🚀 LOCAL' : '🌐 OTHER'}: ${id} at ${playerData.position.x.toFixed(2)}, ${playerData.position.z.toFixed(2)}`);
-      });
-    } else {
-      console.log('🌐 No pending players to sync');
-    }
   }
 
   // Create obstacles from server map data
