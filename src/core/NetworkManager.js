@@ -418,9 +418,33 @@ export class NetworkManager {
         player.maxHealth = data.maxHealth || 100; // Store max health for health bar
       }
       
-      // Update color if provided (for color sync)
-      if (data.color) {
+      // Update color if provided (for color sync) - always use server color
+      if (data.color !== undefined) {
         player.color = data.color;
+        // Update mesh color if player already exists
+        if (player.mesh) {
+          player.mesh.traverse((child) => {
+            if (child.isMesh && child.material) {
+              try {
+                const materials = Array.isArray(child.material) ? child.material : [child.material];
+                materials.forEach((material) => {
+                  if (material && material.color && typeof material.color.setHex === 'function') {
+                    material.color.setHex(data.color);
+                  }
+                  if (material && material.emissive) {
+                    if (material.emissive.setHex && typeof material.emissive.setHex === 'function') {
+                      material.emissive.setHex(data.color);
+                    } else if (material.emissive instanceof THREE.Color) {
+                      material.emissive.setHex(data.color);
+                    }
+                  }
+                });
+              } catch (error) {
+                console.warn('⚠️ Error updating player color:', error);
+              }
+            }
+          });
+        }
       }
       if (data.energy !== undefined) {
         player.energy = data.energy;
@@ -428,11 +452,6 @@ export class NetworkManager {
       if (data.currentWeapon) {
         const oldWeapon = player.currentWeapon;
         player.currentWeapon = data.currentWeapon;
-        
-        // Update stored color if provided
-        if (data.color) {
-          player.color = data.color;
-        }
         
         // Visual feedback for weapon switching (change emissive color briefly)
         if (oldWeapon !== data.currentWeapon && player.mesh) {
@@ -638,21 +657,18 @@ export class NetworkManager {
       return;
     }
     
-    // Use color from server (MUST be provided - no fallback for sync)
-    let playerColor = playerData.color;
+    // Use color from server (MUST be provided for sync - no client-side calculation)
+    const playerColor = playerData.color;
     if (!playerColor) {
-      console.error('❌ Player missing color from server:', playerData.id, playerData);
-      // Try to get color from stored player data as fallback
+      console.error('❌ Player missing color from server - this should not happen!', playerData.id, playerData);
+      // Try to get color from stored player data (if player was already created)
       const storedPlayer = this.otherPlayers.get(playerData.id);
       if (storedPlayer && storedPlayer.color) {
-        playerColor = storedPlayer.color;
-        console.warn('⚠️ Using stored color as fallback for player:', playerData.id);
+        console.warn('⚠️ Using stored color for existing player:', playerData.id);
+        return; // Don't recreate, just update existing player
       } else {
-        // Last resort: use a default color based on player ID to prevent blocking
-        const defaultColors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff, 0xff8800, 0x8800ff];
-        const colorIndex = playerData.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % defaultColors.length;
-        playerColor = defaultColors[colorIndex];
-        console.warn('⚠️ Using fallback color for player (server should provide color):', playerData.id, 'color:', playerColor.toString(16));
+        console.error('❌ Cannot create player without color from server:', playerData.id);
+        return; // Don't create player without server color - prevents color mismatches
       }
     }
     
