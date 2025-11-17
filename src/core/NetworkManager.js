@@ -1,15 +1,8 @@
 import { io } from 'socket.io-client';
 import * as THREE from 'three';
 
-console.log('🌐 NetworkManager.js file loaded and imported - VERSION 2.0 -', new Date().toISOString());
-
 export class NetworkManager {
   constructor(game) {
-    console.log('🌐 ===== NETWORKMANAGER CONSTRUCTOR CALLED =====');
-    console.log('🌐 NetworkManager constructor called with game:', game);
-    console.log('🌐 Map constructor available:', typeof Map);
-    console.log('🌐 Map constructor:', Map);
-    
     this.game = game;
     this.socket = null;
     this.playerId = null;
@@ -20,7 +13,7 @@ export class NetworkManager {
     this.otherPlayers = new Map();
     this.networkProjectiles = new Map();
     this.pendingPlayers = new Map();
-    this.gameStarted = false; // Track if game has started
+    this.gameStarted = false;
     
     // Network state
     this.isConnected = false;
@@ -28,29 +21,17 @@ export class NetworkManager {
     this.lastPingTime = 0;
     this.pingInterval = null;
     this.lastUpdateTime = 0;
-    this.updateRate = 50; // 20 FPS updates
+    this.updateRate = 50;
     this.lastHealthUpdate = Date.now();
     
     // Event handlers
     this.eventHandlers = new Map();
     
-    console.log('🌐 NetworkManager properties initialized:');
-    console.log('🌐 - eventHandlers:', this.eventHandlers);
-    console.log('🌐 - eventHandlers type:', typeof this.eventHandlers);
-    console.log('🌐 - eventHandlers size:', this.eventHandlers.size);
-    console.log('🌐 - eventHandlers constructor:', this.eventHandlers.constructor);
-    console.log('🌐 - eventHandlers instanceof Map:', this.eventHandlers instanceof Map);
-    console.log('🌐 - eventHandlers forEach:', typeof this.eventHandlers.forEach);
-    
-    console.log('🌐 Initializing NetworkManager...');
     this.init();
   }
   
   init() {
-    console.log('🌐 NetworkManager.init() called');
-    console.log('🌐 Setting up event handlers...');
     this.setupEventHandlers();
-    console.log('🌐 Event handlers setup complete, connecting...');
     this.connect();
   }
   
@@ -74,9 +55,6 @@ export class NetworkManager {
   
   connect() {
     try {
-      console.log(`🌐 Connecting to server: ${this.serverUrl}`);
-      console.log('🌐 Socket.IO version:', io.version);
-      
       this.socket = io(this.serverUrl, {
         transports: ['websocket', 'polling'],
         timeout: 20000,
@@ -86,8 +64,6 @@ export class NetworkManager {
         reconnectionDelayMax: 5000,
         forceNew: true
       });
-      
-      console.log('🌐 Socket created, attaching event handlers...');
       
       // Attach event handlers
       this.attachEventHandlers();
@@ -108,57 +84,32 @@ export class NetworkManager {
   
   attachEventHandlers() {
     if (!this.socket) {
-      console.error('🌐 No socket available for event handlers');
+      console.error('❌ No socket available for event handlers');
       return;
     }
     
-    if (!this.eventHandlers) {
+    if (!this.eventHandlers || !(this.eventHandlers instanceof Map)) {
       console.error('❌ Event handlers not initialized!');
-      console.log('🌐 this.eventHandlers:', this.eventHandlers);
-      console.log('🌐 this:', this);
-      console.log('🌐 this.eventHandlers type:', typeof this.eventHandlers);
-      console.log('🌐 this.eventHandlers constructor:', this.eventHandlers?.constructor);
       return;
     }
-    
-    if (!(this.eventHandlers instanceof Map)) {
-      console.error('❌ Event handlers is not a Map!');
-      console.log('🌐 this.eventHandlers:', this.eventHandlers);
-      console.log('🌐 this.eventHandlers type:', typeof this.eventHandlers);
-      console.log('🌐 this.eventHandlers constructor:', this.eventHandlers?.constructor);
-      return;
-    }
-    
-    console.log('🌐 Attaching event handlers...');
-    console.log('🌐 Event handlers map size:', this.eventHandlers.size);
     
     try {
       // Attach all event handlers
       this.eventHandlers.forEach((handler, event) => {
-        console.log(`🌐 Attaching handler for: ${event}`);
         this.socket.on(event, handler);
       });
       
       // Start ping interval
       this.startPingInterval();
-      
-      console.log('🌐 Event handlers attached successfully');
     } catch (error) {
       console.error('❌ Error attaching event handlers:', error);
-      console.log('🌐 this.eventHandlers:', this.eventHandlers);
-      console.log('🌐 this.eventHandlers size:', this.eventHandlers?.size);
-      console.log('🌐 this.eventHandlers forEach:', this.eventHandlers?.forEach);
-      
       // Fallback: manually attach event handlers
-      console.log('🌐 Using fallback event handler attachment...');
       this.attachEventHandlersFallback();
     }
   }
   
   // Fallback method to manually attach event handlers
   attachEventHandlersFallback() {
-    console.log('🌐 Attaching event handlers manually...');
-    
     try {
       // Manually attach each event handler
       this.socket.on('connect', this.handleConnect.bind(this));
@@ -178,10 +129,8 @@ export class NetworkManager {
       
       // Start ping interval
       this.startPingInterval();
-      
-      console.log('🌐 Fallback event handlers attached successfully');
     } catch (fallbackError) {
-      console.error('❌ Fallback event handler attachment also failed:', fallbackError);
+      console.error('❌ Fallback event handler attachment failed:', fallbackError);
     }
   }
   
@@ -350,21 +299,17 @@ export class NetworkManager {
   }
   
   handlePlayerJoined(playerData) {
-    console.log('🌐 Player joined:', playerData.id);
-    
     // Store ALL players (including local player) as pending until game starts
     if (!this.pendingPlayers) {
       this.pendingPlayers = new Map();
     }
     
     this.pendingPlayers.set(playerData.id, playerData);
-    console.log('🌐 Stored player as pending:', playerData.id, 'at position:', playerData.position);
-    console.log('🌐 Total pending players:', this.pendingPlayers.size);
     
     // Only create other players immediately if game has started
     if (this.gameStarted && playerData.id !== this.playerId) {
-      console.log('🌐 Game already started, creating other player immediately');
       this.createOtherPlayer(playerData);
+      this.updatePlayerCount(); // Update count when player joins
     }
   }
   
@@ -433,8 +378,8 @@ export class NetworkManager {
   }
   
   handlePlayerLeft(playerId) {
-    console.log('🌐 Player left:', playerId);
     this.removeOtherPlayer(playerId);
+    this.updatePlayerCount(); // Update count when player leaves
   }
   
   handlePlayerUpdated(data) {
@@ -656,56 +601,27 @@ export class NetworkManager {
   }
   
   createOtherPlayer(playerData) {
-    console.log('🌐 Creating other player:', playerData.id);
-    
     // Safety check: don't create the local player as an "other player"
     if (playerData.id === this.playerId) {
-      console.log('🚀 Skipping local player creation in createOtherPlayer - will be handled separately');
       return;
     }
     
     // Check if player already exists
     if (this.otherPlayers.has(playerData.id)) {
-      console.log('🌐 Player already exists, updating:', playerData.id);
       this.removeOtherPlayer(playerData.id);
     }
     
     // Check if game and scene are properly initialized
-    if (!this.game) {
-      console.error('❌ Game object not available in NetworkManager');
+    if (!this.game || !this.game.scene) {
+      console.error('❌ Game or scene not available in NetworkManager');
       return;
     }
     
-    if (!this.game.scene) {
-      console.error('❌ Game scene not available in NetworkManager');
-      return;
-    }
-    
-    console.log('🌐 Player data:', playerData);
-    console.log('🌐 Game scene:', this.game.scene);
-    console.log('🌐 Local player position:', this.game.playerShip ? this.game.playerShip.position : 'No local player');
-    console.log('🌐 World coordinates - Local player:', this.game.playerShip ? 
-      `x=${this.game.playerShip.position.x.toFixed(2)}, z=${this.game.playerShip.position.z.toFixed(2)}` : 'No local player');
-    console.log('🌐 World coordinates - Network player:', 
-      `x=${playerData.position.x.toFixed(2)}, z=${playerData.position.z.toFixed(2)}`);
-    
-    // Use color from server (ensures sync across all clients)
-    // Fallback to calculated color if server didn't send it
-    let playerColor = playerData.color;
+    // Use color from server (MUST be provided - no fallback for sync)
+    const playerColor = playerData.color;
     if (!playerColor) {
-      // Fallback: calculate color if server didn't provide it
-      const playerColors = [
-        0xff0000, // Red
-        0x00ff00, // Green
-        0x0000ff, // Blue
-        0xffff00, // Yellow
-        0xff00ff, // Magenta
-        0x00ffff, // Cyan
-        0xff8800, // Orange
-        0x8800ff, // Purple
-      ];
-      const colorIndex = playerData.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % playerColors.length;
-      playerColor = playerColors[colorIndex];
+      console.error('❌ Player missing color from server:', playerData.id);
+      return; // Don't create player without color - server should always provide it
     }
     
     // Try to use the same ship model as local player, fallback to colored cone
@@ -795,7 +711,6 @@ export class NetworkManager {
       });
       
       mesh = new THREE.Mesh(geometry, material);
-      console.log('🌐 Using fallback cone geometry for player (ship model not loaded yet)');
     }
     
     mesh.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
@@ -809,15 +724,8 @@ export class NetworkManager {
     const healthIndicator = this.createHealthIndicator();
     mesh.add(healthIndicator);
     
-    console.log('🌐 Created mesh at position:', mesh.position);
-    console.log('🌐 Adding mesh to scene...');
-    
     // Add to scene
     this.game.scene.add(mesh);
-    
-    console.log('🌐 Mesh added to scene. Scene children count:', this.game.scene.children.length);
-    console.log('🌐 Mesh visible:', mesh.visible);
-    console.log('🌐 Mesh position after adding:', mesh.position);
     
     // Store player data
     this.otherPlayers.set(playerData.id, {
@@ -837,7 +745,7 @@ export class NetworkManager {
       lastUpdate: Date.now()
     });
     
-    console.log('🌐 Other players count:', this.otherPlayers.size);
+    this.updatePlayerCount(); // Update count when player is created
   }
 
   createPlayerLabel(playerId, color) {
@@ -889,27 +797,25 @@ export class NetworkManager {
   }
   
   createProjectile(projectileData) {
-    console.log('🌐 Creating projectile with data:', projectileData);
-    
     // Don't create network projectile for local player - they see their own local projectile
     if (projectileData.playerId === this.playerId) {
-      console.log('🌐 Skipping network projectile creation for local player (using local projectile instead)');
       return;
     }
     
     // Create projectile mesh based on weapon type
     let geometry, material;
     
-    // Get player color for projectile (use player's ship color)
-    let projectileColor = 0xff0000; // Default red
-    if (projectileData.color) {
-      projectileColor = projectileData.color;
-    } else if (projectileData.playerId) {
-      // Try to get color from player data
+    // Get player color for projectile (MUST come from server)
+    let projectileColor = projectileData.color;
+    if (!projectileColor && projectileData.playerId) {
+      // Fallback: get color from stored player data
       const player = this.otherPlayers.get(projectileData.playerId);
-      if (player && player.color) {
-        projectileColor = player.color;
-      }
+      projectileColor = player?.color;
+    }
+    
+    if (!projectileColor) {
+      console.error('❌ Projectile missing color:', projectileData);
+      return; // Don't create projectile without color
     }
     
     switch (projectileData.weaponType) {
