@@ -451,12 +451,22 @@ export class NetworkManager {
         player.health = data.health;
         player.maxHealth = data.maxHealth || 100; // Store max health for health bar
       }
+      
+      // Update color if provided (for color sync)
+      if (data.color) {
+        player.color = data.color;
+      }
       if (data.energy !== undefined) {
         player.energy = data.energy;
       }
       if (data.currentWeapon) {
         const oldWeapon = player.currentWeapon;
         player.currentWeapon = data.currentWeapon;
+        
+        // Update stored color if provided
+        if (data.color) {
+          player.color = data.color;
+        }
         
         // Visual feedback for weapon switching (change emissive color briefly)
         if (oldWeapon !== data.currentWeapon && player.mesh) {
@@ -679,19 +689,24 @@ export class NetworkManager {
     console.log('🌐 World coordinates - Network player:', 
       `x=${playerData.position.x.toFixed(2)}, z=${playerData.position.z.toFixed(2)}`);
     
-    // Generate unique color for this player based on their ID
-    const playerColors = [
-      0xff0000, // Red
-      0x00ff00, // Green
-      0x0000ff, // Blue
-      0xffff00, // Yellow
-      0xff00ff, // Magenta
-      0x00ffff, // Cyan
-      0xff8800, // Orange
-      0x8800ff, // Purple
-    ];
-    const colorIndex = playerData.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % playerColors.length;
-    const playerColor = playerColors[colorIndex];
+    // Use color from server (ensures sync across all clients)
+    // Fallback to calculated color if server didn't send it
+    let playerColor = playerData.color;
+    if (!playerColor) {
+      // Fallback: calculate color if server didn't provide it
+      const playerColors = [
+        0xff0000, // Red
+        0x00ff00, // Green
+        0x0000ff, // Blue
+        0xffff00, // Yellow
+        0xff00ff, // Magenta
+        0x00ffff, // Cyan
+        0xff8800, // Orange
+        0x8800ff, // Purple
+      ];
+      const colorIndex = playerData.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % playerColors.length;
+      playerColor = playerColors[colorIndex];
+    }
     
     // Try to use the same ship model as local player, fallback to colored cone
     let mesh;
@@ -816,6 +831,7 @@ export class NetworkManager {
       currentWeapon: playerData.currentWeapon,
       team: playerData.team,
       isAlive: playerData.isAlive,
+      color: playerColor, // Store player color for projectile colors
       targetPosition: playerData.position,
       targetRotation: playerData.rotation,
       lastUpdate: Date.now()
@@ -875,37 +891,58 @@ export class NetworkManager {
   createProjectile(projectileData) {
     console.log('🌐 Creating projectile with data:', projectileData);
     
+    // Don't create network projectile for local player - they see their own local projectile
+    if (projectileData.playerId === this.playerId) {
+      console.log('🌐 Skipping network projectile creation for local player (using local projectile instead)');
+      return;
+    }
+    
     // Create projectile mesh based on weapon type
     let geometry, material;
+    
+    // Get player color for projectile (use player's ship color)
+    let projectileColor = 0xff0000; // Default red
+    if (projectileData.color) {
+      projectileColor = projectileData.color;
+    } else if (projectileData.playerId) {
+      // Try to get color from player data
+      const player = this.otherPlayers.get(projectileData.playerId);
+      if (player && player.color) {
+        projectileColor = player.color;
+      }
+    }
     
     switch (projectileData.weaponType) {
       case 'LASER':
         // Make laser projectiles larger and properly oriented
         geometry = new THREE.CylinderGeometry(0.15, 0.15, 4, 8);
-        // Don't rotate - let it be vertical (Y-axis) by default
+        // Use player's ship color for laser
         material = new THREE.MeshBasicMaterial({ 
-          color: 0xff0000, // Bright red for network LASER projectiles
+          color: projectileColor, // Use player's ship color
           transparent: true, 
           opacity: 0.9, // Make visible!
-          emissive: 0xff0000,
+          emissive: projectileColor,
           emissiveIntensity: 1.0 // Bright glow so you can see enemy lasers
         });
         break;
       case 'BOUNCE':
         geometry = new THREE.SphereGeometry(0.25, 16, 16);
+        // Use player's ship color for bounce laser
         material = new THREE.MeshBasicMaterial({ 
-          color: 0x00ff00, // Bright green for BOUNCE projectiles
+          color: projectileColor, // Use player's ship color
           transparent: true, 
           opacity: 0.9, // Make visible!
-          emissive: 0x00ff00,
+          emissive: projectileColor,
           emissiveIntensity: 1.0 // Bright glow
         });
         break;
       case 'GRENADE':
         geometry = new THREE.SphereGeometry(0.4, 16, 16);
+        // Use player's ship color for grenade (slightly darker)
+        const grenadeColor = (projectileColor & 0xffffff) | 0x800000; // Darken slightly
         material = new THREE.MeshPhongMaterial({ 
-          color: 0xff4500, // Orange for GRENADE projectiles
-          emissive: 0xff2000,
+          color: projectileColor, // Use player's ship color
+          emissive: projectileColor,
           emissiveIntensity: 1.0, // Bright glow
           transparent: true,
           opacity: 0.9 // Make visible!
@@ -914,9 +951,9 @@ export class NetworkManager {
       default:
         geometry = new THREE.SphereGeometry(0.2, 8, 8);
         material = new THREE.MeshBasicMaterial({ 
-          color: 0xffff00, // Bright yellow
-          emissive: 0xffff00,
-          emissiveIntensity: 0.0 // No glow
+          color: projectileColor, // Use player's ship color
+          emissive: projectileColor,
+          emissiveIntensity: 1.0 // Bright glow
         });
     }
     

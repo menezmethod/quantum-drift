@@ -35,6 +35,24 @@ console.log('🌍 Initializing game state...');
 gameState.map = generateGameMap();
 console.log('🌍 Game state initialized with map:', gameState.map);
 
+// Player color palette (consistent across all clients)
+const PLAYER_COLORS = [
+  0xff0000, // Red
+  0x00ff00, // Green
+  0x0000ff, // Blue
+  0xffff00, // Yellow
+  0xff00ff, // Magenta
+  0x00ffff, // Cyan
+  0xff8800, // Orange
+  0x8800ff, // Purple
+];
+
+// Helper to get consistent color for a player ID
+function getPlayerColor(playerId) {
+  const colorIndex = playerId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % PLAYER_COLORS.length;
+  return PLAYER_COLORS[colorIndex];
+}
+
 // Player management
 class Player {
   constructor(id, socket) {
@@ -51,6 +69,7 @@ class Player {
     this.lastUpdate = Date.now();
     this.isAlive = true;
     this.spawnTime = Date.now();
+    this.color = getPlayerColor(id); // Assign consistent color based on ID
   }
 
   update(data) {
@@ -75,7 +94,8 @@ class Player {
       currentWeapon: this.currentWeapon,
       team: this.team,
       isAlive: this.isAlive,
-      lastUpdate: this.lastUpdate
+      lastUpdate: this.lastUpdate,
+      color: this.color // Include color in player data
     };
   }
 }
@@ -141,12 +161,28 @@ function checkObstacleCollision(x, z, obstacles) {
 
 // Helper function to generate a safe spawn position
 function generateSafeSpawnPosition(players) {
-  const spawnRadius = 20; // Increased radius for more spread
-  const spawnAttempts = 50; // More attempts to find a safe spot
-  const minDistance = 5; // Increased minimum distance between players
+  const spawnRadius = 30; // Increased radius for much more spread
+  const spawnAttempts = 100; // More attempts to find a safe spot
+  const minDistance = 10; // Much larger minimum distance between players (was 5)
 
   console.log(`🌍 Generating spawn position for new player. Existing players: ${Object.keys(players).length}`);
 
+  // If no other players, spawn at a random position away from center
+  if (Object.keys(players).length === 0) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 15 + Math.random() * 10; // 15-25 units from center
+    const x = Math.cos(angle) * distance;
+    const z = Math.sin(angle) * distance;
+    const y = 0.5;
+    
+    // Check obstacle collision
+    if (!gameState.map || !checkObstacleCollision(x, z, gameState.map)) {
+      console.log(`🌍 Generated initial spawn position: x=${x.toFixed(2)}, z=${z.toFixed(2)}`);
+      return { x, y, z };
+    }
+  }
+
+  // Try to find a position far from all existing players
   for (let i = 0; i < spawnAttempts; i++) {
     // Generate random position in a larger area
     const x = (Math.random() - 0.5) * spawnRadius * 2;
@@ -155,6 +191,8 @@ function generateSafeSpawnPosition(players) {
 
     // Check if the generated position is safe from other players
     let isSafe = true;
+    let minPlayerDistance = Infinity;
+    
     for (const playerId in players) {
       const player = players[playerId];
       if (player && player.position) {
@@ -163,6 +201,7 @@ function generateSafeSpawnPosition(players) {
           Math.pow(y - player.position.y, 2) +
           Math.pow(z - player.position.z, 2)
         );
+        minPlayerDistance = Math.min(minPlayerDistance, distance);
         if (distance < minDistance) {
           console.log(`🌍 Position ${x.toFixed(2)}, ${z.toFixed(2)} too close to player ${playerId} (distance: ${distance.toFixed(2)})`);
           isSafe = false;
@@ -180,18 +219,42 @@ function generateSafeSpawnPosition(players) {
     }
 
     if (isSafe) {
-      console.log(`🌍 Generated safe spawn position: x=${x.toFixed(2)}, z=${z.toFixed(2)}`);
+      console.log(`🌍 Generated safe spawn position: x=${x.toFixed(2)}, z=${z.toFixed(2)} (min distance from players: ${minPlayerDistance.toFixed(2)})`);
       return { x, y, z };
     }
   }
   
-  // Fallback: try positions further from center, avoiding obstacles
-  for (let i = 0; i < 20; i++) {
-    const fallbackX = (Math.random() - 0.5) * 40;
-    const fallbackZ = (Math.random() - 0.5) * 40;
+  // Fallback: try positions in a circle pattern, avoiding obstacles
+  const existingPlayerCount = Object.keys(players).length;
+  for (let i = 0; i < 30; i++) {
+    // Distribute players in a circle pattern
+    const angle = (i / 30) * Math.PI * 2 + (existingPlayerCount * Math.PI / 4);
+    const distance = 20 + Math.random() * 5; // 20-25 units from center
+    const fallbackX = Math.cos(angle) * distance;
+    const fallbackZ = Math.sin(angle) * distance;
     
-    // Check obstacle collision for fallback
-    if (!gameState.map || !checkObstacleCollision(fallbackX, fallbackZ, gameState.map)) {
+    // Check obstacle collision and player distance
+    let isSafeFallback = true;
+    if (gameState.map && checkObstacleCollision(fallbackX, fallbackZ, gameState.map)) {
+      isSafeFallback = false;
+    }
+    
+    // Check distance from other players
+    for (const playerId in players) {
+      const player = players[playerId];
+      if (player && player.position) {
+        const distance = Math.sqrt(
+          Math.pow(fallbackX - player.position.x, 2) +
+          Math.pow(fallbackZ - player.position.z, 2)
+        );
+        if (distance < minDistance) {
+          isSafeFallback = false;
+          break;
+        }
+      }
+    }
+    
+    if (isSafeFallback) {
       console.log(`🌍 Using fallback spawn position: x=${fallbackX.toFixed(2)}, z=${fallbackZ.toFixed(2)}`);
       return { x: fallbackX, y: 0.5, z: fallbackZ };
     }
@@ -264,13 +327,15 @@ io.on('connection', (socket) => {
   
   // Handle player updates
   socket.on('playerUpdate', (data) => {
-    if (gameState.players[socket.id]) {
-      gameState.players[socket.id].update(data);
+    const player = gameState.players[socket.id];
+    if (player) {
+      player.update(data);
       
-      // Broadcast to other players
+      // Broadcast to other players (include color for sync)
       socket.broadcast.emit('playerUpdated', {
         id: socket.id,
-        ...data
+        ...data,
+        color: player.color // Include color in updates for sync
       });
     }
   });
@@ -290,13 +355,14 @@ io.on('connection', (socket) => {
       direction: data.direction,
       speed: data.speed,
       damage: data.damage,
+      color: player.color, // Include player color for projectile
       createdAt: Date.now()
     };
     
     gameState.projectiles[projectileId] = projectile;
     
-    // Broadcast to all players
-    io.emit('projectileCreated', projectile);
+    // Broadcast to all players (except the shooter - they see their own local projectile)
+    socket.broadcast.emit('projectileCreated', projectile);
     
     // Remove projectile after some time
     setTimeout(() => {
