@@ -462,25 +462,60 @@ export class NetworkManager {
         if (oldWeapon !== data.currentWeapon && player.mesh) {
           player.mesh.traverse((child) => {
             if (child.isMesh && child.material) {
-              // Flash the weapon color
-              const weaponColors = {
-                'LASER': 0xff0000,
-                'BOUNCE': 0x00ff00,
-                'GRENADE': 0xff8800
-              };
-              const flashColor = weaponColors[data.currentWeapon] || 0xffffff;
-              
-              const originalEmissive = child.material.emissive.clone();
-              child.material.emissive.setHex(flashColor);
-              child.material.emissiveIntensity = 1.0;
-              
-              // Reset after 200ms
-              setTimeout(() => {
-                if (child.material) {
-                  child.material.emissive.copy(originalEmissive);
-                  child.material.emissiveIntensity = 0.3;
-                }
-              }, 200);
+              try {
+                // Handle material arrays
+                const materials = Array.isArray(child.material) ? child.material : [child.material];
+                
+                materials.forEach((material) => {
+                  if (!material || !material.emissive) return;
+                  
+                  // Flash the weapon color
+                  const weaponColors = {
+                    'LASER': 0xff0000,
+                    'BOUNCE': 0x00ff00,
+                    'GRENADE': 0xff8800
+                  };
+                  const flashColor = weaponColors[data.currentWeapon] || 0xffffff;
+                  
+                  // Store original emissive if it exists
+                  let originalEmissive = null;
+                  if (material.emissive && material.emissive.clone) {
+                    originalEmissive = material.emissive.clone();
+                  } else if (material.emissive instanceof THREE.Color) {
+                    originalEmissive = material.emissive.clone();
+                  }
+                  
+                  // Set flash color
+                  if (material.emissive && material.emissive.setHex) {
+                    material.emissive.setHex(flashColor);
+                  } else if (material.emissive instanceof THREE.Color) {
+                    material.emissive.setHex(flashColor);
+                  }
+                  
+                  if (typeof material.emissiveIntensity !== 'undefined') {
+                    material.emissiveIntensity = 1.0;
+                  }
+                  
+                  // Reset after 200ms
+                  if (originalEmissive) {
+                    setTimeout(() => {
+                      if (material && material.emissive) {
+                        if (material.emissive.copy) {
+                          material.emissive.copy(originalEmissive);
+                        } else if (material.emissive instanceof THREE.Color) {
+                          material.emissive.copy(originalEmissive);
+                        }
+                        if (typeof material.emissiveIntensity !== 'undefined') {
+                          material.emissiveIntensity = 0.3;
+                        }
+                      }
+                    }, 200);
+                  }
+                });
+              } catch (error) {
+                console.warn('🌐 Error flashing weapon color:', error);
+                // Continue with other meshes
+              }
             }
           });
         }
@@ -681,12 +716,51 @@ export class NetworkManager {
       // Apply unique color to the ship
       mesh.traverse((child) => {
         if (child.isMesh && child.material) {
-          // Clone material to avoid affecting other players
-          child.material = child.material.clone();
-          child.material.color.setHex(playerColor);
-          child.material.emissive.setHex(playerColor);
-          child.material.emissiveIntensity = 0.3; // Slightly less emissive for other players
-          child.material.needsUpdate = true;
+          try {
+            // Handle material arrays (some models have multiple materials)
+            const materials = Array.isArray(child.material) ? child.material : [child.material];
+            
+            materials.forEach((material, index) => {
+              if (!material) return;
+              
+              // Clone material to avoid affecting other players
+              const clonedMaterial = material.clone();
+              
+              // Only set color/emissive if the material has these properties
+              if (clonedMaterial.color && typeof clonedMaterial.color.setHex === 'function') {
+                clonedMaterial.color.setHex(playerColor);
+              }
+              
+              if (clonedMaterial.emissive) {
+                if (clonedMaterial.emissive.setHex && typeof clonedMaterial.emissive.setHex === 'function') {
+                  clonedMaterial.emissive.setHex(playerColor);
+                } else if (clonedMaterial.emissive instanceof THREE.Color) {
+                  clonedMaterial.emissive.setHex(playerColor);
+                }
+              }
+              
+              if (typeof clonedMaterial.emissiveIntensity !== 'undefined') {
+                clonedMaterial.emissiveIntensity = 0.3; // Slightly less emissive for other players
+              }
+              
+              clonedMaterial.needsUpdate = true;
+              
+              // Update the material in the array or directly
+              if (Array.isArray(child.material)) {
+                materials[index] = clonedMaterial;
+              } else {
+                child.material = clonedMaterial;
+              }
+            });
+            
+            // If we had an array, update it
+            if (Array.isArray(child.material)) {
+              child.material = materials;
+            }
+          } catch (error) {
+            console.warn('🌐 Error applying color to mesh material:', error, child);
+            // Continue with other meshes even if one fails
+          }
         }
       });
       
