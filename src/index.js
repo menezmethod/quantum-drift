@@ -2254,6 +2254,60 @@ selectWeapon(weaponType) {
         
         grenade.trail.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         grenade.trail.geometry.attributes.position.needsUpdate = true;
+        
+        // Check for collisions with obstacles
+        for (let j = 0; j < this.obstacles.length; j++) {
+          const obstacle = this.obstacles[j];
+          
+          // Check if obstacle has the new structure
+          if (!obstacle || !obstacle.data || !obstacle.data.position) {
+            continue; // Skip invalid obstacles
+          }
+          
+          // Proper collision detection based on obstacle type
+          let collision = false;
+          const grenadePos = grenade.mesh.position;
+          const obsPos = obstacle.data.position;
+          
+          if (obstacle.data.type === 'box') {
+            const size = obstacle.data.size;
+            const halfX = size.x / 2;
+            const halfZ = size.z / 2;
+            const halfY = size.y / 2;
+            
+            // Check if grenade is within box bounds
+            if (Math.abs(grenadePos.x - obsPos.x) < halfX + 0.3 &&
+                Math.abs(grenadePos.z - obsPos.z) < halfZ + 0.3 &&
+                Math.abs(grenadePos.y - obsPos.y) < halfY + 0.3) {
+              collision = true;
+            }
+          } else if (obstacle.data.type === 'cylinder') {
+            const radius = obstacle.data.radius || 1;
+            const height = obstacle.data.height || 5;
+            const horizontalDist = Math.sqrt(
+              Math.pow(grenadePos.x - obsPos.x, 2) + 
+              Math.pow(grenadePos.z - obsPos.z, 2)
+            );
+            
+            if (horizontalDist < radius + 0.3 &&
+                Math.abs(grenadePos.y - obsPos.y) < height / 2 + 0.3) {
+              collision = true;
+            }
+          } else if (obstacle.data.type === 'sphere') {
+            const radius = obstacle.data.radius || 1;
+            const distance = grenadePos.distanceTo(obsPos);
+            
+            if (distance < radius + 0.3) {
+              collision = true;
+            }
+          }
+          
+          if (collision) {
+            // Explode on impact with obstacle
+            this.explodeGrenade(grenade, i);
+            break;
+          }
+        }
       }
     }
   }
@@ -2514,11 +2568,11 @@ selectWeapon(weaponType) {
         }
       }
       
-      // Update lifetime
-      laser.lifeTime++;
+      // Update lifetime (time-based)
+      const age = Date.now() - laser.createdAt;
       
       // Remove if too old or too many bounces
-      if (laser.lifeTime > laser.maxLifeTime || laser.bounces >= laser.maxBounces) {
+      if (age > laser.maxLifeTime || laser.bounces >= laser.maxBounces) {
         this.scene.remove(laser.mesh);
         this.scene.remove(laser.trail);
         this.bouncingLasers.splice(i, 1);
@@ -3333,15 +3387,17 @@ createMuzzleFlash(position, direction) {
     }
 
     // Store bouncing laser data with improved parameters
+    // Lifetime: 7-10 seconds (randomized for variety)
+    const lifetimeSeconds = 7 + Math.random() * 3; // 7-10 seconds
     this.bouncingLasers.push({
       mesh: laser,
       trail: trail,
       direction: direction.clone(), // Clone the direction to prevent reference issues
       speed: 0.8, // Increased speed for better feel
       bounces: 0,
-      maxBounces: 3,
-      lifeTime: 0,
-      maxLifeTime: 120,
+      maxBounces: 10, // Allow more bounces since we have time limit
+      createdAt: Date.now(), // Time-based lifetime
+      maxLifeTime: lifetimeSeconds * 1000, // Convert to milliseconds
       canHitPlayer: false,
       bounceTimeout: 15, // Reduced timeout for better gameplay
       trailPoints: [],
@@ -3502,8 +3558,45 @@ createMuzzleFlash(position, direction) {
           continue; // Skip invalid obstacles
         }
         
-        // Simple distance check
-        if (laser.mesh.position.distanceTo(obstacle.data.position) < 1.5) {
+        // Proper collision detection based on obstacle type
+        let collision = false;
+        const laserPos = laser.mesh.position;
+        const obsPos = obstacle.data.position;
+        
+        if (obstacle.data.type === 'box') {
+          const size = obstacle.data.size;
+          const halfX = size.x / 2;
+          const halfZ = size.z / 2;
+          const halfY = size.y / 2;
+          
+          // Check if laser is within box bounds
+          if (Math.abs(laserPos.x - obsPos.x) < halfX + 0.2 &&
+              Math.abs(laserPos.z - obsPos.z) < halfZ + 0.2 &&
+              Math.abs(laserPos.y - obsPos.y) < halfY + 0.2) {
+            collision = true;
+          }
+        } else if (obstacle.data.type === 'cylinder') {
+          const radius = obstacle.data.radius || 1;
+          const height = obstacle.data.height || 5;
+          const horizontalDist = Math.sqrt(
+            Math.pow(laserPos.x - obsPos.x, 2) + 
+            Math.pow(laserPos.z - obsPos.z, 2)
+          );
+          
+          if (horizontalDist < radius + 0.2 &&
+              Math.abs(laserPos.y - obsPos.y) < height / 2 + 0.2) {
+            collision = true;
+          }
+        } else if (obstacle.data.type === 'sphere') {
+          const radius = obstacle.data.radius || 1;
+          const distance = laserPos.distanceTo(obsPos);
+          
+          if (distance < radius + 0.2) {
+            collision = true;
+          }
+        }
+        
+        if (collision) {
           // Create enhanced hit effect
           this.createEnhancedHitEffect(laser.mesh.position.clone(), laser.direction.clone());
           

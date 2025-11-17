@@ -1179,6 +1179,63 @@ export class NetworkManager {
         projectile.mesh.position.y += direction.y * speed * deltaTime;
         projectile.mesh.position.z += direction.z * speed * deltaTime;
         
+        // Check collision with obstacles first
+        if (this.game.obstacles && Array.isArray(this.game.obstacles)) {
+          const projPos = projectile.mesh.position;
+          
+          for (const obstacle of this.game.obstacles) {
+            if (!obstacle || !obstacle.data || !obstacle.data.position) {
+              continue;
+            }
+            
+            let collision = false;
+            const obsPos = obstacle.data.position;
+            
+            if (obstacle.data.type === 'box') {
+              const size = obstacle.data.size;
+              const halfX = size.x / 2;
+              const halfZ = size.z / 2;
+              const halfY = size.y / 2;
+              
+              if (Math.abs(projPos.x - obsPos.x) < halfX + 0.2 &&
+                  Math.abs(projPos.z - obsPos.z) < halfZ + 0.2 &&
+                  Math.abs(projPos.y - obsPos.y) < halfY + 0.2) {
+                collision = true;
+              }
+            } else if (obstacle.data.type === 'cylinder') {
+              const radius = obstacle.data.radius || 1;
+              const height = obstacle.data.height || 5;
+              const horizontalDist = Math.sqrt(
+                Math.pow(projPos.x - obsPos.x, 2) + 
+                Math.pow(projPos.z - obsPos.z, 2)
+              );
+              
+              if (horizontalDist < radius + 0.2 &&
+                  Math.abs(projPos.y - obsPos.y) < height / 2 + 0.2) {
+                collision = true;
+              }
+            } else if (obstacle.data.type === 'sphere') {
+              const radius = obstacle.data.radius || 1;
+              const distance = projPos.distanceTo(obsPos);
+              
+              if (distance < radius + 0.2) {
+                collision = true;
+              }
+            }
+            
+            if (collision) {
+              // Create hit effect
+              if (this.game.createHitEffect) {
+                this.game.createHitEffect(projPos.clone());
+              }
+              
+              // Remove the projectile
+              this.destroyProjectile(projectile.id);
+              return; // Skip further processing
+            }
+          }
+        }
+        
         // Check collision with local player
         if (this.game.playerShip && projectile.data.playerId !== this.playerId) {
           const distance = projectile.mesh.position.distanceTo(this.game.playerShip.position);
