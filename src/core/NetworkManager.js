@@ -150,7 +150,6 @@ export class NetworkManager {
   }
   
   handleConnect() {
-    console.log('🌐 Connected to server!');
     this.isConnected = true;
     this.connectionAttempts = 0;
     this.playerId = this.socket.id;
@@ -168,7 +167,6 @@ export class NetworkManager {
   // Send initial position to server
   sendInitialPosition() {
     if (!this.game || !this.game.playerShip) {
-      console.log('🌐 Local player not ready yet, will send position later');
       return;
     }
     
@@ -180,12 +178,10 @@ export class NetworkManager {
       currentWeapon: this.game.currentWeapon || 'LASER'
     };
     
-    console.log('🌐 Sending initial position to server:', initialData);
     this.socket.emit('playerUpdate', initialData);
   }
   
   handleDisconnect(reason) {
-    console.log('🌐 Disconnected from server:', reason);
     this.isConnected = false;
     this.playerId = null;
     
@@ -214,7 +210,6 @@ export class NetworkManager {
     this.connectionAttempts++;
     
     if (this.connectionAttempts < this.maxReconnectAttempts) {
-      console.log(`🌐 Reconnection attempt ${this.connectionAttempts}/${this.maxReconnectAttempts} in ${this.reconnectDelay}ms`);
       setTimeout(() => this.connect(), this.reconnectDelay);
       this.reconnectDelay *= 2; // Exponential backoff
     } else {
@@ -226,7 +221,6 @@ export class NetworkManager {
   scheduleReconnect() {
     if (this.connectionAttempts < this.maxReconnectAttempts) {
       const delay = Math.min(this.reconnectDelay * Math.pow(2, this.connectionAttempts), 10000);
-      console.log(`🌐 Scheduling reconnection in ${delay}ms`);
       setTimeout(() => this.connect(), delay);
     }
   }
@@ -248,7 +242,6 @@ export class NetworkManager {
       
       // Always try to create other players if scene exists
       if (this.game && this.game.scene) {
-        console.log('🌐 Creating other players from gameState:', data.players.length);
         // Create other players (not local player)
         data.players.forEach(playerData => {
           if (playerData.id !== this.playerId) {
@@ -262,10 +255,7 @@ export class NetworkManager {
         this.updatePlayerCount();
       } else if (this.gameStarted) {
         // Game started but scene not ready yet - use normal flow
-        console.log('🌐 Game started but scene not ready, using createPendingPlayers');
         this.createPendingPlayers();
-      } else {
-        console.log('🌐 Storing players as pending (scene not ready)');
       }
     }
     
@@ -278,7 +268,6 @@ export class NetworkManager {
     
     // Process map data if included
     if (data.map) {
-      console.log('🌐 Received map data in game state');
       this.handleGameMap(data.map);
     }
   }
@@ -311,7 +300,6 @@ export class NetworkManager {
     if (playerData.id !== this.playerId) {
       const canCreate = this.game && this.game.scene;
       if (canCreate) {
-        console.log('🌐 Creating other player immediately:', playerData.id);
         try {
           this.createOtherPlayer(playerData);
           this.updatePlayerCount();
@@ -319,8 +307,6 @@ export class NetworkManager {
           console.error('❌ Error creating other player:', error, playerData);
           // Store as pending to retry later
         }
-      } else {
-        console.log('🌐 Storing player as pending (scene not ready):', playerData.id);
       }
     }
   }
@@ -510,38 +496,26 @@ export class NetworkManager {
   }
   
   handleProjectileCreated(projectileData) {
-    console.log('🌐 Projectile created:', projectileData.id);
     this.createProjectile(projectileData);
   }
   
   handleProjectileDestroyed(projectileId) {
-    console.log('🌐 Projectile destroyed:', projectileId);
     this.destroyProjectile(projectileId);
   }
   
   handlePlayerDamaged(data) {
-    console.log('🌐 Player damaged event received:', data);
-    console.log('🌐 Target ID:', data.targetId, 'Local player ID:', this.playerId);
-    console.log('🌐 Damage:', data.damage, 'New health:', data.newHealth);
-    
     // Update player health
     const player = this.otherPlayers.get(data.targetId);
     if (player) {
-      console.log('🌐 Updating other player health from', player.health, 'to', data.newHealth);
       player.health = data.newHealth;
     }
     
     // Update local player if it's us
     if (data.targetId === this.playerId) {
-      console.log('🌐 Updating LOCAL player health from', this.game.health, 'to', data.newHealth);
-      console.log('🌐 Game object:', this.game);
-      console.log('🌐 Max health value:', this.game.maxHealth);
-      
       this.game.health = data.newHealth;
       
       if (this.game.ui) {
-        const maxHealth = this.game.maxHealth || 100; // Fallback to 100 if undefined
-        console.log('🌐 UI found, updating health bar to:', data.newHealth, '/', maxHealth);
+        const maxHealth = this.game.maxHealth || 100;
         this.game.ui.updateHealth(this.game.health, maxHealth);
       } else {
         console.error('❌ No UI found to update health!');
@@ -551,14 +525,10 @@ export class NetworkManager {
       if (this.game && typeof this.game.flashCollisionWarning === 'function') {
         this.game.flashCollisionWarning();
       }
-    } else {
-      console.log('🌐 Not local player, skipping health bar update');
     }
   }
   
   handlePlayerKilled(data) {
-    console.log('🌐 Player killed:', data.victimId, 'by:', data.killerId);
-    
     // Handle local player death
     if (data.victimId === this.playerId) {
       this.game.health = 0;
@@ -581,7 +551,6 @@ export class NetworkManager {
   }
   
   handlePlayerRespawned(playerData) {
-    console.log('🌐 Player respawned:', playerData.id);
     
     if (playerData.id === this.playerId) {
       // Local player respawned
@@ -617,8 +586,6 @@ export class NetworkManager {
   }
   
   handleProjectileHit(data) {
-    console.log('🌐 Projectile hit:', data.projectileId, 'Target:', data.targetId);
-    
     // Remove projectile from scene
     this.destroyProjectile(data.projectileId);
     
@@ -916,7 +883,6 @@ export class NetworkManager {
       return;
     }
     
-    console.log('🌐 Setting projectile position:', projectileData.position);
     mesh.position.set(projectileData.position.x, projectileData.position.y, projectileData.position.z);
     
     // Orient the projectile to face the direction it's traveling
@@ -935,7 +901,6 @@ export class NetworkManager {
     
     // Add to scene
     this.game.scene.add(mesh);
-    console.log('🌐 Projectile added to scene at:', mesh.position);
     
     // Store projectile data
     if (!this.game.networkProjectiles) {
@@ -948,8 +913,6 @@ export class NetworkManager {
       data: projectileData,
       createdAt: Date.now()
     });
-    
-    console.log('🌐 Projectile stored, total network projectiles:', this.game.networkProjectiles.size);
   }
   
   destroyProjectile(projectileId) {
@@ -1214,9 +1177,6 @@ export class NetworkManager {
         const direction = projectile.data.direction;
         const speed = projectile.data.speed;
         
-        // Debug: Log projectile data
-        console.log('🌐 Moving projectile:', projectile.id, 'direction:', direction, 'speed:', speed, 'deltaTime:', deltaTime);
-        
         projectile.mesh.position.x += direction.x * speed * deltaTime;
         projectile.mesh.position.y += direction.y * speed * deltaTime;
         projectile.mesh.position.z += direction.z * speed * deltaTime;
@@ -1225,26 +1185,13 @@ export class NetworkManager {
         if (this.game.playerShip && projectile.data.playerId !== this.playerId) {
           const distance = projectile.mesh.position.distanceTo(this.game.playerShip.position);
           
-          // Debug: Log collision check
-          if (distance < 2.0) { // Log when close to player
-            console.log('🌐 Projectile near player:', projectile.id, 'distance:', distance.toFixed(2));
-          }
-          
-          if (distance < 1.5) { // Increased collision threshold for better detection
-            console.log('🌐 Network projectile hit local player!', projectile.id, 'distance:', distance.toFixed(2));
-            
+          if (distance < 1.5) { // Collision threshold
             // Send damage event to server
             this.sendPlayerDamaged(
               this.playerId, // Target is local player
               projectile.data.damage || 25, // Use projectile damage or default
               projectile.data.weaponType || 'LASER'
             );
-            
-            console.log('🌐 Damage event sent:', {
-              targetId: this.playerId,
-              damage: projectile.data.damage || 25,
-              weaponType: projectile.data.weaponType || 'LASER'
-            });
             
             // Remove the projectile
             this.destroyProjectile(projectile.id);
@@ -1258,15 +1205,8 @@ export class NetworkManager {
           }
         }
         
-        // Debug: Log movement if significant
-        const distance = oldPosition.distanceTo(projectile.mesh.position);
-        if (distance > 0.01) { // Lower threshold to see more movement
-          console.log('🌐 Projectile moved:', projectile.id, 'from', oldPosition, 'to', projectile.mesh.position, 'distance:', distance);
-        }
-        
-        // Remove old projectiles
+        // Remove old projectiles (10 seconds lifetime)
         if (Date.now() - projectile.createdAt > 10000) {
-          console.log('🌐 Removing old projectile:', projectile.id);
           this.destroyProjectile(projectile.id);
         }
       }
@@ -1470,9 +1410,6 @@ export class NetworkManager {
       // Make the local player visible
       this.game.playerShip.visible = true;
       
-      console.log('🚀 Local player positioned at:', this.game.playerShip.position);
-      console.log('🚀 Local player now visible:', this.game.playerShip.visible);
-      
       // Update game state
       if (this.game.health !== undefined) {
         this.game.health = localPlayerData.health || 100;
@@ -1483,16 +1420,10 @@ export class NetworkManager {
       if (localPlayerData.currentWeapon) {
         this.game.currentWeapon = localPlayerData.currentWeapon;
       }
-      
-      console.log('🚀 Local player game state updated - health:', this.game.health, 'energy:', this.game.energy);
     } else {
-      console.log('🚀 No server data for local player, using default position');
-      
       // If no server data, use a safe default position
       this.game.playerShip.position.set(0, 0.5, 0);
       this.game.playerShip.visible = true;
-      
-      console.log('🚀 Local player positioned at default location:', this.game.playerShip.position);
     }
   }
 }
