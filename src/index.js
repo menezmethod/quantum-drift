@@ -2350,12 +2350,18 @@ selectWeapon(weaponType) {
         continue; // Skip invalid obstacles
       }
       
-      const distance = obstacle.data.position.distanceTo(explosionCenter);
+      // Convert obstacle position to Vector3 if it's not already
+      const obsPos = obstacle.data.position;
+      const obstaclePos = obsPos instanceof THREE.Vector3 
+        ? obsPos.clone() 
+        : new THREE.Vector3(obsPos.x || obsPos[0] || 0, obsPos.y || obsPos[1] || 0, obsPos.z || obsPos[2] || 0);
+      
+      const distance = explosionCenter.distanceTo(obstaclePos);
       if (distance < damageRadius) {
         // Calculate damage based on distance (linear falloff)
         const damagePercent = 1 - (distance / damageRadius);
-        const hitPoint = obstacle.data.position.clone().add(
-          explosionCenter.clone().sub(obstacle.data.position).normalize().multiplyScalar(distance * 0.8)
+        const hitPoint = obstaclePos.clone().add(
+          explosionCenter.clone().sub(obstaclePos).normalize().multiplyScalar(distance * 0.8)
         );
         this.createHitEffect(hitPoint);
       }
@@ -2462,35 +2468,93 @@ selectWeapon(weaponType) {
         let intersection = null;
         let normal = null;
         
+        // Convert obstacle position to Vector3 if needed
+        const obsPos = obstacle.data.position;
+        const obstaclePos = obsPos instanceof THREE.Vector3 
+          ? obsPos.clone() 
+          : new THREE.Vector3(obsPos.x || obsPos[0] || 0, obsPos.y || obsPos[1] || 0, obsPos.z || obsPos[2] || 0);
+        
         if (obstacle.data.type === 'sphere') {
-          const radius = obstacle.data.radius;
-          intersection = tempRay.intersectSphere(
-            new THREE.Sphere(obstacle.data.position, radius),
-            tempVector
-          );
-          if (intersection) {
-            normal = intersection.clone().sub(obstacle.data.position).normalize();
-          }
-        } else if (obstacle.data.type === 'cylinder') {
-          const radius = obstacle.data.radius;
-          intersection = tempRay.intersectSphere(
-            new THREE.Sphere(obstacle.data.position, radius),
-            tempVector
-          );
-          if (intersection) {
-            normal = intersection.clone().sub(obstacle.data.position).normalize();
-          }
-        } else if (obstacle.data.type === 'box') {
-          // For boxes, use bounding sphere as approximation
-          const maxSize = Math.max(obstacle.data.size.x, obstacle.data.size.y, obstacle.data.size.z);
-          const radius = maxSize / 2;
-          const sphere = new THREE.Sphere(
-            obstacle.data.position,
-            radius
-          );
+          const radius = obstacle.data.radius || 1;
+          const sphere = new THREE.Sphere(obstaclePos, radius);
           intersection = tempRay.intersectSphere(sphere, tempVector);
           if (intersection) {
-            normal = intersection.clone().sub(obstacle.data.position).normalize();
+            normal = intersection.clone().sub(obstaclePos).normalize();
+          }
+        } else if (obstacle.data.type === 'cylinder') {
+          const radius = obstacle.data.radius || 1;
+          const height = obstacle.data.height || 5;
+          // Use cylinder approximation with sphere intersection
+          const sphere = new THREE.Sphere(obstaclePos, radius);
+          intersection = tempRay.intersectSphere(sphere, tempVector);
+          if (intersection && Math.abs(intersection.y - obstaclePos.y) < height / 2) {
+            // Calculate normal from center to intersection point
+            const horizontalDist = Math.sqrt(
+              Math.pow(intersection.x - obstaclePos.x, 2) + 
+              Math.pow(intersection.z - obstaclePos.z, 2)
+            );
+            if (horizontalDist > 0.01) {
+              normal = new THREE.Vector3(
+                (intersection.x - obstaclePos.x) / horizontalDist,
+                0,
+                (intersection.z - obstaclePos.z) / horizontalDist
+              );
+            } else {
+              normal = laser.direction.clone().negate();
+            }
+          }
+        } else if (obstacle.data.type === 'box') {
+          // Better box collision using ray-box intersection
+          const size = obstacle.data.size;
+          const halfX = (size.x || size[0] || 2) / 2;
+          const halfY = (size.y || size[1] || 4) / 2;
+          const halfZ = (size.z || size[2] || 2) / 2;
+          
+          // Create box bounds
+          const boxMin = new THREE.Vector3(
+            obstaclePos.x - halfX,
+            obstaclePos.y - halfY,
+            obstaclePos.z - halfZ
+          );
+          const boxMax = new THREE.Vector3(
+            obstaclePos.x + halfX,
+            obstaclePos.y + halfY,
+            obstaclePos.z + halfZ
+          );
+          
+          // Ray-box intersection
+          const invDir = new THREE.Vector3(
+            1 / tempRay.direction.x,
+            1 / tempRay.direction.y,
+            1 / tempRay.direction.z
+          );
+          
+          const t1 = (boxMin.x - tempRay.origin.x) * invDir.x;
+          const t2 = (boxMax.x - tempRay.origin.x) * invDir.x;
+          const t3 = (boxMin.y - tempRay.origin.y) * invDir.y;
+          const t4 = (boxMax.y - tempRay.origin.y) * invDir.y;
+          const t5 = (boxMin.z - tempRay.origin.z) * invDir.z;
+          const t6 = (boxMax.z - tempRay.origin.z) * invDir.z;
+          
+          const tmin = Math.max(Math.max(Math.min(t1, t2), Math.min(t3, t4)), Math.min(t5, t6));
+          const tmax = Math.min(Math.min(Math.max(t1, t2), Math.max(t3, t4)), Math.max(t5, t6));
+          
+          if (tmax >= 0 && tmin <= tmax && tmin <= laser.speed * 1.2) {
+            intersection = tempRay.origin.clone().add(tempRay.direction.clone().multiplyScalar(tmin));
+            
+            // Calculate normal based on which face was hit
+            const centerToIntersect = intersection.clone().sub(obstaclePos);
+            const absX = Math.abs(centerToIntersect.x);
+            const absY = Math.abs(centerToIntersect.y);
+            const absZ = Math.abs(centerToIntersect.z);
+            
+            if (absX > absY && absX > absZ) {
+              normal = new THREE.Vector3(Math.sign(centerToIntersect.x), 0, 0);
+            } else if (absY > absZ) {
+              normal = new THREE.Vector3(0, Math.sign(centerToIntersect.y), 0);
+            } else {
+              normal = new THREE.Vector3(0, 0, Math.sign(centerToIntersect.z));
+            }
           }
         }
         

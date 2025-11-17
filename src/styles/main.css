@@ -437,11 +437,11 @@ canvas {
 /* Weapon Selector */
 .weapon-selector {
   display: flex;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 8px;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 4px 6px;
   background: rgba(0, 0, 0, 0.5);
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   flex-wrap: wrap;
   justify-content: center;
@@ -453,14 +453,16 @@ canvas {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 8px 12px;
+  padding: 4px 8px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 70px;
+  min-width: 50px;
+  max-width: 60px;
   position: relative;
+  flex: 1 1 auto;
 }
 
 .weapon-button:hover {
@@ -496,17 +498,18 @@ canvas {
 
 .weapon-key {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 2px;
+  right: 2px;
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: bold;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 1px 4px;
+  border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  min-width: 18px;
+  min-width: 16px;
   text-align: center;
+  line-height: 1.2;
 }
 
 .weapon-button.active .weapon-key {
@@ -515,16 +518,18 @@ canvas {
 }
 
 .weapon-emoji {
-  font-size: 20px;
-  margin: 4px 0;
+  font-size: 16px;
+  margin: 2px 0;
+  line-height: 1;
 }
 
 .weapon-label-text {
-  font-size: 10px;
+  font-size: 8px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   color: rgba(255, 255, 255, 0.7);
-  margin-top: 2px;
+  margin-top: 1px;
+  line-height: 1.1;
 }
 
 .weapon-button.active .weapon-label-text {
@@ -535,26 +540,28 @@ canvas {
 .weapon-cycle-hint {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 4px;
+  padding: 4px 6px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  font-size: 11px;
+  border-radius: 4px;
+  font-size: 9px;
   color: rgba(255, 255, 255, 0.6);
   margin-left: auto;
+  white-space: nowrap;
 }
 
 .cycle-key {
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: bold;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 1px 4px;
+  border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  min-width: 18px;
+  min-width: 16px;
   text-align: center;
+  line-height: 1.2;
 }
 
 /* Health bar shine effect */
@@ -588,6 +595,30 @@ canvas {
   
   .weapon-name {
     font-size: 14px;
+  }
+  
+  .weapon-selector {
+    gap: 3px;
+    padding: 3px 4px;
+  }
+  
+  .weapon-button {
+    min-width: 45px;
+    max-width: 55px;
+    padding: 3px 6px;
+  }
+  
+  .weapon-emoji {
+    font-size: 14px;
+  }
+  
+  .weapon-label-text {
+    font-size: 7px;
+  }
+  
+  .weapon-cycle-hint {
+    font-size: 8px;
+    padding: 3px 5px;
   }
 }
 
