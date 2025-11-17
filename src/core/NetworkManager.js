@@ -496,6 +496,11 @@ export class NetworkManager {
       } else {
         console.error('❌ No UI found to update health!');
       }
+      
+      // Flash red when hit by enemy (only for enemy damage, not obstacles)
+      if (this.game && typeof this.game.flashCollisionWarning === 'function') {
+        this.game.flashCollisionWarning();
+      }
     } else {
       console.log('🌐 Not local player, skipping health bar update');
     }

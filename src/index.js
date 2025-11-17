@@ -1385,31 +1385,13 @@ selectWeapon(weaponType) {
   handlePlayerCollision() {
     // Handle player collision with obstacles
     // This method is called when checkObstacleCollisions() returns true
+    // Obstacles just bounce the player away - no damage, no red flash
     
-    // Prevent damage spam with cooldown (only take damage once per second when stuck)
-    const now = Date.now();
-    if (this.lastCollisionDamage && (now - this.lastCollisionDamage) < 1000) {
-      // Still in cooldown, skip damage but still flash
-      this.flashCollisionWarning();
-      return;
-    }
-    this.lastCollisionDamage = now;
+    // The actual push-out is handled in checkObstacleCollisions()
+    // This method is just for any additional effects (none for obstacles)
     
-    // Reduce health slightly on collision (optional)
-    if (this.health > 0) {
-      this.health = Math.max(0, this.health - 5);
-      
-      // Update UI
-      if (this.ui && typeof this.ui.updateHealth === 'function') {
-        this.ui.updateHealth(this.health, this.maxHealth);
-      }
-      
-      // Log collision
-      console.log(`💥 Player collision! Health: ${this.health.toFixed(1)}/${this.maxHealth}`);
-    }
-    
-    // Flash collision warning
-    this.flashCollisionWarning();
+    // Optional: Add a subtle bounce effect or sound here in the future
+    // For now, obstacles just push the player away smoothly
   }
 
   flashCollisionWarning() {
@@ -1499,13 +1481,13 @@ selectWeapon(weaponType) {
       // Update position
       this.playerShip.position.add(moveDirection);
       
-      // Check for collisions with obstacles
-      if (this.checkObstacleCollisions()) {
-        // If collision detected, revert to old position
+      // Check for collisions with obstacles after movement (don't push, just check)
+      // If collision detected, revert to old position to prevent moving into obstacle
+      // This creates a smooth "bounce" effect - player can't move into obstacles
+      if (this.checkObstacleCollisions(false)) { // false = don't push, just check
+        // Revert position to prevent entering obstacle
         this.playerShip.position.copy(oldPosition);
-        
-        // Provide visual feedback for collision
-        this.flashCollisionWarning();
+        // No red flash - obstacles just prevent movement, no damage
       }
       
       // Keep within boundaries
@@ -1703,7 +1685,8 @@ selectWeapon(weaponType) {
     }
   }
   
-  checkObstacleCollisions() {
+  checkObstacleCollisions(shouldPush = true) {
+    // shouldPush: if true, pushes player out when stuck. If false, only checks for collision.
     if (!this.obstacles || !Array.isArray(this.obstacles)) return false;
     
     const playerPosition = this.playerShip.position.clone();
@@ -1791,16 +1774,24 @@ selectWeapon(weaponType) {
         }
       }
       
-      // If collision detected, push player out
-      if (collisionDetected && pushDirection) {
-        const pushDistance = (playerRadius + (obstacle.data.radius || obstacle.data.size?.x / 2 || 1)) - 
-                            playerPosition.distanceTo(obstaclePosition) + 0.5; // Extra 0.5 to push out
+      // If collision detected, push player out (only if shouldPush is true)
+      if (collisionDetected) {
+        if (shouldPush && pushDirection) {
+          // Push player out when stuck (e.g., after spawn/respawn)
+          const obstacleRadius = obstacle.data.radius || 
+                                (obstacle.data.size?.x / 2) || 
+                                (obstacle.data.size?.z / 2) || 
+                                1;
+          const totalRadius = playerRadius + obstacleRadius;
+          const currentDistance = playerPosition.distanceTo(obstaclePosition);
+          const pushDistance = totalRadius - currentDistance + 0.3; // Small buffer to push out
+          
+          // Smooth bounce: push player away from obstacle
+          this.playerShip.position.x += pushDirection.x * pushDistance;
+          this.playerShip.position.z += pushDirection.z * pushDistance;
+        }
         
-        // Push player out of obstacle
-        this.playerShip.position.x += pushDirection.x * pushDistance;
-        this.playerShip.position.z += pushDirection.z * pushDistance;
-        
-        return true;
+        return true; // Collision detected
       }
     }
     
