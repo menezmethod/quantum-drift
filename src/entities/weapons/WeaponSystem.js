@@ -61,6 +61,14 @@ export class WeaponSystem {
           ...options
         });
         break;
+      case 'BOUNCE_LASER':
+        // Create a laser that can ricochet off walls up to a bounce limit
+        projectile = this.createLaser(position, direction, {
+          ...weaponConfig,
+          ...options,
+          weaponType: 'BOUNCE_LASER'
+        });
+        break;
       // Other weapon types will be implemented later
       default:
         console.warn(`Weapon type ${weaponType} not yet implemented`);
@@ -77,7 +85,19 @@ export class WeaponSystem {
   
   createLaser(position, direction, config) {
     // Create laser projectile
-    return new Laser(this.scene, position, direction, config);
+    const proj = new Laser(this.scene, position, direction, config);
+    // Attach commonly used properties for hit processing
+    if (config && typeof config.damage !== 'undefined') {
+      proj.damage = config.damage;
+    }
+    if (config && typeof config.bounces !== 'undefined') {
+      // Track remaining bounces for ricochet-capable lasers
+      proj.options.bounces = config.bounces;
+    }
+    if (config && config.weaponType) {
+      proj.weaponType = config.weaponType;
+    }
+    return proj;
   }
   
   update(deltaTime) {
@@ -112,16 +132,51 @@ export class WeaponSystem {
       if (!projectile.isActive) continue;
       
       // Check wall collisions
-      if (wallSegments && this.checkWallCollision(projectile, wallSegments)) {
-        hitResults.push({
-          projectile: projectile,
-          target: 'wall',
-          position: projectile.position.clone()
-        });
-        
-        // Handle the hit
-        projectile.handleCollision();
-        continue;
+      if (wallSegments) {
+        const wallHit = this.checkWallCollision(projectile, wallSegments);
+        if (wallHit) {
+          hitResults.push({
+            projectile: projectile,
+            target: 'wall',
+            position: wallHit.point ? wallHit.point.clone() : projectile.position.clone()
+          });
+
+          // If this is a bounce-capable laser and has bounces remaining, ricochet
+          const canBounce = (projectile.weaponType === 'BOUNCE_LASER') && (projectile.options?.bounces > 0);
+          if (canBounce && wallHit.normal) {
+            // Reflect direction across wall normal: r = d - 2*(d·n)*n
+            const d2 = new THREE.Vector2(projectile.direction.x, projectile.direction.z).normalize();
+            const n2 = new THREE.Vector2(wallHit.normal.x, wallHit.normal.z).normalize();
+            const reflected2 = d2.clone().sub(n2.clone().multiplyScalar(2 * d2.dot(n2)));
+
+            // Update projectile direction (keep y at 0)
+            projectile.direction.set(reflected2.x, 0, reflected2.y).normalize();
+
+            // Move projectile to collision point and nudge slightly along new direction
+            if (wallHit.point) {
+              const currentY = projectile.position.y;
+              projectile.position.set(wallHit.point.x, currentY, wallHit.point.z);
+            }
+            const epsilon = (projectile.options?.thickness || 0.1) * 2;
+            projectile.position.add(projectile.direction.clone().multiplyScalar(epsilon));
+
+            // Re-orient mesh to face new direction if available
+            if (projectile.mesh && typeof projectile.mesh.lookAt === 'function') {
+              const lookTarget = projectile.position.clone().add(projectile.direction);
+              projectile.mesh.lookAt(lookTarget);
+            }
+
+            // Decrement bounces remaining
+            projectile.options.bounces -= 1;
+
+            // Continue without deactivating
+            continue;
+          }
+
+          // Otherwise, handle as a normal collision and deactivate
+          projectile.handleCollision();
+          continue;
+        }
       }
       
       // Check target collisions
@@ -234,7 +289,7 @@ export class WeaponSystem {
   }
   
   checkWallCollision(projectile, wallSegments) {
-    // Simple collision check for laser projectiles
+    // Collision check for laser projectiles; returns hit info for ricochet
     const projectilePosition = new THREE.Vector2(
       projectile.position.x,
       projectile.position.z
@@ -253,6 +308,7 @@ export class WeaponSystem {
       
       // Project projectile onto wall line
       const wallLength = wallVector.length();
+      if (wallLength === 0) continue;
       const wallDirection = wallVector.clone().normalize();
       const projectionLength = projectileToWallStart.dot(wallDirection);
       
@@ -271,11 +327,21 @@ export class WeaponSystem {
       
       // Check if collision occurred
       if (distance < radius) {
-        return true;
+        // Compute wall normal (perpendicular to wall direction)
+        let normal2 = new THREE.Vector2(-wallDirection.y, wallDirection.x).normalize();
+        // Ensure normal points from wall toward projectile
+        const toProjectile = projectilePosition.clone().sub(closestPoint);
+        if (toProjectile.dot(normal2) < 0) normal2.multiplyScalar(-1);
+        
+        return {
+          point: new THREE.Vector3(closestPoint.x, projectile.position.y, closestPoint.y),
+          normal: new THREE.Vector3(normal2.x, 0, normal2.y),
+          segment: segment
+        };
       }
     }
     
-    return false;
+    return null;
   }
   
   checkTargetCollision(projectile, target) {
