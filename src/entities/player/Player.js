@@ -353,11 +353,32 @@ export class Player {
         this.laserCooldown = 0;
       }
     }
+    
+    // Regenerate energy over time (20 energy per second)
+    if (this.energy < this.maxEnergy) {
+      this.energy += 20 * deltaTime;
+      if (this.energy > this.maxEnergy) {
+        this.energy = this.maxEnergy;
+      }
+    }
   }
   
   fireLaser() {
     // Check cooldown
     if (this.laserCooldown > 0 || !this.weaponSystem) return;
+    
+    // Get weapon config for energy cost
+    const weaponConfig = this.weaponSystem.weaponTypes[this.weaponType];
+    const energyCost = weaponConfig ? weaponConfig.energyCost || 5 : 5;
+    
+    // Check if player has enough energy
+    if (this.energy < energyCost) {
+      console.log('Not enough energy to fire! Need:', energyCost, 'Have:', this.energy);
+      return;
+    }
+    
+    // Deduct energy
+    this.energy = Math.max(0, this.energy - energyCost);
     
     // Calculate firing position (tip of the ship)
     const direction = new THREE.Vector3(0, 0, -1);
@@ -371,7 +392,6 @@ export class Player {
     this.weaponSystem.fireWeapon(this.weaponType, position, direction);
     
     // Set cooldown based on weapon type
-    const weaponConfig = this.weaponSystem.weaponTypes[this.weaponType];
     this.laserCooldown = weaponConfig ? weaponConfig.cooldown : 500;
   }
   

@@ -15,7 +15,8 @@ export class WeaponSystem {
         length: 3,
         thickness: 0.1,
         speed: 0.3,
-        damage: 10
+        damage: 10,
+        energyCost: 5
       },
       BOUNCE_LASER: {
         name: 'Bounce Laser',
@@ -25,7 +26,8 @@ export class WeaponSystem {
         thickness: 0.15,
         speed: 0.25,
         damage: 8,
-        bounces: 3
+        bounces: 3,
+        energyCost: 10
       },
       QUANTUM_GRENADE: {
         name: 'Quantum Grenade',
@@ -35,7 +37,8 @@ export class WeaponSystem {
         radius: 0.3,
         damage: 25,
         areaEffectRadius: 5,
-        delay: 3000
+        delay: 3000,
+        energyCost: 25
       }
     };
     
