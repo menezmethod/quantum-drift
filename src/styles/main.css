@@ -869,3 +869,57 @@ canvas {
     height: 120px;
   }
 } 
+/* Multiplayer status */
+.multiplayer-status {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 105;
+  width: 190px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.65);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
+  text-transform: uppercase;
+  letter-spacing: 0.1rem;
+  font-size: 0.75rem;
+  font-family: 'Orbitron', sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.multiplayer-status.hidden {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.multiplayer-status.connected {
+  border-color: var(--success-color);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.45);
+}
+
+.multiplayer-status.disabled {
+  border-color: var(--warning-color);
+  opacity: 0.8;
+  box-shadow: 0 0 10px rgba(255, 170, 0, 0.35);
+}
+
+.multiplayer-status .status-title {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.multiplayer-status .status-state {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--neon-text-color);
+}
+
+.multiplayer-status .status-count {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.6);
+}

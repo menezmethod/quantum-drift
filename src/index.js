@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import './styles/main.css';
 import { GameUI } from './ui/GameUI';
 import { MiniMap } from './ui/MiniMap';
+import { MultiplayerManager } from './multiplayer/MultiplayerManager';
 import { KEY_MAPPINGS, CONTROL_SETTINGS, CONTROL_FEEDBACK, DEFAULT_CONTROL_STATE, ControlUtils } from './config/Controls';
 
 // Basic Three.js game with a ship
@@ -82,6 +83,8 @@ class SimpleGame {
     
     // Handle window resize
     window.addEventListener('resize', this.boundHandleResize);
+    
+    this.initializeMultiplayer();
     
     console.log('Simple game initialized!');
   }
@@ -1353,6 +1356,8 @@ selectWeapon(weaponType) {
     
     // Update grenades
     this.updateGrenades();
+    
+    this.updateMultiplayer();
     
     // Update mini-map
     if (this.miniMap) {
@@ -3035,6 +3040,137 @@ createMuzzleFlash(position, direction) {
 
     // Start animation
     animate();
+  }
+
+
+  initializeMultiplayer() {
+    this.remotePlayerMarkers = new Map();
+    this.multiplayerRemotePlayers = [];
+    this.multiplayerStatusEl = this.createMultiplayerStatus();
+    this.multiplayer = new MultiplayerManager({
+      getState: () => this.getMultiplayerState(),
+      onRemoteUpdate: (players) => {
+        this.multiplayerRemotePlayers = players || [];
+      },
+      onStatusChange: (status) => this.updateMultiplayerBanner(status)
+    });
+    this.multiplayer.start();
+  }
+
+  getMultiplayerState() {
+    if (!this.playerShip) return null;
+    return {
+      position: {
+        x: this.playerShip.position.x,
+        y: this.playerShip.position.y,
+        z: this.playerShip.position.z
+      },
+      rotation: this.playerShip.rotation.y,
+      weapon: this.currentWeapon,
+      energy: this.energy,
+      health: this.health,
+      timestamp: Date.now()
+    };
+  }
+
+  updateMultiplayer() {
+    if (!this.multiplayer) return;
+    this.multiplayer.update();
+    this.updateRemotePlayerMarkers(this.multiplayerRemotePlayers);
+  }
+
+  updateRemotePlayerMarkers(remotePlayers = []) {
+    if (!this.scene) return;
+    const seenIds = new Set();
+
+    for (const player of remotePlayers) {
+      if (!player || player.id === this.multiplayer?.id) continue;
+      seenIds.add(player.id);
+      let marker = this.remotePlayerMarkers.get(player.id);
+      if (!marker) {
+        marker = this.createRemotePlayerMarker();
+        this.remotePlayerMarkers.set(player.id, marker);
+      }
+      this.updateRemotePlayerMarker(marker, player);
+    }
+
+    for (const [id, marker] of Array.from(this.remotePlayerMarkers.entries())) {
+      if (!seenIds.has(id)) {
+        this.scene.remove(marker);
+        if (marker.geometry) marker.geometry.dispose();
+        if (marker.material) marker.material.dispose();
+        this.remotePlayerMarkers.delete(id);
+      }
+    }
+  }
+
+  createRemotePlayerMarker() {
+    const geometry = new THREE.SphereGeometry(0.35, 8, 8);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xff66ff,
+      transparent: true,
+      opacity: 0.85
+    });
+    const marker = new THREE.Mesh(geometry, material);
+    marker.renderOrder = 10;
+    this.scene.add(marker);
+    return marker;
+  }
+
+  updateRemotePlayerMarker(marker, player) {
+    if (!marker || !player || !player.position) return;
+    const bob = Math.sin(Date.now() * 0.01) * 0.1;
+    marker.position.set(
+      player.position.x,
+      (player.position.y || 0) + 0.5 + bob,
+      player.position.z
+    );
+    if (player.weapon === 'GRENADE') {
+      marker.material.opacity = 1;
+    } else {
+      marker.material.opacity = 0.7;
+    }
+  }
+
+  createMultiplayerStatus() {
+    const container = document.createElement('div');
+    container.id = 'multiplayer-status';
+    container.className = 'multiplayer-status hidden';
+    container.innerHTML = `
+      <div class="status-title">Multiplayer Sync</div>
+      <div class="status-state">Initializing...</div>
+      <div class="status-count">Peers: 0</div>
+    `;
+    document.body.appendChild(container);
+    return container;
+  }
+
+  updateMultiplayerBanner(statusInfo = {}) {
+    if (!this.multiplayerStatusEl) return;
+    const stateEl = this.multiplayerStatusEl.querySelector('.status-state');
+    const countEl = this.multiplayerStatusEl.querySelector('.status-count');
+    const labelMap = {
+      connected: 'Connected',
+      local: 'Local sync',
+      unsupported: 'Unavailable',
+      disconnected: 'Disconnected',
+      initializing: 'Initializing...'
+    };
+    const statusLabel = labelMap[statusInfo.status] || 'Waiting...';
+    if (stateEl) {
+      stateEl.textContent = statusLabel;
+    }
+    if (countEl) {
+      countEl.textContent = `Peers: ${statusInfo.remoteCount || 0}`;
+    }
+    this.multiplayerStatusEl.classList.remove('hidden');
+    if (statusInfo.status === 'connected' || statusInfo.status === 'local') {
+      this.multiplayerStatusEl.classList.add('connected');
+      this.multiplayerStatusEl.classList.remove('disabled');
+    } else if (statusInfo.status === 'unsupported' || statusInfo.status === 'disconnected') {
+      this.multiplayerStatusEl.classList.remove('connected');
+      this.multiplayerStatusEl.classList.add('disabled');
+    }
   }
 }
 
