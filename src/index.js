@@ -3136,19 +3136,43 @@ createMuzzleFlash(position, direction) {
     const container = document.createElement('div');
     container.id = 'multiplayer-status';
     container.className = 'multiplayer-status hidden';
-    container.innerHTML = `
-      <div class="status-title">Multiplayer Sync</div>
-      <div class="status-state">Initializing...</div>
-      <div class="status-count">Peers: 0</div>
-    `;
+
+    const title = document.createElement('div');
+    title.className = 'status-title';
+    title.textContent = 'Multiplayer Sync';
+    container.appendChild(title);
+
+    this.multiplayerStatusStateEl = document.createElement('div');
+    this.multiplayerStatusStateEl.className = 'status-state';
+    this.multiplayerStatusStateEl.textContent = 'Initializing...';
+    container.appendChild(this.multiplayerStatusStateEl);
+
+    this.multiplayerStatusSyncEl = document.createElement('div');
+    this.multiplayerStatusSyncEl.className = 'status-sync';
+    this.multiplayerStatusSyncEl.textContent = 'Last sync: awaiting data';
+    container.appendChild(this.multiplayerStatusSyncEl);
+
+    this.multiplayerStatusCountEl = document.createElement('div');
+    this.multiplayerStatusCountEl.className = 'status-count';
+    this.multiplayerStatusCountEl.textContent = 'Peers: 0';
+    container.appendChild(this.multiplayerStatusCountEl);
+
+    const playersLabel = document.createElement('div');
+    playersLabel.className = 'status-players-title';
+    playersLabel.textContent = 'Remote players';
+    container.appendChild(playersLabel);
+
+    this.multiplayerPlayerListEl = document.createElement('div');
+    this.multiplayerPlayerListEl.className = 'status-players';
+    container.appendChild(this.multiplayerPlayerListEl);
+
+    this.renderRemotePlayerList([]);
     document.body.appendChild(container);
     return container;
   }
 
   updateMultiplayerBanner(statusInfo = {}) {
     if (!this.multiplayerStatusEl) return;
-    const stateEl = this.multiplayerStatusEl.querySelector('.status-state');
-    const countEl = this.multiplayerStatusEl.querySelector('.status-count');
     const labelMap = {
       connected: 'Connected',
       local: 'Local sync',
@@ -3157,12 +3181,14 @@ createMuzzleFlash(position, direction) {
       initializing: 'Initializing...'
     };
     const statusLabel = labelMap[statusInfo.status] || 'Waiting...';
-    if (stateEl) {
-      stateEl.textContent = statusLabel;
+    if (this.multiplayerStatusStateEl) {
+      this.multiplayerStatusStateEl.textContent = statusLabel;
     }
-    if (countEl) {
-      countEl.textContent = `Peers: ${statusInfo.remoteCount || 0}`;
+    if (this.multiplayerStatusCountEl) {
+      this.multiplayerStatusCountEl.textContent = `Peers: ${statusInfo.remoteCount || 0}`;
     }
+    this.updateMultiplayerSyncTime(statusInfo.lastUpdate);
+    this.renderRemotePlayerList(statusInfo.remotePlayers || []);
     this.multiplayerStatusEl.classList.remove('hidden');
     if (statusInfo.status === 'connected' || statusInfo.status === 'local') {
       this.multiplayerStatusEl.classList.add('connected');
@@ -3171,6 +3197,72 @@ createMuzzleFlash(position, direction) {
       this.multiplayerStatusEl.classList.remove('connected');
       this.multiplayerStatusEl.classList.add('disabled');
     }
+  }
+
+  updateMultiplayerSyncTime(lastUpdate) {
+    if (!this.multiplayerStatusSyncEl) return;
+    if (!lastUpdate) {
+      this.multiplayerStatusSyncEl.textContent = 'Last sync: awaiting data';
+      return;
+    }
+    const formatted = new Date(lastUpdate).toLocaleTimeString([], {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    this.multiplayerStatusSyncEl.textContent = `Last sync: ${formatted}`;
+  }
+
+  renderRemotePlayerList(remotePlayers = []) {
+    if (!this.multiplayerPlayerListEl) return;
+    this.multiplayerPlayerListEl.innerHTML = '';
+    const players = Array.isArray(remotePlayers) ? remotePlayers : [];
+    if (players.length === 0) {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'player-placeholder';
+      placeholder.textContent = 'Waiting for peers...';
+      this.multiplayerPlayerListEl.appendChild(placeholder);
+      return;
+    }
+    const sorted = [...players].sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+    const limit = 3;
+    sorted.slice(0, limit).forEach(player => {
+      const item = document.createElement('div');
+      item.className = 'player-item';
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'player-name';
+      nameEl.textContent = this.formatPlayerName(player.id);
+
+      const statsEl = document.createElement('div');
+      statsEl.className = 'player-stats';
+
+      const weaponEl = document.createElement('span');
+      weaponEl.className = 'player-weapon';
+      weaponEl.textContent = player.weapon || 'LASER';
+
+      const healthEl = document.createElement('span');
+      healthEl.className = 'player-health';
+      const healthValue = typeof player.health === 'number' ? `${Math.round(player.health)} HP` : 'HP ?';
+      healthEl.textContent = healthValue;
+
+      statsEl.appendChild(weaponEl);
+      statsEl.appendChild(healthEl);
+      item.appendChild(nameEl);
+      item.appendChild(statsEl);
+      this.multiplayerPlayerListEl.appendChild(item);
+    });
+
+    if (players.length > limit) {
+      const moreEl = document.createElement('div');
+      moreEl.className = 'player-more';
+      moreEl.textContent = `+${players.length - limit} more...`;
+      this.multiplayerPlayerListEl.appendChild(moreEl);
+    }
+  }
+
+  formatPlayerName(id = '') {
+    if (!id) return 'Player';
+    const suffix = id.slice(-4).toUpperCase();
+    return `P-${suffix}`;
   }
 }
 

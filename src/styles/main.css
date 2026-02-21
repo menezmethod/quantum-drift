@@ -923,3 +923,68 @@ canvas {
   font-size: 0.7rem;
   color: rgba(255, 255, 255, 0.6);
 }
+
+.multiplayer-status .status-sync {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.multiplayer-status .status-players-title {
+  font-size: 0.55rem;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.12rem;
+  margin-top: 4px;
+}
+
+.multiplayer-status .status-players {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 60px;
+}
+
+.multiplayer-status .player-placeholder {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: none;
+}
+
+.multiplayer-status .player-item {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.multiplayer-status .player-name {
+  font-size: 0.7rem;
+  letter-spacing: 0.1rem;
+  color: var(--neon-text-color);
+}
+
+.multiplayer-status .player-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.multiplayer-status .player-weapon {
+  color: var(--secondary-color);
+  font-weight: 600;
+}
+
+.multiplayer-status .player-health {
+  color: var(--success-color);
+  font-weight: 600;
+}
+
+.multiplayer-status .player-more {
+  font-size: 0.6rem;
+  text-align: right;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.05rem;
+}

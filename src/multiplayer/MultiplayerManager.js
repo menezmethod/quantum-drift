@@ -16,6 +16,7 @@ export class MultiplayerManager {
     this.connectionStatus = 'initializing';
     this.channel = null;
     this.storageAvailable = this.checkStorageAvailability();
+    this.lastUpdate = null;
 
     this.handleChannelMessage = this.handleChannelMessage.bind(this);
     this.handleStorageEvent = this.handleStorageEvent.bind(this);
@@ -132,6 +133,7 @@ export class MultiplayerManager {
       lastSeen: timestamp
     });
 
+    this.lastUpdate = timestamp;
     this.emitRemoteUpdate();
   }
 
@@ -161,6 +163,7 @@ export class MultiplayerManager {
     }
 
     if (removed) {
+      this.lastUpdate = now;
       this.emitRemoteUpdate();
     }
   }
@@ -172,9 +175,12 @@ export class MultiplayerManager {
   }
 
   notifyStatus() {
+    const players = this.getRemotePlayers();
     this.onStatusChange({
       status: this.connectionStatus,
-      remoteCount: this.remotePlayers.size
+      remoteCount: players.length,
+      remotePlayers: players,
+      lastUpdate: this.lastUpdate
     });
   }
 
