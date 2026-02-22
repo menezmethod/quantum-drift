@@ -8,6 +8,9 @@ export class GameUI {
     this.healthBar = null;
     this.energyBar = null;
     this.weaponIndicator = null;
+    this.multiplayerBadge = null;
+    this.multiplayerBadgeStatus = null;
+    this.multiplayerBadgePeers = null;
     
     this.createUI();
   }
@@ -95,6 +98,8 @@ export class GameUI {
     this.weaponName.className = 'weapon-name laser';
     this.weaponName.textContent = 'LASER';
     this.weaponIndicator.appendChild(this.weaponName);
+    
+    this.createMultiplayerBadge();
     
     // Initially hide the UI
     this.uiContainer.classList.add('hidden');
@@ -189,4 +194,53 @@ export class GameUI {
         break;
     }
   }
-} 
+
+  createMultiplayerBadge() {
+    if (!this.uiContainer || this.multiplayerBadge) return;
+    this.multiplayerBadge = document.createElement('div');
+    this.multiplayerBadge.className = 'multiplayer-badge multiplayer-badge-initializing';
+    this.multiplayerBadge.setAttribute('aria-live', 'polite');
+
+    this.multiplayerBadgeStatus = document.createElement('span');
+    this.multiplayerBadgeStatus.className = 'multiplayer-badge-status';
+    this.multiplayerBadgeStatus.textContent = 'Initializing';
+    this.multiplayerBadge.appendChild(this.multiplayerBadgeStatus);
+
+    this.multiplayerBadgePeers = document.createElement('span');
+    this.multiplayerBadgePeers.className = 'multiplayer-badge-peers';
+    this.multiplayerBadgePeers.textContent = 'Peers: 0';
+    this.multiplayerBadge.appendChild(this.multiplayerBadgePeers);
+
+    this.uiContainer.appendChild(this.multiplayerBadge);
+  }
+
+  updateMultiplayerStatus(status, peerCount) {
+    if (!this.multiplayerBadge || !this.multiplayerBadgeStatus || !this.multiplayerBadgePeers) return;
+    const normalized = typeof status === 'string' ? status.toLowerCase() : 'initializing';
+    const allowedStatuses = ['connected', 'local', 'unsupported', 'disconnected', 'initializing'];
+    const statusKey = allowedStatuses.includes(normalized) ? normalized : 'initializing';
+
+    const labelMap = {
+      connected: 'Connected',
+      local: 'Local',
+      unsupported: 'Unsupported',
+      disconnected: 'Disconnected',
+      initializing: 'Initializing'
+    };
+
+    const rawLabel = labelMap[statusKey] || status || 'Status';
+    const trimmedLabel = rawLabel.length > 18 ? `${rawLabel.slice(0, 18)}…` : rawLabel;
+    this.multiplayerBadgeStatus.textContent = trimmedLabel;
+
+    const parsedCount = Number(peerCount);
+    const count = Number.isFinite(parsedCount) ? parsedCount : 0;
+    const clampedCount = Math.max(0, Math.min(count, 999));
+    this.multiplayerBadgePeers.textContent = `Peers: ${clampedCount}`;
+
+    allowedStatuses.forEach(key => {
+      this.multiplayerBadge.classList.remove(`multiplayer-badge-${key}`);
+    });
+    this.multiplayerBadge.classList.add(`multiplayer-badge-${statusKey}`);
+  }
+}
+ 

@@ -3197,6 +3197,10 @@ createMuzzleFlash(position, direction) {
       this.multiplayerStatusEl.classList.remove('connected');
       this.multiplayerStatusEl.classList.add('disabled');
     }
+
+    if (this.ui && typeof this.ui.updateMultiplayerStatus === 'function') {
+      this.ui.updateMultiplayerStatus(statusInfo.status, statusInfo.remoteCount);
+    }
   }
 
   updateMultiplayerSyncTime(lastUpdate) {

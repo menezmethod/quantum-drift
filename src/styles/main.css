@@ -417,6 +417,66 @@ canvas {
   color: #0f6;
 }
 
+.multiplayer-badge {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.7);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.6);
+  font-size: 0.7rem;
+  letter-spacing: 0.08rem;
+  text-transform: uppercase;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.multiplayer-badge-status {
+  font-weight: 600;
+  color: #fff;
+  font-size: 0.75rem;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+}
+
+.multiplayer-badge-peers {
+  font-size: 0.65rem;
+  letter-spacing: 0.1rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.multiplayer-badge.connected {
+  border-color: var(--success-color);
+  background: rgba(0, 40, 0, 0.75);
+  box-shadow: 0 0 16px rgba(0, 255, 136, 0.6);
+}
+
+.multiplayer-badge.local {
+  border-color: var(--secondary-color);
+  background: rgba(0, 25, 40, 0.75);
+  box-shadow: 0 0 16px rgba(0, 255, 255, 0.5);
+}
+
+.multiplayer-badge.unsupported {
+  border-color: var(--warning-color);
+  background: rgba(40, 20, 0, 0.75);
+  box-shadow: 0 0 16px rgba(255, 170, 0, 0.5);
+}
+
+.multiplayer-badge.disconnected {
+  border-color: var(--danger-color);
+  background: rgba(40, 0, 0, 0.8);
+  box-shadow: 0 0 20px rgba(255, 51, 0, 0.6);
+}
+
+.multiplayer-badge.initializing {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(20, 10, 30, 0.75);
+  box-shadow: 0 0 12px rgba(220, 180, 255, 0.35);
+}
+
 /* Health bar shine effect */
 .bar-inner::after {
   content: '';
