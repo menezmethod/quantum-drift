@@ -74,6 +74,9 @@ export class MiniMap {
     // Draw obstacles
     this.drawObstacles();
     
+    // Draw remote players (multiplayer)
+    this.drawRemotePlayers();
+    
     // Draw player
     this.drawPlayer();
     
@@ -262,6 +265,63 @@ export class MiniMap {
       this.ctx.beginPath();
       this.ctx.arc(mapX, mapY, 2, 0, Math.PI * 2);
       this.ctx.fill();
+    }
+  }
+  
+  /**
+   * Draw remote players on the mini-map
+   */
+  drawRemotePlayers() {
+    const remotePlayers = Array.isArray(this.game.multiplayerRemotePlayers)
+      ? this.game.multiplayerRemotePlayers
+      : [];
+    if (!remotePlayers.length) return;
+
+    const multiplayer = this.game.multiplayer;
+    const now = Date.now();
+    const ttl = Math.max(1000, (multiplayer && multiplayer.stateTTL) || 8000);
+
+    for (const player of remotePlayers) {
+      if (!player || !player.position) continue;
+      if (player.id && multiplayer && player.id === multiplayer.id) continue;
+
+      const lastSeen = player.lastSeen || player.timestamp || now;
+      const age = Math.max(0, now - lastSeen);
+      const fade = Math.max(0, 1 - age / ttl);
+      if (fade <= 0) continue;
+
+      const mapX = this.worldToMapX(player.position.x || 0);
+      const mapY = this.worldToMapY(player.position.z || 0);
+      const dotRadius = 3.5;
+      const haloRadius = 14;
+
+      // Draw halo
+      this.ctx.save();
+      this.ctx.globalAlpha = Math.min(0.7, fade * 0.85);
+      const gradient = this.ctx.createRadialGradient(mapX, mapY, dotRadius, mapX, mapY, haloRadius);
+      gradient.addColorStop(0, 'rgba(221, 160, 255, 0.95)');
+      gradient.addColorStop(0.4, 'rgba(186, 85, 211, 0.7)');
+      gradient.addColorStop(1, 'rgba(92, 17, 130, 0)');
+      this.ctx.fillStyle = gradient;
+      this.ctx.beginPath();
+      this.ctx.arc(mapX, mapY, haloRadius, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.restore();
+
+      // Draw remote player dot
+      this.ctx.save();
+      this.ctx.globalAlpha = fade;
+      this.ctx.fillStyle = '#c95cff';
+      this.ctx.beginPath();
+      this.ctx.arc(mapX, mapY, dotRadius, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      this.ctx.strokeStyle = `rgba(255, 192, 255, ${Math.min(0.9, fade)})`;
+      this.ctx.lineWidth = 1.5;
+      this.ctx.beginPath();
+      this.ctx.arc(mapX, mapY, dotRadius + 1.6, 0, Math.PI * 2);
+      this.ctx.stroke();
+      this.ctx.restore();
     }
   }
   
