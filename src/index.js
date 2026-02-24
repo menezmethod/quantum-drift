@@ -43,6 +43,7 @@ class SimpleGame {
     this.boundHandleKeyUp = this.handleKeyUp.bind(this);
     this.boundHandleClick = this.handleClick.bind(this);
     this.boundHandleMouseMove = this.handleMouseMove.bind(this);
+    this.boundHandleVisibilityChange = this.handleVisibilityChange.bind(this);
     
     // Debounce timers
     this.mouseMoveTimer = null;
@@ -85,6 +86,8 @@ class SimpleGame {
     window.addEventListener('resize', this.boundHandleResize);
     
     this.initializeMultiplayer();
+    document.addEventListener('visibilitychange', this.boundHandleVisibilityChange);
+    this.handleVisibilityChange();
     
     console.log('Simple game initialized!');
   }
@@ -1004,7 +1007,17 @@ class SimpleGame {
         this.mouseMoveTimer = null;
     });
 }
-  
+
+  handleVisibilityChange() {
+    if (!this.multiplayer) return;
+    const state = document.visibilityState;
+    if (state === 'hidden') {
+      this.multiplayer.stop();
+    } else if (state === 'visible') {
+      this.multiplayer.start();
+    }
+  }
+
   handleFireAction() {
     const now = Date.now();
     const weaponCooldown = this.weaponCooldowns.get(this.currentWeapon) || 0;
@@ -2642,6 +2655,7 @@ selectWeapon(weaponType) {
     document.removeEventListener('keyup', this.boundHandleKeyUp);
     document.removeEventListener('click', this.boundHandleClick);
     document.removeEventListener('mousemove', this.boundHandleMouseMove);
+    document.removeEventListener('visibilitychange', this.boundHandleVisibilityChange);
     
     // Clear timers
     if (this.resizeTimer) {
