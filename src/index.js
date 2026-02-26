@@ -5,6 +5,14 @@ import { MiniMap } from './ui/MiniMap';
 import { MultiplayerManager } from './multiplayer/MultiplayerManager';
 import { KEY_MAPPINGS, CONTROL_SETTINGS, CONTROL_FEEDBACK, DEFAULT_CONTROL_STATE, ControlUtils } from './config/Controls';
 
+const REMOTE_WEAPON_COLORS = {
+  LASER: 0xff00ff,
+  GRENADE: 0xff8800,
+  BOUNCE: 0x1de9b6
+};
+const DEFAULT_REMOTE_MARKER_COLOR = 0xff66ff;
+const MIN_REMOTE_MARKER_OPACITY = 0.15;
+
 // Basic Three.js game with a ship
 class SimpleGame {
   constructor() {
@@ -3139,11 +3147,16 @@ createMuzzleFlash(position, direction) {
       (player.position.y || 0) + 0.5 + bob,
       player.position.z
     );
-    if (player.weapon === 'GRENADE') {
-      marker.material.opacity = 1;
-    } else {
-      marker.material.opacity = 0.7;
-    }
+
+    const now = Date.now();
+    const ttl = Math.max(1000, this.multiplayer?.stateTTL ?? 8000);
+    const age = typeof player.lastSeen === 'number' ? Math.max(0, now - player.lastSeen) : 0;
+    const normalizedAge = THREE.MathUtils.clamp(age / ttl, 0, 1);
+    const freshness = 1 - normalizedAge;
+    marker.material.opacity = THREE.MathUtils.clamp(freshness, MIN_REMOTE_MARKER_OPACITY, 1);
+
+    const weaponColor = REMOTE_WEAPON_COLORS[player.weapon] ?? DEFAULT_REMOTE_MARKER_COLOR;
+    marker.material.color.setHex(weaponColor);
   }
 
   createMultiplayerStatus() {
