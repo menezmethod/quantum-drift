@@ -20,7 +20,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "socket.io-client": "^4.7.2",
     "three": "^0.160.0"
   },
   "devDependencies": {
