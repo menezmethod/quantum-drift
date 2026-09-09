@@ -13,6 +13,7 @@ const themes = {
   foundry: { color: '#ffae70', label: 'Industrial forge', mark: '01' },
   canopy: { color: '#b4dc95', label: 'Research garden', mark: '02' },
   glacier: { color: '#a3daee', label: 'Polar relay', mark: '03' },
+  junction: { color: '#ffbd78', label: 'Close-quarters junction', mark: '05' },
   classic: { color: '#c8b9ed', label: 'Original arena', mark: '04' },
 };
 
@@ -29,7 +30,11 @@ function thumbnail(id) {
     svg.append(shape);
   };
   draw('path', { d: 'M0 92H240M0 20H240M32 0V112M208 0V112', stroke: 'currentColor', opacity: '.12', fill: 'none' });
-  if (id === 'foundry') {
+  if (id === 'junction') {
+    draw('path', {d:'M32 56H208 M120 12V100',stroke:'currentColor',opacity:'.3',fill:'none'});
+    for (const [x,y,w,h] of [[93,32,22,22],[125,58,22,22],[52,20,12,30],[52,64,12,30],[176,20,12,30],[176,64,12,30],[86,10,30,8],[124,94,30,8]])
+      draw('rect',{x,y,width:w,height:h,rx:2,fill:'#263039',stroke:'currentColor'});
+  } else if (id === 'foundry') {
     draw('ellipse', { cx: 120, cy: 64, rx: 79, ry: 29, fill: 'none', stroke: 'currentColor', 'stroke-width': 8, opacity: '.2' });
     draw('path', { d: 'M44 60L120 24L196 60L120 99Z M78 60L120 40L162 60L120 80Z', fill: 'none', stroke: 'currentColor', 'stroke-width': 2 });
     for (const x of [66, 158]) {

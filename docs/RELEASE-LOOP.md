@@ -35,3 +35,9 @@ Use patch versions for fixes and small compatible refinements; minor versions fo
 The finite completion scope is the agreed ROADMAP.md: maps/cover, combat clarity, pickups, portals, teams, objective mode, then original art. Every accepted stage must satisfy its own gates; optional machinery is removable. Final completion requires the combat-first plan's actual-play and independent quality evidence. If a human feedback gate is missing, report it honestly rather than loop indefinitely manufacturing scores.
 
 Each resume reads one compact checkpoint: baseline, active feature, accepted commits/releases, verification paths, defects, usage snapshot, next action. Do not repeat broad audits or spawn reviewers just to consume another round.
+
+## Scheduled continuation
+
+Codex heartbeat `quantum-drift-mini-releases` checks every six hours. It runs at most one accepted slice per invocation and skips low-allowance windows. Its prompt reads these files; changing the roadmap does not require rebuilding an orchestrator. It cannot guarantee execution while account limits or the local environment block work.
+
+After the accepted commit, `npm run release:pack` creates a runtime archive and SHA256SUMS in ignored release-artifacts/. Run build/tests first; packaging alone does not grant a quality pass. Publish the archive for the matching immutable git tag.

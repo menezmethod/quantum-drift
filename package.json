@@ -1,6 +1,6 @@
 {
   "name": "quantum-drift",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Neon arena combat with a shared authoritative multiplayer simulation",
   "scripts": {
@@ -10,7 +10,8 @@
     "build": "webpack --mode production",
     "test": "node --test tests/*.test.js shared/maps/*.test.cjs src/view/*.test.cjs server/rankings/*.test.js src/interface/*.test.cjs src/world/*.test.mjs",
     "test:browser": "node tests/browser.cjs",
-    "capture": "node scripts/verification/capture.cjs"
+    "capture": "node scripts/verification/capture.cjs",
+    "release:pack": "node scripts/package-release.cjs"
   },
   "engines": {
     "node": ">=20"

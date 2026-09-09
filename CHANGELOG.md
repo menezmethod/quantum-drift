@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 — 2026-09-09
+
+- Added Junction, an optional close-quarters map using existing Foundry art: offset central cover, side fighting pockets, and clear flanking routes. Select it explicitly; existing default map rotation is unchanged.
+- Added a usage-aware mini-release workflow and reproducible runtime packaging.
+- Verified 75 tests, connected movement space and spawn exits, 2/4/8-bot comparisons, and independent native-browser two-client selection/replication.
+- Critic approved an opt-in first iteration. Human balance, grenade escape playtesting, and low-end performance remain open; this is not the final art/WOW milestone.
+
 ## 1.0.0 — 2026-09-09
 
 First playable release of the rebuilt Quantum Drift.

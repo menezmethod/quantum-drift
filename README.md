@@ -98,3 +98,7 @@ Pilot records include lifetime and per-map score, wins, kills/deaths, damage, ac
 `node scripts/verification/matrix.cjs r1` captures a serial map/view/light/state matrix. `npm run capture -- --map foundry --camera tactical --time dusk --state combat --out test-results/capture` captures one scene. These staged diagnostics require `?showcase`; their synthetic counters never become online records. PNGs and JSON telemetry live in `docs/gauntlet/evidence/`; independent evaluations and unresolved defects are tracked in `docs/STATUS.json`. Headless SwiftShader FPS is a regression measure, not a native GPU benchmark.
 
 Capacity defaults to eight rooms (up to eight humans each) and 96 connected sockets. These are protective admission limits, not a measured 64-player performance guarantee. Configure `MAX_ROOMS` and `MAX_CONNECTIONS` only after load testing your host.
+
+## Junction mini-release (v1.1.0)
+
+Select Junction for offset central cover, tight side pockets, and quick flanks using the existing Foundry art. It is optional and does not alter the original rotation. See [release loop](docs/RELEASE-LOOP.md) for incremental delivery and [critic evidence](docs/gauntlet/junction-review/REVIEW.md) for the limits of the first review.

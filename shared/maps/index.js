@@ -1,6 +1,7 @@
 // Pure data shared by authoritative physics and browser rendering. No simulation
 // imports: the simulation can safely import this registry without a require cycle.
 const classic = require('./classic');
+const junction = require('./junction');
 const box = (x, z, w, d, h, color, role) => ({ type: 'box', x, z, w, d, h, color, role });
 const cylinder = (x, z, r, h, color, role) => ({ type: 'cylinder', x, z, r, h, color, role });
 const district = (id, name, x, z, w, d, color) => ({ id, name, x, z, w, d, color });
@@ -85,8 +86,8 @@ function freeze(value) {
   return value;
 }
 
-const mapsById = freeze({ foundry, canopy, glacier, classic });
-const MAPS = Object.freeze([foundry, canopy, glacier, classic]);
+const mapsById = freeze({ foundry, canopy, glacier, classic, junction });
+const MAPS = Object.freeze([foundry, canopy, glacier, classic, junction]);
 const MAP_ROTATION = Object.freeze(['foundry', 'canopy', 'glacier', 'classic']);
 
 // Old replay/map IDs continue to resolve. Unknown network input has a stable

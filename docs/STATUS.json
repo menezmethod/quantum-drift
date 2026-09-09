@@ -192,10 +192,10 @@
     "criticPass": false
   },
   "releaseLoop": {
-    "status": "active-first-cycle",
+    "status": "accepted-awaiting-publication",
     "policy": "docs/RELEASE-LOOP.md",
     "baseline": "v1.0.0",
-    "activeFeature": "junction-map",
+    "activeFeature": null,
     "plannedVersion": "1.1.0",
     "estimateTokens": [
       6000,
@@ -213,7 +213,30 @@
       "native captures and two-client verification",
       "independent review with honest limits"
     ],
-    "next": "Implement Junction using existing foundry geometry; preserve existing rotation until broader play feedback",
-    "completed": []
+    "next": "Publish v1.1.0, then wait for allowance; next gameplay slice is Junction obstacle/escape refinement based on actual play.",
+    "completed": [
+      {
+        "feature": "junction-map",
+        "version": "1.1.0",
+        "tests": 75,
+        "critic": "docs/gauntlet/junction-review/REVIEW.md",
+        "acceptance": "optional first iteration",
+        "open": [
+          "human balance",
+          "grenade escape playtesting",
+          "landmark/label clarity"
+        ],
+        "releaseUrl": "https://github.com/menezmethod/quantum-drift/releases/tag/v1.1.0"
+      }
+    ],
+    "afterUsage": {
+      "fiveHourRemainingPercent": 21,
+      "weeklyRemainingPercent": 88,
+      "scope": "shared account; not exclusive feature cost"
+    },
+    "automation": {
+      "id": "quantum-drift-mini-releases",
+      "intervalHours": 6
+    }
   }
 }

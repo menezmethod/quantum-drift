@@ -1,0 +1,105 @@
+{
+  "method": "120 seconds of simulated bot play per population/map; damage-event gaps are not player-perceived encounter gaps. Single deterministic run; no human balance claims.",
+  "results": [
+    {
+      "map": "foundry",
+      "pilots": 2,
+      "seconds": 120,
+      "invalidPositions": 0,
+      "kills": 15,
+      "hits": 73,
+      "firstContactSeconds": 3.2333333333333267,
+      "longestNoDamageIntervalSeconds": 7.649999999999565,
+      "visitedCells": [
+        70,
+        59
+      ]
+    },
+    {
+      "map": "foundry",
+      "pilots": 4,
+      "seconds": 120,
+      "invalidPositions": 0,
+      "kills": 29,
+      "hits": 151,
+      "firstContactSeconds": 1.8333333333333317,
+      "longestNoDamageIntervalSeconds": 5.21666666666637,
+      "visitedCells": [
+        71,
+        86,
+        77,
+        78
+      ]
+    },
+    {
+      "map": "foundry",
+      "pilots": 8,
+      "seconds": 120,
+      "invalidPositions": 0,
+      "kills": 65,
+      "hits": 333,
+      "firstContactSeconds": 1.6833333333333322,
+      "longestNoDamageIntervalSeconds": 2.3166666666665385,
+      "visitedCells": [
+        77,
+        79,
+        84,
+        65,
+        65,
+        81,
+        76,
+        64
+      ]
+    },
+    {
+      "map": "junction",
+      "pilots": 2,
+      "seconds": 120,
+      "invalidPositions": 0,
+      "kills": 13,
+      "hits": 70,
+      "firstContactSeconds": 3.349999999999993,
+      "longestNoDamageIntervalSeconds": 7.083333333332931,
+      "visitedCells": [
+        67,
+        67
+      ]
+    },
+    {
+      "map": "junction",
+      "pilots": 4,
+      "seconds": 120,
+      "invalidPositions": 0,
+      "kills": 28,
+      "hits": 140,
+      "firstContactSeconds": 1.7666666666666653,
+      "longestNoDamageIntervalSeconds": 5.333333333333533,
+      "visitedCells": [
+        72,
+        73,
+        76,
+        63
+      ]
+    },
+    {
+      "map": "junction",
+      "pilots": 8,
+      "seconds": 120,
+      "invalidPositions": 0,
+      "kills": 65,
+      "hits": 325,
+      "firstContactSeconds": 1.6666666666666656,
+      "longestNoDamageIntervalSeconds": 3.149999999999821,
+      "visitedCells": [
+        67,
+        69,
+        64,
+        58,
+        68,
+        58,
+        79,
+        55
+      ]
+    }
+  ]
+}
