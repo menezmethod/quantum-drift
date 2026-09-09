@@ -174,7 +174,7 @@
   },
   "userSteering": "User clarified heading-relative thrust was the problem. Screen-relative directional movement implemented, nose arrow removed, mouse aim independent; camera orientations stay fixed.",
   "v1Release": {
-    "status": "verified-awaiting-deployment",
+    "status": "release-ready-hosting-handed-off",
     "date": "2026-09-09",
     "weaponCosts": {
       "LASER": 25,
@@ -187,8 +187,7 @@
     "browser": "native multiplayer, weapons, reconnect, 120ms latency passed",
     "evidence": "docs/gauntlet/evidence/v1-weapons.png",
     "remaining": [
-      "Verify public ingress and two remote clients",
-      "Publish GitHub v1.0.0 release"
+      "Complete Cloudflare ingress and verify two public clients"
     ],
     "criticPass": false
   }
