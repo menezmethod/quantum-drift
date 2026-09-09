@@ -186,6 +186,17 @@
     "tests": 70,
     "browser": "native multiplayer, weapons, reconnect, 120ms latency passed",
     "evidence": "docs/gauntlet/evidence/v1-weapons.png",
+    "hosting": {
+      "coolifyApp": "aoeefnsohotlncnvmpgwmaao",
+      "publicUrl": "https://qd.menezmethod.com",
+      "server": "logisticsPc",
+      "autoDeploy": {
+        "enabled": true,
+        "gitBranch": "master",
+        "trigger": "push to master via GitHub App webhook",
+        "note": "Deployments end active matches; release tags alone do not deploy"
+      }
+    },
     "remaining": [
       "Complete Cloudflare ingress and verify two public clients"
     ],
