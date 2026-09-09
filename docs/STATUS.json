@@ -192,7 +192,7 @@
     "criticPass": false
   },
   "releaseLoop": {
-    "status": "accepted-awaiting-publication",
+    "status": "waiting-for-allowance",
     "policy": "docs/RELEASE-LOOP.md",
     "baseline": "v1.0.0",
     "activeFeature": null,
@@ -213,7 +213,7 @@
       "native captures and two-client verification",
       "independent review with honest limits"
     ],
-    "next": "Publish v1.1.0, then wait for allowance; next gameplay slice is Junction obstacle/escape refinement based on actual play.",
+    "next": "When allowance meets policy, start one small Junction obstacle/escape refinement; preserve current controls and coordinate with hosting work.",
     "completed": [
       {
         "feature": "junction-map",
@@ -226,7 +226,8 @@
           "grenade escape playtesting",
           "landmark/label clarity"
         ],
-        "releaseUrl": "https://github.com/menezmethod/quantum-drift/releases/tag/v1.1.0"
+        "releaseUrl": "https://github.com/menezmethod/quantum-drift/releases/tag/v1.1.0",
+        "published": true
       }
     ],
     "afterUsage": {
