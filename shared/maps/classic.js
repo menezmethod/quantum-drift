@@ -1,0 +1,27 @@
+// Original arena geometry, intentionally preserved for legacy matches.
+module.exports = {
+  id: "classic",
+  name: "Classic",
+  subtitle: "The original Quantum Arena",
+  theme: "classic",
+  spawnPoints: [{ x: -21, z: -21 }, { x: 21, z: 21 }, { x: -21, z: 21 }, { x: 21, z: -21 }, { x: 0, z: 0 }, { x: 0, z: -10 }, { x: 10, z: 15 }, { x: -10, z: -15 }],
+  size: 25,
+  obstacles: [
+    { type: "box", x: 10, z: 5, w: 2, d: 2, h: 4, color: "#ef577a" },
+    { type: "box", x: -8, z: -3, w: 3, d: 3, h: 5, color: "#83eba1" },
+    { type: "box", x: 5, z: -8, w: 2.5, d: 2.5, h: 3, color: "#7c91ff" },
+    { type: "box", x: -12, z: 8, w: 2, d: 2, h: 4, color: "#ffc875" },
+    { type: "box", x: 15, z: -5, w: 3, d: 3, h: 5, color: "#d785ed" },
+    { type: "cylinder", x: 0, z: 12, r: 1.5, h: 6, color: "#5eeaff" },
+    { type: "cylinder", x: -15, z: 0, r: 1, h: 5, color: "#ffad75" },
+    { type: "cylinder", x: 8, z: -12, r: 2, h: 7, color: "#ac91ee" },
+    { type: "cylinder", x: -5, z: 15, r: 1.2, h: 4, color: "#fa81b8" },
+    { type: "cylinder", x: 18, z: 2, r: 1.8, h: 6, color: "#b7e789" },
+    { type: "sphere", x: -10, z: -8, r: 2, h: 4, color: "#ffad75" },
+    { type: "sphere", x: 3, z: 18, r: 1.5, h: 3, color: "#83eba1" },
+    { type: "sphere", x: -18, z: -5, r: 2.5, h: 5, color: "#7c91ff" },
+    { type: "sphere", x: 12, z: -15, r: 1.8, h: 4, color: "#ef577a" },
+    { type: "sphere", x: -2, z: -18, r: 1.2, h: 3.6, color: "#5eeaff" },
+    { type: "sphere", x: 20, z: 10, r: 2.2, h: 4.4, color: "#ffc875" },
+  ],
+};

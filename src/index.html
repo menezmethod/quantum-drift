@@ -1,50 +1,216 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#080f20" />
+    <meta
+      name="description"
+      content="Quantum Drift: neon spaceship arena combat. Practice against bots or battle friends online."
+    />
     <title>Quantum Drift</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet">
-</head>
-<body>
-    <div id="loading-screen">
-        <div class="loading-content">
-            <h1>QUANTUM DRIFT</h1>
-            <div class="loader"></div>
-            <p>Loading the quantum realm...</p>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2712%27 fill=%27%23080f20%27/%3E%3Ctext x=%277%27 y=%2743%27 font-family=%27sans-serif%27 font-weight=%27700%27 font-size=%2730%27 fill=%27%235eeaff%27%3EQD%3C/text%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <main id="game">
+      <canvas id="arena" aria-label="Quantum Drift 3D combat arena"></canvas>
+    </main>
+    <section id="lobby" class="overlay">
+      <div class="lobby-panel">
+        <div class="wordmark">QD<span>Orbital combat</span></div>
+        <h1>Quantum<br />Drift<span class="title-dot">.</span></h1>
+        <p class="intro">
+          Keep moving. Read the angles.<br />Make every shot count.
+        </p>
+        <div class="lobby-form">
+          <label for="pilot-name">Your callsign</label
+          ><input
+            id="pilot-name"
+            maxlength="18"
+            placeholder="Pilot"
+            autocomplete="nickname"
+          />
+          <div class="primary-actions">
+            <button id="quick-play" class="primary">
+              Play online <span>↗</span></button
+            ><button id="practice">Practice with bots</button>
+          </div>
+          <div class="room-divider">Fly with friends</div>
+          <div class="room-actions">
+            <button id="create-room">Create room</button
+            ><input
+              id="room-code"
+              maxlength="20"
+              placeholder="Room code"
+              aria-label="Room code"
+            /><button id="join-room">Join</button>
+          </div>
+          <label class="check"
+            ><input id="fill-bots" type="checkbox" checked /> Fill empty seats
+            with bots</label
+          >
+          <p id="lobby-status" role="status" aria-live="polite">
+            Free-for-all · 20 eliminations · 5 minutes
+          </p>
         </div>
-    </div>
-    
-    <div id="start-screen" class="hidden">
-        <div class="start-content">
-            <h1>QUANTUM DRIFT</h1>
-            <button id="start-button" class="glow-button">START GAME</button>
+        <div class="lobby-footer">
+          <span>Laser / Grenade / Ricochet</span
+          ><button id="lobby-help" class="text-button">How to fly</button>
         </div>
-    </div>
-    
-    <!-- Multiplayer HUD -->
-    <div id="multiplayer-hud" class="multiplayer-hud hidden">
-        <div id="connection-status" class="connection-status">🔴 Disconnected</div>
-        <div id="player-count" class="player-count">Players: 1</div>
-        <div id="network-latency" class="network-latency">Ping: --</div>
-    </div>
-    
-    <!-- Death Screen -->
-    <div id="death-screen" class="death-screen hidden">
-        <div class="death-content">
-            <h2>YOU DIED</h2>
-            <p id="respawn-countdown">Respawning in 5 seconds...</p>
-            <button id="respawn-button" class="glow-button">Respawn Now</button>
+      </div>
+      <div class="arena-caption">
+        <span class="live-dot"></span> Quantum arena <span>01</span>
+      </div>
+    </section>
+    <section id="hud" hidden>
+      <header class="top-bar">
+        <div class="match-brand">
+          QD <span id="room-label">Practice</span
+          ><button id="share-room" class="small" hidden>Copy invite</button>
         </div>
-    </div>
-    
-    <!-- Simple HUD for controls info -->
-    <div class="controls-info hidden">
-        <p>W/↑: Forward | S/↓: Backward</p>
-        <p>A/← D/→: Rotate Ship</p>
-        <p>Q/E: Strafe Left/Right</p>
-        <p>Space: Fire Laser</p>
-        <p>Avoid the colored obstacles!</p>
-    </div>
-</body>
-</html> 
+        <div class="match-clock">
+          <strong id="clock">5:00</strong
+          ><span id="round-label">First to 20</span>
+        </div>
+        <div class="session-tools">
+          <span id="connection">Offline practice</span
+          ><button id="menu-button" class="small">Menu <kbd>Esc</kbd></button>
+        </div>
+      </header>
+      <div id="kill-feed" aria-live="polite"></div>
+      <div id="notice" role="status"></div>
+      <aside class="radar">
+        <canvas
+          id="radar"
+          width="220"
+          height="220"
+          aria-label="Arena radar"
+        ></canvas
+        ><span
+          >You <i></i> <span id="pilot-count">4 pilots</span> <kbd>M</kbd></span
+        >
+      </aside>
+      <div id="hit-marker" hidden>×</div>
+      <div id="damage-flash"></div>
+      <div id="death-panel" class="center-message" hidden>
+        <span>Ship destroyed</span>
+        <h2>Back in <b id="respawn-time">3</b></h2>
+        <p>Reactor rebuilding. Pick your next angle.</p>
+      </div>
+      <div id="round-panel" class="center-message" hidden>
+        <span>Round complete</span>
+        <h2 id="winner"></h2>
+        <p id="next-round"></p>
+      </div>
+      <footer class="combat-bar">
+        <div class="vitals">
+          <div><span>Hull</span><strong id="health-value">100</strong></div>
+          <div class="meter"><i id="health-bar"></i></div>
+          <div><span>Energy</span><strong id="energy-value">100</strong></div>
+          <div class="meter energy"><i id="energy-bar"></i></div>
+        </div>
+        <div class="weapons">
+          <button data-weapon="LASER" class="weapon selected">
+            <kbd>1</kbd><span>Laser<small>25 energy</small></span></button
+          ><button data-weapon="GRENADE" class="weapon">
+            <kbd>2</kbd><span>Grenade<small>100 energy</small></span></button
+          ><button data-weapon="BOUNCE" class="weapon">
+            <kbd>3</kbd><span>Ricochet<small>50 energy</small></span>
+          </button>
+        </div>
+        <div class="flight-tools">
+          <button id="view-button" class="small">Arena <kbd>V</kbd></button
+          ><button id="score-button" class="small">Scores <kbd>Tab</kbd></button
+          ><button id="sound-button" class="small" aria-pressed="true">
+            Sound on
+          </button>
+        </div>
+      </footer>
+      <div class="flight-hint">
+        WASD / arrows move
+        <span>·</span> Mouse aim <span>·</span> Hold click or Space to fire
+      </div>
+      <div id="touch-controls">
+        <div class="touch-move">
+          <button data-control="KeyW">↑</button
+          ><button data-control="KeyA">←</button
+          ><button data-control="KeyS">↓</button
+          ><button data-control="KeyD">→</button>
+        </div>
+        <div class="touch-fire">
+          <button data-control="Space">Fire</button>
+        </div>
+      </div>
+    </section>
+    <section id="menu" class="modal" hidden>
+      <div class="dialog">
+        <h2>Flight menu</h2>
+        <p id="pause-message">Online matches keep running.</p>
+        <button id="resume" class="primary">Resume flight</button
+        ><button id="help-button">Controls & weapons</button
+        ><button id="leave-game">Leave arena</button>
+        <p id="menu-status" role="status"></p>
+      </div>
+    </section>
+    <section id="help" class="modal" hidden>
+      <div class="dialog wide">
+        <h2>Find your angle.</h2>
+        <div class="help-columns">
+          <div>
+            <h3>Flight</h3>
+            <p><kbd>W S / ↑ ↓</kbd> Move up / down the screen</p>
+            <p><kbd>A D / ← →</kbd> Move left / right on screen</p>
+            <p>Movement stays independent of where you aim.</p>
+            <p><kbd>Mouse</kbd> Aim independently</p>
+            <p><kbd>Click / Space</kbd> Hold to fire</p>
+            <p><kbd>V</kbd> Arena / full map · other views in Flight menu</p>
+            <p><kbd>M</kbd> Radar · <kbd>Tab</kbd> Scoreboard</p>
+          </div>
+          <div>
+            <h3>Loadout</h3>
+            <p><kbd>1</kbd> <b>Laser</b> — fast, precise bursts. 25 energy.</p>
+            <p>
+              <kbd>2</kbd> <b>Grenade</b> — arcs to your cursor, up to 20m. 100
+              energy. Cover blocks blast damage; nearby blasts can hurt you.
+            </p>
+            <p>
+              <kbd>3</kbd> <b>Ricochet</b> — banks off walls three times. 50
+              energy.
+            </p>
+            <p><kbd>X</kbd> Cycle weapons</p>
+            <p>
+              Energy recharges. Hull repairs after 5 seconds without damage.
+              Spawn protection lasts 1.5 seconds or until you fire.
+            </p>
+          </div>
+        </div>
+        <button id="close-help" class="primary">Got it</button>
+      </div>
+    </section>
+    <section id="scoreboard" class="modal" hidden>
+      <div class="dialog wide">
+        <h2>Flight standings</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Pilot</th>
+              <th>Eliminations</th>
+              <th>Deaths</th>
+            </tr>
+          </thead>
+          <tbody id="scores"></tbody>
+        </table>
+        <button id="close-scores">Back to flight</button>
+      </div>
+    </section>
+    <script nomodule>
+      This game requires a modern browser.
+    </script>
+  </body>
+</html>

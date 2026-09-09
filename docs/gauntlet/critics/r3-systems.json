@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "round": "r3",
+  "critic": "Independent systems critic",
+  "reviewedAt": "2026-09-07T01:55:02.554Z",
+  "scope": "Targeted SYS-1/2/3 server verification only; no production edits or broad suite",
+  "score": 8,
+  "scores": {
+    "rankings": 8,
+    "serverCorrectness": 8,
+    "retention": null
+  },
+  "bar": 8.5,
+  "verdict": "Below bar: original server defects fixed, one remaining round-attribution failure; retention UI verification pending",
+  "scoreExplanation": "Substantial improvement from r1 6.8. Resource restoration, bound identity and recoverable transport loss now work. An accepted identity-change path can still invalidate the entire round. Retention is ungraded in this pass because the interface is changing and no fresh browser inspection was requested/performed.",
+  "originalDefects": [
+    {
+      "id": "SYS-1",
+      "status": "fixed_verified",
+      "evidence": "Parent real-socket regression preserved damaged and dead state, cooldown, protection, damage timestamp, position and weapon with no new spawn. Independent live-tick transport-loss reconnect retained dead state, health=0, energy=7 and kills=4; no immediate respawn."
+    },
+    {
+      "id": "SYS-2",
+      "status": "original_reproduction_fixed_verified",
+      "evidence": "Both parent and independent probes rejected a different profile token on a participating socket; counters and identity unchanged.",
+      "relatedOpenDefect": "SYS-5"
+    },
+    {
+      "id": "SYS-3",
+      "status": "fixed_verified_with_documented_semantics",
+      "evidence": "Transport loss preserves an empty room during grace; independent live-tick probe confirmed time/tick/round stopped. Rejoin retained stats and canceled old expiry. Parent regression verified abandoned-room expiration. Explicit client namespace disconnect and independent server namespace disconnect remove sole-human room immediately.",
+      "semantics": "Default reconnectGraceMs is 30000 by source inspection; tests use 250/350ms to exercise the same timer path. The leave event and client/server namespace disconnect are intentional exits with immediate cleanup when empty. Transport loss gets grace; empty rooms pause. Not all forms of disconnect promise recovery."
+    },
+    {
+      "id": "SYS-4",
+      "status": "source_fix_present_UI_verification_pending",
+      "evidence": "Current Interface.js resolves recap by player.profileId before socket fallback. No fresh intermission reconnect UI test in this pass."
+    }
+  ],
+  "defects": [
+    {
+      "id": "SYS-5",
+      "priority": "P2",
+      "title": "Explicit leave then identity change on the same socket invalidates the completed round",
+      "locations": [
+        "server/server.js:90",
+        "shared/simulation.js:342",
+        "shared/simulation.js:637",
+        "server/rankings/index.js:63"
+      ],
+      "reproduction": [
+        "Create a two-human room with bots disabled and stable tokens A and B. Keep B connected.",
+        "Give A round stats (probe fixture: four kills). Wait past the 400ms join throttle.",
+        "A emits leave without closing its Socket.IO connection. Join the same room on that socket with a different valid profile token C. Server accepts it.",
+        "End the round; allow the real server tick/event/persistence path to process roundEnd."
+      ],
+      "observed": {
+        "acceptedNewIdentity": true,
+        "recapParticipants": 3,
+        "uniqueSocketIds": 2,
+        "serverLog": "Ranking save failed: Duplicate player socket id",
+        "clientEvent": "Last round records could not be saved.",
+        "healthRankings": "degraded",
+        "leaderboardRows": 0
+      },
+      "cause": "Departed A remains keyed by its old socket ID. C reuses that same socket ID; the recap concatenates departed/live participants. RankingStore correctly refuses the duplicate, so no participant receives the round. This follows the new error message instruction to leave before changing identity.",
+      "impact": "One accepted protocol sequence prevents recording the round for every human, including the unaffected opponent. Normal UI Leave may disconnect the socket; this is a real accepted socket-API edge case, not a demonstrated ordinary UI flow.",
+      "recommendation": "Reject identity reuse when that socket already represents a different departed participant in the current round, or use unique participation identities while preserving both profiles and winner mapping. Do not discard the departed record or merely remove RankingStore validation.",
+      "regression": "Two humans; A emits leave then same-socket join under C. Require either a clear safe rejection or a valid completed round with A/B/C credited once and distinct participant IDs."
+    }
+  ],
+  "testResults": [
+    {
+      "command": "node --test tests/reconnect.test.js",
+      "passed": 3,
+      "failed": 0,
+      "durationMs": 1077.587625
+    },
+    {
+      "name": "independent real-socket probes on tick-enabled server",
+      "passed": [
+        "Empty room simulation time/tick/round pause during transport-loss grace",
+        "Rejoin restores death/resources/counters and clears departed entry",
+        "Old expiry does not delete a reoccupied room",
+        "Server namespace disconnect removes empty room immediately",
+        "Participating socket identity change is rejected"
+      ],
+      "newDefect": "SYS-5 reproduced first against RankingStore then against actual server event/save/API path"
+    },
+    {
+      "name": "full suites and screenshot matrix",
+      "result": "Not rerun, as requested"
+    }
+  ],
+  "retention": {
+    "status": "implementation_present_verification_pending",
+    "sourceObservations": [
+      "renderCareer now calls renderProgress and renderHistory",
+      "recap now prefers canonical profileId"
+    ],
+    "limitations": "No new UI score, screenshot or shipped-bundle claim. r1 screenshot is historical evidence only; the r1 missing-history observation should not be treated as current source state."
+  },
+  "durability": "Existing r1 durability evidence carried forward. RankingStore source checksum recorded; no new broad durability suite or container testing. SYS-5 is invalid round construction, not an atomic storage defect.",
+  "sourceHashes": {
+    "server/server.js": "d2105f21effac001ff321a1059461178471257fbf3891b206c7d9f161bea22e9",
+    "shared/simulation.js": "531f42af52b8ba32452fcfe494c8ce5e5c423f8f048532cbe55924b307feafa1",
+    "server/rankings/index.js": "33ffe0de6793b5904cf79cc5e796adc600d600d2a85c6ce49297ff6886de86a0",
+    "tests/reconnect.test.js": "b7df8c55fe2657c5fe3331283feae866832b2fe9fdd2a45957a05669c3cc046a",
+    "src/interface/Interface.js": "3fe05f88580c80848edd0ea97f8f976493a15ffad59432709f905bcbfdb4b334"
+  }
+}

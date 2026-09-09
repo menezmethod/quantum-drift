@@ -1,0 +1,16 @@
+.qd-ship-indicators { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 4; contain: layout style; }
+.qd-ship-indicators *, .qd-ship-indicators { pointer-events: none !important; user-select: none; }
+.qd-ship-indicators[hidden], .qd-ship-indicator[hidden], .qd-protection[hidden] { display: none !important; }
+.qd-ship-indicator { --hull: #91edbb; position: absolute; left: 0; top: 0; width: 128px; box-sizing: border-box; padding: 4px 6px 5px; border: 1px solid #9fc0da45; border-radius: 5px; background: #08131deb; color: #f2f7ff; font: 600 11px/14px system-ui, sans-serif; box-shadow: 0 2px 7px #0007; }
+.qd-ship-indicator::after { content: ''; position: absolute; left: var(--anchor, 64px); top: 100%; width: var(--stem-length, 7px); height: 1px; transform-origin: left center; transform: rotate(var(--stem-angle, 1.5708rad)); background: #c6ddef70; }
+.qd-ship-indicator[data-local='true'] { border-color: #9eeaffb3; }
+.qd-ship-indicator[data-condition='damaged'] { --hull: #ffcc76; }
+.qd-ship-indicator[data-condition='critical'] { --hull: #ff8792; }
+.qd-pilot-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; letter-spacing: .015em; }
+.qd-pilot-hull { display: flex; align-items: center; gap: 6px; height: 12px; }
+.qd-hull-track { display: flex; gap: 2px; flex: 1; }
+.qd-hull-track i { height: 5px; flex: 1; background: linear-gradient(to right, var(--hull) var(--fill), #334354 var(--fill)); border-radius: 1px; }
+.qd-hull-value { min-width: 29px; text-align: right; font-size: 10px; font-variant-numeric: tabular-nums; }
+.qd-protection { color: #cfc2ff; font-size: 9px; line-height: 15px; letter-spacing: .07em; border-top: 1px solid #bca5ff40; margin-top: 1px; }
+
+@media(max-width:599px){.qd-ship-indicator{width:104px;padding:3px 5px;font-size:10px;line-height:13px}.qd-hull-track{gap:1px}.qd-hull-track i{height:4px}.qd-pilot-hull{gap:3px}.qd-protection{font-size:8px;line-height:13px}}

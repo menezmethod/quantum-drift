@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "critic": "Independent systems critic",
+  "round": "r1",
+  "reviewedAt": "2026-09-07T01:48:39.023Z",
+  "scope": "rankings / progression / multiplayer correctness; no production edits",
+  "score": 6.8,
+  "scores": {
+    "rankings": 6.8
+  },
+  "bar": 8.5,
+  "verdict": "FAIL \u2014 below high-end indie bar",
+  "rationale": "Durable storage and readable records are credible. Reconnect gives a competitive advantage, identity attribution can change mid-round, and two ordinary reconnect paths fail. Career retention is stored but incompletely exposed. Passing broad regressions does not cover these edge cases.",
+  "defects": [
+    {
+      "id": "SYS-1",
+      "priority": "P1",
+      "title": "Reconnect bypasses respawn and restores combat resources",
+      "locations": [
+        "server/server.js:132",
+        "server/server.js:135",
+        "shared/simulation.js:364"
+      ],
+      "reproduction": "Keep a second human in the room. Kill or damage pilot A, disconnect A, reconnect with the same profileToken and join the same code before respawnAt. Targeted probe used tick:false and a dead fixture with health=1, energy=0, respawnAt=3, time=0; join/disconnect traversed real sockets.",
+      "observed": "Rejoined pilot was alive with health=100, energy=100, respawnAt=0 and protectedUntil=1.5 at time=0. Kills=4/deaths=2 remained intact; departed entry was consolidated.",
+      "impact": "A player can evade the three-second death penalty or repeatedly heal/recharge by reconnecting without losing accrued score.",
+      "fix": "Restore authoritative combat state and remaining respawn/protection timers for a reconnecting profile; do not unconditionally spawn it.",
+      "verification": "Disconnect/rejoin living damaged and dead pilots; assert no resource gain or shortened death timer."
+    },
+    {
+      "id": "SYS-2",
+      "priority": "P2",
+      "title": "Repeated join can reassign accumulated stats to another profile",
+      "locations": [
+        "server/server.js:124",
+        "server/server.js:132",
+        "server/server.js:133"
+      ],
+      "reproduction": "Join as token A, accumulate round counters, wait >400ms, then emit join to the same room on the same socket using token C. End the round and record its authoritative recap. Probe used deterministic 4 kills, 2 deaths, 430 damage, 20 fired, 7 hit.",
+      "observed": "Same player object kept four kills but profileId changed. RankingStore credited C with four kills and score 686; A had no record.",
+      "impact": "Identity is mutable mid-round and attribution is lost. This does not permit taking over an unknown bearer token; it permits transferring stats between tokens the caller supplies.",
+      "fix": "Bind a connected participant to its canonical profile identity. Reject identity changes while participating, or close the old participation explicitly without transferring counters.",
+      "verification": "A repeated join with a different token must not change ownership of existing counters."
+    },
+    {
+      "id": "SYS-3",
+      "priority": "P2",
+      "title": "Sole-human connection loss destroys the room before automatic rejoin",
+      "locations": [
+        "server/server.js:61",
+        "server/server.js:68",
+        "src/index.js:441"
+      ],
+      "reproduction": "Create a room with one human and bots. Disconnect the human, reconnect with the same token, and join the original room code.",
+      "observed": "Room was deleted immediately; rejoin returned Room not found. Check the code or create a new room.",
+      "impact": "The normal solo-online-with-bots flow cannot recover from a transient disconnect; in-progress stats disappear. This is an explicit cleanup behavior in current tests, but conflicts with the client promise of rejoining the room.",
+      "fix": "Use a bounded empty-room reconnect grace period, distinguishing intentional leave from transport loss where practical.",
+      "verification": "Reconnect within grace resumes room/counters; an expired abandoned room is cleaned up."
+    },
+    {
+      "id": "SYS-4",
+      "priority": "P2",
+      "title": "Reconnect during intermission loses the local recap view",
+      "locations": [
+        "src/interface/Interface.js:342",
+        "src/interface/Interface.js:352",
+        "server/server.js:135"
+      ],
+      "reproduction": "Complete a round with another human connected, disconnect/rejoin with the same profileToken during the ten-second recap.",
+      "observed": "Authoritative recap still contains old socket ID. Rejoin supplies a new socket ID; local recap lookup has no match although profileId matches.",
+      "impact": "UI takes the No pilot statistics for this round branch despite a recorded round. Stored career totals are not lost.",
+      "fix": "Resolve online recap identity by canonical profileId with socket fallback for practice.",
+      "verification": "Same-token intermission reconnect displays original kills, score and XP without adding another match."
+    }
+  ],
+  "testResults": [
+    {
+      "name": "npm test",
+      "source": "independent execution earlier in this critique",
+      "passed": 52,
+      "failed": 0,
+      "durationMs": 5171.223625
+    },
+    {
+      "name": "latest full suite",
+      "source": "user/parent report, not rerun",
+      "passed": 61,
+      "failed": 0
+    },
+    {
+      "name": "full browser regression",
+      "source": "user/parent report, not rerun",
+      "result": "PASS",
+      "coverage": "independent browsers, invites, thrust/turn, all weapons, mouse aim, four cameras, reconnect, 120ms lag, practice pause, mobile; zero errors"
+    },
+    {
+      "name": "targeted in-memory server/socket probes",
+      "source": "independent inline Node assertions; no committed tests",
+      "result": "4 defects reproduced; canonical counter restoration and departed consolidation passed"
+    },
+    {
+      "name": "exact map rotation",
+      "source": "independent Simulation probe",
+      "result": "PASS: foundry \u2192 canopy \u2192 glacier \u2192 classic \u2192 foundry",
+      "note": "First probe incorrectly expected only three maps and failed on Classic; corrected expectation against MAP_ROTATION passed. Not a product failure."
+    },
+    {
+      "name": "actual leaderboard browser harness",
+      "source": "independent Playwright on isolated server after matrix completion",
+      "result": "PASS: actual completed socket round appears in Overall/Canopy, Foundry empty, local identity highlighted, zero captured errors"
+    }
+  ],
+  "verified": {
+    "durability": "9 RankingStore tests passed: durable reopen, idempotency, validation, bot exclusion, stable ordering, last-ten history, overflow atomicity, concurrent writes, IO failure/retry and corrupt-storage refusal. Online restart integration also passed. File/directory fsync and atomic rename are present. Docker now copies rankings and compose mounts named rankings volume; configuration inspected, container restart not independently exercised.",
+    "scoring": "Server-owned counters; kill 100 + floor(damage*.2) - death 25 + win 250, clamped >=0. XP 25 + kill 40 + floor(damage/10) + win 150. Browser one-kill/24-damage record: score 354, XP 217. Successful grenade projectile counted once; suicide counters remain nonnegative.",
+    "rejoin": "Same-token counters and departed consolidation passed when another human remains. SYS-1/3/4 limit correctness.",
+    "mapRotation": "Exact four-map cycle independently passed; existing tests exercise resets and safe spawns across eight rounds.",
+    "retention": "Lifetime/per-map totals, XP-derived level and last10 persist and rebuild. Browser token warning is accurate. Current UI exposes only career rounds/wins/score/XP; no last10 or level rendering found."
+  },
+  "limitations": [
+    {
+      "type": "product gap",
+      "location": "src/interface/Interface.js:316",
+      "detail": "Recap says View your history in Pilot records, but records shows only aggregates. Stored last10, level and career accuracy have no UI. Add recent-round entries and visible progression before claiming a strong return-play loop."
+    },
+    {
+      "type": "documented capacity limit",
+      "location": "server/rankings/index.js:192",
+      "detail": "Every save stringifies the entire unbounded ledger; startup replays all rounds. Single-writer small-server design, not a demonstrated production-scale fault. No load or power-loss test performed."
+    },
+    {
+      "type": "competitive design limitation",
+      "detail": "Completed private and bot-filled online rounds share cumulative score boards. No skill rating or opponent-quality normalization; do not portray this as verified competitive matchmaking."
+    }
+  ],
+  "evidence": {
+    "visuallyInspected": [
+      "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/r1-foundry-ui-tactical-recap.png",
+      "browser.screenshot (PNG embedded in this JSON; independently captured and visually inspected)"
+    ],
+    "matrix": "All 14 available r1 JSON receipts inspected: consoleErrors/pageErrors/failedRequests empty. All 11 matrix outputs present and matrix/capture processes ended before own browser capture. Only recap PNG visually inspected from that matrix; no claims for uninspected world screenshots.",
+    "visualAssessment": "Recap has readable eight-stat layout and explicit practice exclusion. Actual leaderboard has clear scope tabs, legible rows, local highlight and honest token disclaimer. Two-row desktop screenshot does not prove long-table or mobile leaderboard quality."
+  },
+  "sourceHashes": {
+    "server/server.js": "d2bc4cf32be3de3fe1984342d0a7586a3b5aba48e0396f2daa2214d899a357b9",
+    "shared/simulation.js": "163e7a679425ca81d820cd9402810e641ff915328caf77dcf4a2d1fffa4d7a3e",
+    "server/rankings/index.js": "33ffe0de6793b5904cf79cc5e796adc600d600d2a85c6ce49297ff6886de86a0",
+    "src/interface/Interface.js": "b0c47374ce77d3d9a6d33208d97448dc756ebdf85f94ba4b3f8c38f8a76f742a"
+  },
+  "browser": {
+    "capturedAt": "2026-09-06T20:45:40.119Z",
+    "url": "http://127.0.0.1:59987",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "harness": "@playwright/test Chromium; same launch configuration as scripts/verification/capture.cjs; existing dist bundle; no build/restart of port 8080",
+    "fixture": "Isolated memory-mode server. Real socket join/input/projectile kill completed an online canopy round; only positions, victim health and frag limit set deterministically. No injected leaderboard rows; no persistent production data touched.",
+    "overallText": "QUANTUM DRIFT / PILOT RECORDS\nThe flight ledger\nClose \u00d7\nOverall\nFoundry\nCanopy\nGlacier\nClassic\nYOUR BROWSER PILOT\n\nSystems Critic\n\nRounds\n1\nWins\n1\nScore\n354\nCareer XP\n217\n\nAll arenas \u00b7 Completed online rounds \u00b7 Ordered by score\n\nPersistent pilot records\nPlace\tPilot\tScore\tWins\tRounds\tKills\tDeaths\n01\tSystems Critic \u00b7 You\t354\t1\t1\t1\t0\n02\tSocket Rival\t0\t0\t1\t0\t1\n\nHistory is linked to this browser\u2019s pilot token. Clearing browser data may disconnect your history. Callsigns are not verified identities.\n\nPractice this arena",
+    "emptyMapText": "No recorded rounds here yet. Finish an online round to begin your history.",
+    "errors": [],
+    "rows": [
+      {
+        "id": "d96a1bc3c66f011655cc5cfa192835ead7651bb1fedb5804624176788da69a0e",
+        "name": "Systems Critic",
+        "kills": 1,
+        "deaths": 0,
+        "wins": 1,
+        "matches": 1,
+        "score": 354,
+        "damageDealt": 25,
+        "shotsFired": 2,
+        "shotsHit": 2,
+        "xp": 217,
+        "accuracy": 100,
+        "level": 1
+      },
+      {
+        "id": "631420ae112d081e05af814a0f2546be77ded914d9f3e8a7100ab347895dc145",
+        "name": "Socket Rival",
+        "kills": 0,
+        "deaths": 1,
+        "wins": 0,
+        "matches": 1,
+        "score": 0,
+        "damageDealt": 0,
+        "shotsFired": 0,
+        "shotsHit": 0,
+        "xp": 25,
+        "accuracy": 0,
+        "level": 1
+      }
+    ],
+    "screenshot": {
+      "mimeType": "image/png",
+      "path": "docs/gauntlet/critics/r1-systems-leaderboard.png"
+    }
+  }
+}

@@ -34,3 +34,10 @@ logs
 
 # Optional REPL history
 .node_repl_history
+# Generated verification artifacts
+/test-results
+# Dependencies at any depth
+**/node_modules/
+
+# Persistent local pilot history
+/server/data/

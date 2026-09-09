@@ -1,0 +1,86 @@
+{
+  "capturedAt": "2026-09-07T01:56:05.422Z",
+  "method": "Actual bot navigation, weapons, collision and respawn simulation for 180 seconds per map; no renderer or network. Does not establish human tactical balance.",
+  "results": [
+    {
+      "map": "foundry",
+      "simulatedSeconds": 180,
+      "pilots": 8,
+      "kills": 156,
+      "spawns": 161,
+      "maxProjectiles": 21,
+      "invalidPositions": 0,
+      "uniqueFiveMeterCellsPerPilot": [
+        90,
+        98,
+        95,
+        96,
+        96,
+        91,
+        91,
+        96
+      ],
+      "simulationWallMs": 299
+    },
+    {
+      "map": "canopy",
+      "simulatedSeconds": 180,
+      "pilots": 8,
+      "kills": 158,
+      "spawns": 162,
+      "maxProjectiles": 18,
+      "invalidPositions": 0,
+      "uniqueFiveMeterCellsPerPilot": [
+        97,
+        91,
+        97,
+        87,
+        106,
+        103,
+        99,
+        90
+      ],
+      "simulationWallMs": 285
+    },
+    {
+      "map": "glacier",
+      "simulatedSeconds": 180,
+      "pilots": 8,
+      "kills": 157,
+      "spawns": 162,
+      "maxProjectiles": 21,
+      "invalidPositions": 0,
+      "uniqueFiveMeterCellsPerPilot": [
+        95,
+        90,
+        95,
+        97,
+        110,
+        91,
+        106,
+        96
+      ],
+      "simulationWallMs": 309
+    },
+    {
+      "map": "classic",
+      "simulatedSeconds": 180,
+      "pilots": 8,
+      "kills": 165,
+      "spawns": 170,
+      "maxProjectiles": 16,
+      "invalidPositions": 0,
+      "uniqueFiveMeterCellsPerPilot": [
+        69,
+        67,
+        71,
+        81,
+        66,
+        77,
+        69,
+        81
+      ],
+      "simulationWallMs": 355
+    }
+  ]
+}

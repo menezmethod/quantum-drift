@@ -1,0 +1,27 @@
+{
+  "capturedAt": "2026-09-09T21:21:16.867Z",
+  "method": "Real production browser keyboard input through Socket.IO; arbitrary initial ship heading and independent mouse aim; peer snapshot verification",
+  "results": [
+    {
+      "key": "KeyW",
+      "projectedDelta": 0.19966516263903863,
+      "replicated": true
+    },
+    {
+      "key": "KeyS",
+      "projectedDelta": -0.2144807746191689,
+      "replicated": true
+    },
+    {
+      "key": "KeyA",
+      "projectedDelta": -0.13597623768759587,
+      "replicated": true
+    },
+    {
+      "key": "KeyD",
+      "projectedDelta": 0.14125171249476448,
+      "replicated": true
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,195 @@
+{
+  "goal": "Quantum Drift WOW gauntlet",
+  "status": "screen-relative-movement-running",
+  "passScore": 8.5,
+  "integrator": "parent agent (sole core writer)",
+  "referenceScope": "Nex Machina, WipEout, Battlerite: aspirational design references, not claimed parity",
+  "modules": {
+    "maps": {
+      "round": 1,
+      "score": 7.0,
+      "receipt": "docs/gauntlet/critics/r1-world.md"
+    },
+    "world": {
+      "round": 1,
+      "score": 6.4,
+      "receipt": "docs/gauntlet/critics/r1-world.md"
+    },
+    "view-health": {
+      "round": 1,
+      "score": 6.4,
+      "receipt": "docs/gauntlet/critics/r1-ux.md"
+    },
+    "interface": {
+      "round": 1,
+      "score": 6.6,
+      "receipt": "docs/gauntlet/critics/r1-ux.md"
+    },
+    "rankings": {
+      "round": 1,
+      "score": 6.8,
+      "receipt": "docs/gauntlet/critics/r1-systems.md"
+    },
+    "effects": {
+      "round": 1,
+      "score": 5.8,
+      "receipt": "docs/gauntlet/critics/r1-world.md"
+    }
+  },
+  "openIssues": [
+    "Independent visual regrade pending; previous below-threshold scores retained honestly",
+    "Current browser artificial-latency test under investigation; do not claim this latest full run passes yet",
+    "Native full-match performance/edge camera follow needs wider human play review",
+    "Effects need deterministic impact-phase receipts before commercial polish claim"
+  ],
+  "history": [
+    {
+      "round": 0,
+      "phase": "baseline",
+      "receipts": [
+        "docs/gauntlet/evidence/baseline-chase-day.json",
+        "docs/gauntlet/evidence/baseline-health-night.json",
+        "docs/gauntlet/evidence/baseline-isometric-dusk.json"
+      ],
+      "performance": "19\u201323 FPS SwiftShader, 101\u2013107 calls, ~122k triangles. No native GPU claim.",
+      "scores": null
+    },
+    {
+      "round": 1,
+      "phase": "integrated-capture",
+      "receipts": [
+        "docs/gauntlet/evidence/r1-canopy-arena-tactical-drift.json",
+        "docs/gauntlet/evidence/r1-canopy-health-isometric-damaged.json",
+        "docs/gauntlet/evidence/r1-canopy-ui-isometric-lobby.json",
+        "docs/gauntlet/evidence/r1-canopy-world.json",
+        "docs/gauntlet/evidence/r1-foundry-arena-tactical-combat.json",
+        "docs/gauntlet/evidence/r1-foundry-effects-tactical-combat.json",
+        "docs/gauntlet/evidence/r1-foundry-tactical.json",
+        "docs/gauntlet/evidence/r1-foundry-ui-tactical-recap.json",
+        "docs/gauntlet/evidence/r1-foundry-view-chase-drift.json",
+        "docs/gauntlet/evidence/r1-foundry-world-isometric-damaged.json",
+        "docs/gauntlet/evidence/r1-glacier-arena-tactical-combat.json",
+        "docs/gauntlet/evidence/r1-glacier-health.json",
+        "docs/gauntlet/evidence/r1-glacier-view-overview-damaged.json",
+        "docs/gauntlet/evidence/r1-mobile-health.json"
+      ],
+      "tests": {
+        "passed": 52,
+        "failed": 0,
+        "browser": "running"
+      },
+      "performance": "Serial SwiftShader captures: 20.7\u201360.2 FPS, 19\u201357 draw calls. Canopy approximately 100k triangles remains a performance concern. No native GPU claim.",
+      "scores": null
+    },
+    {
+      "round": 1,
+      "phase": "independent-visual-review",
+      "scores": {
+        "maps": 7.0,
+        "world": 6.4,
+        "effects": 5.8
+      },
+      "receipt": "docs/gauntlet/critics/r1-world.md",
+      "pass": false
+    },
+    {
+      "round": 2,
+      "phase": "partial-refinement",
+      "changes": [
+        "World contact shading, material treatment, connected peripheral ground and reduced Canopy geometry",
+        "Distinct laser/ricochet projectile silhouettes, grenade fuse marker, brief blast core and normal-directed bounce sparks",
+        "Frame-rate-independent projectile trails with 30/60/120Hz regression test",
+        "Moved showcase explosion from inside solid forge to open floor"
+      ],
+      "receipts": [
+        "docs/gauntlet/evidence/r2-foundry-effects.json",
+        "docs/gauntlet/evidence/r2-canopy-arena-tactical-drift.json"
+      ],
+      "tests": "59 full-suite tests + 2 new effects tests pass; production build passes",
+      "performance": "Canopy 105180 -> 29016 submitted triangles; SwiftShader FPS ~21 both rounds, no FPS improvement claimed.",
+      "scores": null,
+      "gate": "Independent review interrupted by account usage limit; prior failing scores remain valid until re-review."
+    },
+    {
+      "round": 3,
+      "phase": "correctness-and-visibility",
+      "changes": [
+        "Restored combat state on rejoin; bound participant identity; 30-second transport recovery grace",
+        "Through-cover hull silhouette with analytical world-only occlusion",
+        "Portrait threat radius and compact health labels with reserved aim area",
+        "Flight menu/help/standings keyboard focus ownership"
+      ],
+      "tests": "Targeted reconnect+multiplayer+progression: 8 pass. Visibility: 1 pass. Camera: 7 pass.",
+      "receipts": [
+        "docs/gauntlet/evidence/r3-canopy-native.json",
+        "docs/gauntlet/evidence/r3-mobile-health.json",
+        "docs/gauntlet/evidence/r3-foundry-occluded.json"
+      ],
+      "performance": "Native ANGLE Metal Apple M4 Max: Canopy60.1FPS / p95 16.8ms, mobile60.1FPS. Staged scenes, not full-match guarantee.",
+      "scores": null
+    },
+    {
+      "round": 4,
+      "phase": "camera-simplification",
+      "changes": [
+        "Fixed overhead Arena camera: no mouse/velocity-driven offset, rotation or zoom",
+        "V toggles Arena / Full map; alternate views inside collapsed advanced settings",
+        "Default Arena framing restored when starting play",
+        "Compact health cards avoid reticle and touch controls",
+        "Static environment shadows and route callouts integrated",
+        "Profile-based recap recovery, actual recent history and level progress, touch recap focus"
+      ],
+      "receipts": [
+        "docs/gauntlet/evidence/r4-camera-verification.json",
+        "docs/gauntlet/evidence/r4-arena-camera.png",
+        "docs/gauntlet/evidence/r4-camera-menu.png",
+        "docs/gauntlet/evidence/r4-touch-camera.png",
+        "docs/gauntlet/evidence/r4-touch-recap.png"
+      ],
+      "tests": "66 pass; focused camera/UI browser checks pass",
+      "scores": null
+    },
+    {
+      "round": 5,
+      "phase": "direct-screen-movement",
+      "changes": [
+        "WASD/arrow/touch movement mapped to screen axes, independent of hull heading",
+        "Normalized server-authoritative movement vector; legacy bot steering retained",
+        "Nose arrow removed; close view no longer rotates with hull",
+        "Updated touch controls and help text"
+      ],
+      "tests": "66 existing tests pass plus new movement regression; real production-browser multiplayer direction test passes",
+      "receipts": [
+        "docs/gauntlet/evidence/r5-screen-movement.json",
+        "docs/gauntlet/evidence/r5-screen-movement.png"
+      ],
+      "scores": null
+    }
+  ],
+  "verification": {
+    "automatedTestsPassed": 67,
+    "browserSuite": "Current native browser run pending latency probe; invites, controls, three weapons, mouse aim, four available views and reconnect passed",
+    "visualGate": "NOT PASSED",
+    "movementBrowser": "PASS: production browser W/S/A/D independent of arbitrary heading and mouse aim, replicated to peer"
+  },
+  "userSteering": "User clarified heading-relative thrust was the problem. Screen-relative directional movement implemented, nose arrow removed, mouse aim independent; camera orientations stay fixed.",
+  "v1Release": {
+    "status": "verified-awaiting-deployment",
+    "date": "2026-09-09",
+    "weaponCosts": {
+      "LASER": 25,
+      "BOUNCE": 50,
+      "GRENADE": 100
+    },
+    "grenadeRange": 20,
+    "energyRegen": 24,
+    "tests": 70,
+    "browser": "native multiplayer, weapons, reconnect, 120ms latency passed",
+    "evidence": "docs/gauntlet/evidence/v1-weapons.png",
+    "remaining": [
+      "Verify public ingress and two remote clients",
+      "Publish GitHub v1.0.0 release"
+    ],
+    "criticPass": false
+  }
+}

@@ -1,0 +1,166 @@
+{
+  "round": "r1",
+  "critic": "independent UX / camera and overhead health",
+  "comparison": "Commercial high-end indie 8.5/10 release bar: rapid combat recognition, dependable modal navigation, readable recap and meaningful empty state. Contract references Nex Machina / Battlerite / WipEout are quality yardsticks, not asserted equivalence.",
+  "scores": {
+    "view-health": 6.4,
+    "interface": 6.6
+  },
+  "threshold": 8.5,
+  "pass": false,
+  "verdict": "Clear improvement over prototype baseline, below commercial bar in both domains.",
+  "capturedAt": "2026-09-06T20:44:09.925Z",
+  "verification": {
+    "method": "Serial headless Chrome SwiftShader after matrix PID 49459 exited; no performance comparison.",
+    "ownPngReceiptsVisuallyInspected": 6,
+    "consoleErrors": [],
+    "matrixReportedErrors": 0,
+    "liveEmptyLeaderboard": {
+      "httpStatus": 200,
+      "rows": [],
+      "error": null
+    },
+    "recordsNavigation": "ArrowRight selected Foundry; Escape closed records and restored Pilot records link focus.",
+    "menuTab": "Resume focused; Tab opened scoreboard while menu stayed open; focus remained Resume.",
+    "limits": [
+      "No production edits or builds; no whole-matrix rerun.",
+      "Software-rendered screenshots are not native GPU performance evidence.",
+      "Recap rendered through real showcase/endRound implementation with staged statistics, not a naturally completed online match.",
+      "Four camera presets inspected at staged positions; full moving edge/corner, every-map camera cross-product and multiplayer saturation remain unverified.",
+      "Matrix mobile capture was narrow desktop; independent receipts enabled isMobile and hasTouch."
+    ]
+  },
+  "strengths": [
+    "Health percentage, segmented damage color, YOU marker and separate protection row vastly improve baseline tiny labels.",
+    "Desktop tactical is readable on Canopy/Glacier; isometric balances local ship and environment better than baseline.",
+    "Records uses real empty state and native dialog; scope arrows and Escape/focus restoration passed.",
+    "Lobby destination art and selected states establish a coherent visual identity; recap statistics and practice exclusion are explicit."
+  ],
+  "defects": [
+    {
+      "id": "UX-01",
+      "domain": "interface",
+      "priority": "P1",
+      "title": "Tab in Flight menu opens standings over the menu instead of advancing focus",
+      "receipts": [
+        "r1-ux-menu-tab-navigation.png"
+      ],
+      "source": "src/index.js:243; src/index.js:259; src/index.js:515",
+      "action": "Gate gameplay shortcuts behind modal ownership. Give menu/help/standings focus entry, Tab containment and focus restoration. Receipt: Resume focused, Tab pressed, menuHidden=false and scoreboardHidden=false; focus remains resume behind overlay."
+    },
+    {
+      "id": "VH-01",
+      "domain": "view-health",
+      "priority": "P1",
+      "title": "Portrait framing has no satisfactory combat view",
+      "receipts": [
+        "r1-ux-touch-mobile-health.png",
+        "r1-ux-touch-mobile-overview.png"
+      ],
+      "source": "src/view/CameraRig.js:32; src/view/CameraRig.js:46; src/view/ShipIndicators.js:90",
+      "action": "Tune portrait camera distance and playable viewport around touch HUD; use compact responsive indicators. Tactical shows only local health and a partially radar-covered enemy with no health; overview shrinks ships to roughly 10px while 128px cards dominate the arena. Verify moving enemies at screen edges and dense combat, not only four staged positions."
+    },
+    {
+      "id": "UX-02",
+      "domain": "interface",
+      "priority": "P1",
+      "title": "Touch vitals overlap the recap footer; gameplay controls remain visually active",
+      "receipts": [
+        "r1-ux-touch-mobile-recap.png"
+      ],
+      "source": "src/styles/main.css:814; src/interface/Interface.css:75; src/index.html:106",
+      "action": "Give recap exclusive visual space on touch devices, hide or dim unrelated HUD, and reposition vitals. At 390x844 the hull panel begins around y531 and intrudes into the recap ending around y552."
+    },
+    {
+      "id": "VH-02",
+      "domain": "view-health",
+      "priority": "P1",
+      "title": "Foundry central cover obscures opponents in chase and partially in tactical",
+      "receipts": [
+        "../evidence/r1-foundry-view-chase-drift.png",
+        "../evidence/r1-foundry-arena-tactical-combat.png"
+      ],
+      "source": "src/view/CameraRig.js:21; src/core/ArenaRenderer.js:57",
+      "action": "Parent/core ownership: implement deliberate cover occlusion treatment or adjust gameplay camera elevation. Keep collision cover honest. In chase, Nova is largely hidden by the central block and Vector is partly hidden; labels cannot replace readable ship silhouettes."
+    },
+    {
+      "id": "VH-03",
+      "domain": "view-health",
+      "priority": "P2",
+      "title": "Health cards can obscure the aim reticle and combat space",
+      "receipts": [
+        "r1-ux-aim-under-health-label.png",
+        "r1-ux-touch-mobile-overview.png"
+      ],
+      "source": "src/view/ShipIndicators.js:88; src/view/ShipIndicators.js:94; src/core/ArenaRenderer.js:76; src/core/ArenaRenderer.js:84",
+      "action": "Pass projected aim/reticle bounds into label placement and reserve that area, including leaders. Current above-only placement does not protect an arbitrary mouse target; pointer-events:none preserves input but not visibility. Own receipt places pointer at Nova card center and no reticle is visible there; source confirms canvas reticle is behind DOM and aim is not a placement obstacle."
+    },
+    {
+      "id": "UX-03",
+      "domain": "interface",
+      "priority": "P2",
+      "title": "Empty records directs players toward practice, which cannot create a record",
+      "receipts": [
+        "r1-ux-live-empty-leaderboard.png"
+      ],
+      "source": "src/interface/Interface.js:208; src/interface/Interface.js:293",
+      "action": "Keep truthful empty data, but make Play online the primary empty-state action. Explain practice separately. Scope-specific action should use the selected records arena or avoid saying this arena. Live API returned HTTP 200, rows=[], error=null; no fake players were injected."
+    },
+    {
+      "id": "UX-04",
+      "domain": "interface",
+      "priority": "P2",
+      "title": "Recap is a ten-second stats sheet with no direct records or review action",
+      "receipts": [
+        "../evidence/r1-foundry-ui-tactical-recap.png",
+        "r1-ux-touch-mobile-recap.png"
+      ],
+      "source": "src/interface/Interface.js:338; shared/simulation.js:642",
+      "action": "Add direct records access and a way to review the previous round after next launch; present result and key stats before the eight equal-weight metrics. Own DOM receipt contains zero recap buttons. Ten-second automatic reset is source-confirmed; natural online round completion was not exercised."
+    }
+  ],
+  "receipts": [
+    {
+      "id": "live-empty-leaderboard",
+      "screenshot": "r1-ux-live-empty-leaderboard.png"
+    },
+    {
+      "id": "menu-tab-navigation",
+      "screenshot": "r1-ux-menu-tab-navigation.png"
+    },
+    {
+      "id": "touch-mobile-health",
+      "screenshot": "r1-ux-touch-mobile-health.png"
+    },
+    {
+      "id": "touch-mobile-recap",
+      "screenshot": "r1-ux-touch-mobile-recap.png"
+    },
+    {
+      "id": "aim-under-health-label",
+      "screenshot": "r1-ux-aim-under-health-label.png"
+    },
+    {
+      "id": "touch-mobile-overview",
+      "screenshot": "r1-ux-touch-mobile-overview.png"
+    }
+  ],
+  "baselineInspected": [
+    "baseline.png",
+    "baseline-chase-day.png",
+    "baseline-health-night.png",
+    "baseline-isometric-dusk.png"
+  ],
+  "r1Inspected": [
+    "r1-glacier-health.png",
+    "r1-foundry-arena-tactical-combat.png",
+    "r1-canopy-arena-tactical-drift.png",
+    "r1-glacier-arena-tactical-combat.png",
+    "r1-foundry-view-chase-drift.png",
+    "r1-glacier-view-overview-damaged.png",
+    "r1-canopy-health-isometric-damaged.png",
+    "r1-foundry-ui-tactical-recap.png",
+    "r1-canopy-ui-isometric-lobby.png",
+    "r1-mobile-health.png"
+  ]
+}

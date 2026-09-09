@@ -1,0 +1,503 @@
+{
+  "round": "r1",
+  "critic": "independent-world-maps-effects",
+  "threshold": 8.5,
+  "verdict": "FAIL",
+  "scores": {
+    "maps": 7.0,
+    "world": 6.4,
+    "effects": 5.8
+  },
+  "score_rationale": {
+    "maps": "Sound deterministic connected geometry and distinct central tactics; sparse mirrored layouts and insufficient play/occlusion evidence fall short of polished competitive arena design.",
+    "world": "Large improvement from colored primitives, with coherent palettes and recognizable peripheral landmarks; flat materials, repeated kit parts and detached scenery fall short of a high-end indie finish.",
+    "effects": "Basic weapon colors, trails, shield and blast telegraph exist, but differentiation, visual impact and verified event presentation remain weak."
+  },
+  "comparison": "High-end indie 8.5 threshold, using contract references Nex Machina for combat hierarchy, WipEout for industrial art direction and Battlerite for competitive readability as qualitative yardsticks. No claim of direct side-by-side equivalence or city-scale world content. Scores assess integrated r1 images, not improvement alone.",
+  "inspected_screenshots": [
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/baseline.png",
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/baseline-chase-day.png",
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/baseline-health-night.png",
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/r1-foundry-tactical.png",
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/r1-canopy-world.png",
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/r1-glacier-health.png",
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/r1-canopy-arena-tactical-drift.png",
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/r1-glacier-arena-tactical-combat.png",
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/r1-foundry-effects-tactical-combat.png",
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/r1-foundry-view-chase-drift.png",
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/r1-foundry-world-isometric-damaged.png",
+    "/Users/luisgimenez/Development/07-archive/qd/docs/gauntlet/evidence/r1-mobile-health.png",
+    "/tmp/qd-r1-world-critic-glacier-effects.png"
+  ],
+  "own_capture": {
+    "config": {
+      "url": "http://localhost:8080",
+      "module": "effects",
+      "camera": "tactical",
+      "time": "night",
+      "map": "glacier",
+      "zoom": 1,
+      "width": 1440,
+      "height": 900,
+      "duration": "3000",
+      "state": "combat",
+      "out": "/tmp/qd-r1-world-critic-glacier-effects"
+    },
+    "capturedAt": "2026-09-06T20:43:21.930Z",
+    "screenshot": "/tmp/qd-r1-world-critic-glacier-effects.png",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "failedRequests": [],
+    "performance": {
+      "fps": 20.99599763811449,
+      "p95FrameMs": 66.69999999999982,
+      "drawCalls": 57,
+      "triangles": 15294,
+      "renderer": "headless Chrome / software SwiftShader (not native GPU benchmark)"
+    },
+    "state": {
+      "mode": "practice",
+      "playerId": "local",
+      "connected": false,
+      "view": 0,
+      "weapon": "LASER",
+      "state": {
+        "mapId": "glacier",
+        "recap": null,
+        "tick": 0,
+        "time": 92,
+        "round": 1,
+        "roundEndsAt": 300,
+        "restartAt": 0,
+        "winner": null,
+        "fragLimit": 20,
+        "players": [
+          {
+            "id": "local",
+            "name": "Pilot",
+            "bot": false,
+            "color": "#5eeaff",
+            "x": -7,
+            "z": -6,
+            "vx": 0,
+            "vz": 0,
+            "angle": 0,
+            "aimAngle": 0,
+            "health": 82,
+            "energy": 76,
+            "alive": true,
+            "kills": 7,
+            "deaths": 2,
+            "damageDealt": 945,
+            "shotsFired": 54,
+            "shotsHit": 28,
+            "weapon": "LASER",
+            "nextFire": 0,
+            "respawnAt": 0,
+            "protectedUntil": 0,
+            "lastDamage": -100,
+            "ack": 0
+          },
+          {
+            "id": "bot-0",
+            "name": "Vector",
+            "bot": true,
+            "color": "#ff7199",
+            "x": 7,
+            "z": 5,
+            "vx": 0,
+            "vz": 0,
+            "angle": 1.2,
+            "aimAngle": 1.2,
+            "health": 43,
+            "energy": 76,
+            "alive": true,
+            "kills": 4,
+            "deaths": 3,
+            "damageDealt": 620,
+            "shotsFired": 54,
+            "shotsHit": 28,
+            "weapon": "LASER",
+            "nextFire": 0,
+            "respawnAt": 0,
+            "protectedUntil": 0,
+            "lastDamage": -100,
+            "ack": 0
+          },
+          {
+            "id": "bot-1",
+            "name": "Nova",
+            "bot": true,
+            "color": "#ffc875",
+            "x": -3,
+            "z": 7,
+            "vx": 0,
+            "vz": 0,
+            "angle": 2.4,
+            "aimAngle": 2.4,
+            "health": 100,
+            "energy": 76,
+            "alive": true,
+            "kills": 2,
+            "deaths": 1,
+            "damageDealt": 430,
+            "shotsFired": 54,
+            "shotsHit": 28,
+            "weapon": "LASER",
+            "nextFire": 0,
+            "respawnAt": 0,
+            "protectedUntil": 100,
+            "lastDamage": -100,
+            "ack": 0
+          },
+          {
+            "id": "bot-2",
+            "name": "Echo",
+            "bot": true,
+            "color": "#b99aff",
+            "x": 8,
+            "z": -6,
+            "vx": 0,
+            "vz": 0,
+            "angle": 3.5999999999999996,
+            "aimAngle": 3.5999999999999996,
+            "health": 17,
+            "energy": 76,
+            "alive": true,
+            "kills": 1,
+            "deaths": 4,
+            "damageDealt": 280,
+            "shotsFired": 54,
+            "shotsHit": 28,
+            "weapon": "LASER",
+            "nextFire": 0,
+            "respawnAt": 0,
+            "protectedUntil": 0,
+            "lastDamage": -100,
+            "ack": 0
+          }
+        ],
+        "projectiles": [
+          {
+            "id": "stage-laser",
+            "owner": "local",
+            "weapon": "LASER",
+            "x": -3,
+            "z": -6,
+            "vx": 58,
+            "vz": 0,
+            "age": 0.2
+          },
+          {
+            "id": "stage-bounce",
+            "owner": "bot-0",
+            "weapon": "BOUNCE",
+            "x": 8,
+            "z": 3,
+            "vx": -27,
+            "vz": 27,
+            "age": 0.4
+          },
+          {
+            "id": "stage-grenade",
+            "owner": "bot-1",
+            "weapon": "GRENADE",
+            "x": -3,
+            "z": 3,
+            "targetX": -3,
+            "targetZ": 1,
+            "vx": 0,
+            "vz": -20,
+            "age": 0.4
+          }
+        ]
+      },
+      "predicted": {
+        "id": "local",
+        "name": "Pilot",
+        "bot": false,
+        "color": "#5eeaff",
+        "x": -7,
+        "z": -6,
+        "vx": 0,
+        "vz": 0,
+        "angle": 0,
+        "aimAngle": 0,
+        "health": 82,
+        "energy": 76,
+        "alive": true,
+        "kills": 7,
+        "deaths": 2,
+        "damageDealt": 945,
+        "shotsFired": 54,
+        "shotsHit": 28,
+        "weapon": "LASER",
+        "nextFire": 0,
+        "respawnAt": 0,
+        "protectedUntil": 0,
+        "lastDamage": -100,
+        "ack": 0
+      },
+      "renderer": {
+        "frame": 87,
+        "calls": 57,
+        "triangles": 15294,
+        "points": 0,
+        "lines": 0
+      },
+      "showcase": {
+        "url": "http://localhost:8080",
+        "module": "effects",
+        "camera": "tactical",
+        "time": "night",
+        "map": "glacier",
+        "zoom": 1,
+        "width": 1440,
+        "height": 900,
+        "duration": "3000",
+        "state": "combat",
+        "out": "/tmp/qd-r1-world-critic-glacier-effects"
+      },
+      "camera": {
+        "position": [
+          -7,
+          32,
+          -20
+        ],
+        "fov": 55,
+        "aspect": 1.6,
+        "matrix": [
+          -1.0000000000000002,
+          0,
+          0,
+          0,
+          0,
+          0.4008188340197076,
+          0.9161573349021894,
+          0,
+          0,
+          0.9161573349021894,
+          -0.4008188340197078,
+          0,
+          -7.000000000000003,
+          5.4969440094131485,
+          -37.33341139726422,
+          1
+        ],
+        "projection": [
+          1.2006138293569788,
+          0,
+          0,
+          0,
+          0,
+          1.9209821269711662,
+          0,
+          0,
+          0,
+          0,
+          -1.000500125031258,
+          -1,
+          0,
+          0,
+          -0.2000500125031258,
+          0
+        ]
+      },
+      "mapId": "glacier",
+      "profileId": "f48b34931a45e0344984b529d91a0a1b1871d11c1619c412d4ce658fa2d1593e",
+      "career": null
+    }
+  },
+  "capture_process_note": "Observed matrix PID 49459 running; repeated ps check showed no node scripts/verification/matrix or capture process before launching own capture. Own capture used capture.cjs against localhost:8080. PNG/JSON stored in /tmp to honor report-only repository writes. User reported concurrent ephemeral-server regression suite: own timing is informational only and not used for FPS comparison.",
+  "canonical_performance": [
+    {
+      "file": "r1-canopy-arena-tactical-drift.json",
+      "fps": 21.203645222868836,
+      "p95FrameMs": 50.100000000000364,
+      "drawCalls": 52,
+      "triangles": 105180,
+      "renderer": "headless Chrome / software SwiftShader (not native GPU benchmark)"
+    },
+    {
+      "file": "r1-foundry-arena-tactical-combat.json",
+      "fps": 31.658450545660344,
+      "p95FrameMs": 33.400000000000546,
+      "drawCalls": 52,
+      "triangles": 16732,
+      "renderer": "headless Chrome / software SwiftShader (not native GPU benchmark)"
+    },
+    {
+      "file": "r1-glacier-arena-tactical-combat.json",
+      "fps": 31.083881431427244,
+      "p95FrameMs": 50,
+      "drawCalls": 55,
+      "triangles": 13886,
+      "renderer": "headless Chrome / software SwiftShader (not native GPU benchmark)"
+    },
+    {
+      "file": "r1-canopy-world.json",
+      "fps": 24.80941855824553,
+      "p95FrameMs": 50.100000000000364,
+      "drawCalls": 22,
+      "triangles": 98700,
+      "renderer": "headless Chrome / software SwiftShader (not native GPU benchmark)"
+    }
+  ],
+  "performance_caveat": "All browser performance receipts use software SwiftShader, NOT native GPU. Canonical matrix is serial per user; different states/content mean no controlled map-only causal benchmark. No native-GPU frame-rate claim.",
+  "collision_fidelity": "Read shared/simulation.js blocked/traceWalls and World.cover. Primary render bounds match shared obstacle footprints, and boundary rails start outside the playable edge. Existing tests passed for exact primary cover, four-unit new-map corridors and spawn connectivity. This checks primary bounds, not every cosmetic vertex, all live collision contacts, camera occlusion or sustained multiplayer balance. No demonstrated primary collider mismatch in the new maps.",
+  "tests": {
+    "command": "node --test shared/maps/maps.test.cjs src/world/World.test.mjs",
+    "passed": 23,
+    "failed": 0,
+    "canopy_source_triangles": 27132
+  },
+  "defects": [
+    {
+      "id": "W1",
+      "priority": "P1",
+      "domains": [
+        "world",
+        "maps"
+      ],
+      "title": "Environment surfaces lack grounding and material separation",
+      "evidence": [
+        "r1-glacier-health.png",
+        "r1-foundry-tactical.png",
+        "r1-canopy-arena-tactical-drift.png"
+      ],
+      "source": [
+        "src/world/World.js:209",
+        "src/world/World.js:261",
+        "src/world/World.js:522"
+      ],
+      "finding": "Large flat floor patches, bright ungrounded cover roofs and black inset faces read as assembled primitives. Glacier baffles resemble white equipment blocks more than snow/ice; the same vented box and slotted cylinder language crosses themes. Ships have blob shadows while cover lacks comparable contact grounding.",
+      "action": "Add inexpensive contact shading at cover feet, restrained bevel/edge highlights, and distinct ice, botanical and industrial surface treatment. Break up broad district rectangles without increasing floor contrast. Keep exact collision footprints.",
+      "acceptance": "At tactical scale, identify each theme without the background; cover feet read clearly and ships/projectiles remain the first focus."
+    },
+    {
+      "id": "W2",
+      "priority": "P1",
+      "domains": [
+        "effects"
+      ],
+      "title": "Effects are weakly differentiated and threat rings compete with floor ornament",
+      "evidence": [
+        "r1-glacier-arena-tactical-combat.png",
+        "r1-foundry-effects-tactical-combat.png",
+        "/tmp/qd-r1-world-critic-glacier-effects.png"
+      ],
+      "source": [
+        "src/core/CombatFX.js:22",
+        "src/core/CombatFX.js:51",
+        "src/core/ArenaRenderer.js:72"
+      ],
+      "finding": "Laser and ricochet use the same stretched sphere silhouette with color as their primary distinction. A thin amber grenade ring overlaps a similarly scaled central decorative circle, making urgency ambiguous. The independently inspected effects frame is dominated by circles and small projectile slivers, with little visible impact presence. Fire is a floor ring; impacts/bounces/spawns share a radial particle recipe.",
+      "action": "Give laser a directional beam/core, ricochet a distinct shape and contact-normal bounce flash, and grenade a legible timing progression plus brief impact core. Reduce decorative circle salience near combat and add a controlled contrast outline to danger markers.",
+      "acceptance": "Identify weapon and impending blast in grayscale tactical captures; inspect timed fire, bounce, hit and explosion phases in open space, including night."
+    },
+    {
+      "id": "W3",
+      "priority": "P1",
+      "domains": [
+        "effects"
+      ],
+      "title": "Canonical Foundry FX fixture hides the event inside solid cover",
+      "evidence": [
+        "r1-foundry-effects-tactical-combat.png"
+      ],
+      "source": [
+        "src/index.js:119",
+        "src/index.js:628",
+        "shared/maps/index.js:23"
+      ],
+      "finding": "Foundry forge occupies x/z [-4,4]. The staged grenade is (-3,3), its target and repeated explosion are (-3,1), inside that solid footprint. The forge occludes much of the showcase. This is a verification defect, not proof live explosions always spawn inside cover.",
+      "action": "Place fixture projectiles and explosion on validated free floor per map; capture deterministic onset, peak and decay frames plus a real collision/bounce sequence.",
+      "acceptance": "Every staged projectile starts outside cover and the full blast is visible in at least one inspected receipt."
+    },
+    {
+      "id": "W4",
+      "priority": "P1",
+      "domains": [
+        "world"
+      ],
+      "title": "Canopy submits disproportionate geometry for modest visible detail",
+      "evidence": [
+        "r1-canopy-arena-tactical-drift.json",
+        "r1-canopy-world.json",
+        "r1-mobile-health.json"
+      ],
+      "source": [
+        "src/world/World.js:408",
+        "src/world/World.js:442"
+      ],
+      "finding": "Serial tactical Canopy receipt submits 105180 triangles versus Foundry 16732 and Glacier 13886; even world-only Canopy submits 98700. Current source geometry test counts 27132 for Canopy, which does not reconcile with runtime receipts. Treat runtime submissions as authoritative evidence, and investigate counting/bundling/culling rather than claiming a specific cause.",
+      "action": "Profile actual instance submissions, especially tree branches and foliage; simplify repetitive meshes and cull peripheral clusters. Reconcile source and browser geometry totals before claiming the budget is fixed.",
+      "acceptance": "Fresh isolated canonical receipts show a justified geometry budget and improved frame time without loss of tactical readability; verify on native GPU separately."
+    },
+    {
+      "id": "W5",
+      "priority": "P2",
+      "domains": [
+        "maps",
+        "world"
+      ],
+      "title": "Symmetric layouts have limited local identity and peripheral structure",
+      "evidence": [
+        "r1-canopy-world.png",
+        "r1-foundry-world-isometric-damaged.png"
+      ],
+      "source": [
+        "shared/maps/index.js:19",
+        "shared/maps/index.js:44",
+        "shared/maps/index.js:70"
+      ],
+      "finding": "Foundry has a useful central LOS blocker, Canopy an open court and Glacier long crossfire axes. However repeated mirrored cover and broad empty perimeter lanes provide few distinctive local landmarks or changes of rhythm. World views read as square display platforms with rows of detached scenery; Canopy trees repeat almost the same crown silhouette.",
+      "action": "Keep collision fairness but vary local visual landmarks and cover dressing; use restrained route markings and connected peripheral structures. Validate whether broad perimeter lanes need additional meaningful cover with actual play sessions.",
+      "acceptance": "Players can name and recognize distinct routes from tactical views; demonstrate meaningful flank choices and balanced spawns through play evidence, not symmetry alone."
+    },
+    {
+      "id": "W6",
+      "priority": "P2",
+      "domains": [
+        "maps",
+        "world"
+      ],
+      "title": "Tall Foundry cover obscures ships and portrait framing loses combat context",
+      "evidence": [
+        "r1-foundry-view-chase-drift.png",
+        "r1-foundry-tactical.png",
+        "r1-mobile-health.png"
+      ],
+      "source": [
+        "src/core/ArenaRenderer.js:59",
+        "src/view/CameraRig.js"
+      ],
+      "finding": "The central forge partly hides Nova in tactical and hides substantial ship silhouettes in chase. Labels remain visible but cannot communicate precise hull position or aim. Portrait Canopy crops most of the arena and places a remote ship behind the minimap.",
+      "action": "Add a restrained occluded-ship silhouette/ground locator and adjust chase/portrait framing to retain a useful threat radius. Coordinate with view owner rather than changing map colliders to solve projection.",
+      "acceptance": "Move behind the forge and around portrait frame edges; ship location and nearby threats remain understandable without relying solely on the minimap."
+    },
+    {
+      "id": "W7",
+      "priority": "P2",
+      "domains": [
+        "effects"
+      ],
+      "title": "Projectile trail density depends on render rate",
+      "evidence": [
+        "/tmp/qd-r1-world-critic-glacier-effects.json"
+      ],
+      "source": [
+        "src/core/CombatFX.js:55"
+      ],
+      "finding": "The trail gate reads shot._trailAt but never updates it; after the initial 0.01 seconds it emits once per update. Consequently trail density varies with FPS and a fixed particle cap can drop other effects sooner at high render rates. This is code-derived; still screenshots cannot establish the perceived motion difference.",
+      "action": "Track emission time or distance per projectile ID, with cleanup on removal, and verify the same trajectory at different frame rates.",
+      "acceptance": "Comparable trail length/density at 30 and 60 FPS; simultaneous explosions remain legible under the particle cap."
+    }
+  ],
+  "limitations": [
+    "Static showcase plus source review, not a full live-match motion/audio assessment.",
+    "Own effects frame does not capture a guaranteed explosion peak; phase-specific follow-up evidence is required.",
+    "Source Canopy geometry and integrated runtime triangle counts differ; cause unverified."
+  ],
+  "production_edits": false
+}

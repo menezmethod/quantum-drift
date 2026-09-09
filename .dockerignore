@@ -1,0 +1,9 @@
+node_modules
+**/node_modules
+.git
+.idea
+.specstory
+dist
+test-results
+.env*
+server/.env*
