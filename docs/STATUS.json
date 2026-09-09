@@ -190,5 +190,30 @@
       "Complete Cloudflare ingress and verify two public clients"
     ],
     "criticPass": false
+  },
+  "releaseLoop": {
+    "status": "active-first-cycle",
+    "policy": "docs/RELEASE-LOOP.md",
+    "baseline": "v1.0.0",
+    "activeFeature": "junction-map",
+    "plannedVersion": "1.1.0",
+    "estimateTokens": [
+      6000,
+      12000
+    ],
+    "beforeUsage": {
+      "fiveHourRemainingPercent": 60,
+      "weeklyRemainingPercent": 94,
+      "scope": "shared account"
+    },
+    "acceptance": [
+      "additional opt-in map; existing controls and weapons untouched",
+      "clear spawns and connected movement space",
+      "three compact fighting pockets with escape routes",
+      "native captures and two-client verification",
+      "independent review with honest limits"
+    ],
+    "next": "Implement Junction using existing foundry geometry; preserve existing rotation until broader play feedback",
+    "completed": []
   }
 }
