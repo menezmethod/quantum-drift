@@ -190,5 +190,54 @@
       "Complete Cloudflare ingress and verify two public clients"
     ],
     "criticPass": false
+  },
+  "releaseLoop": {
+    "status": "waiting-for-allowance",
+    "policy": "docs/RELEASE-LOOP.md",
+    "baseline": "v1.0.0",
+    "activeFeature": null,
+    "plannedVersion": "1.1.0",
+    "estimateTokens": [
+      6000,
+      12000
+    ],
+    "beforeUsage": {
+      "fiveHourRemainingPercent": 60,
+      "weeklyRemainingPercent": 94,
+      "scope": "shared account"
+    },
+    "acceptance": [
+      "additional opt-in map; existing controls and weapons untouched",
+      "clear spawns and connected movement space",
+      "three compact fighting pockets with escape routes",
+      "native captures and two-client verification",
+      "independent review with honest limits"
+    ],
+    "next": "When allowance meets policy, start one small Junction obstacle/escape refinement; preserve current controls and coordinate with hosting work.",
+    "completed": [
+      {
+        "feature": "junction-map",
+        "version": "1.1.0",
+        "tests": 75,
+        "critic": "docs/gauntlet/junction-review/REVIEW.md",
+        "acceptance": "optional first iteration",
+        "open": [
+          "human balance",
+          "grenade escape playtesting",
+          "landmark/label clarity"
+        ],
+        "releaseUrl": "https://github.com/menezmethod/quantum-drift/releases/tag/v1.1.0",
+        "published": true
+      }
+    ],
+    "afterUsage": {
+      "fiveHourRemainingPercent": 21,
+      "weeklyRemainingPercent": 88,
+      "scope": "shared account; not exclusive feature cost"
+    },
+    "automation": {
+      "id": "quantum-drift-mini-releases",
+      "intervalHours": 6
+    }
   }
 }

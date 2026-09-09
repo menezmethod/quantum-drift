@@ -1,6 +1,6 @@
 {
   "name": "quantum-drift-server",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Use the root installation for the shared Quantum Drift runtime",
   "scripts": {

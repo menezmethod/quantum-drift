@@ -55,7 +55,7 @@ function connected(map, radius) {
 
 test('registry has stable IDs, safe fallback, legacy alias, and immutable JSON data', () => {
   assert.ok(Array.isArray(MAPS));
-  assert.deepEqual(MAPS.map(map => map.id), MAP_ROTATION);
+  assert.deepEqual(MAPS.map(map => map.id), [...MAP_ROTATION, 'junction']);
   assert.deepEqual(MAP_ROTATION, ['foundry', 'canopy', 'glacier', 'classic']);
   for (const id of MAP_ROTATION) assert.equal(getMap(id), MAPS.find(map => map.id === id));
   for (const id of [undefined, null, '', 'invalid', '__proto__', 'constructor', {}, ['classic']]) {
@@ -70,7 +70,7 @@ test('registry has stable IDs, safe fallback, legacy alias, and immutable JSON d
 for (const map of MAPS) {
   test(`${map.id}: finite, bounded cover and clear spawn exits`, () => {
     assert.ok(map.size >= 25 && map.size <= 34);
-    assert.equal(map.theme, map.id);
+    assert.ok(MAP_ROTATION.includes(map.theme), 'map reuses a supported visual kit');
     assert.ok(map.name && map.subtitle);
     assert.ok(map.spawnPoints.length >= 8);
     for (const o of map.obstacles) {

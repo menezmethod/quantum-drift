@@ -41,3 +41,6 @@ logs
 
 # Persistent local pilot history
 /server/data/
+
+# Downloadable release output
+/release-artifacts/
