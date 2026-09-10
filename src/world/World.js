@@ -556,7 +556,20 @@ export class World {
   centralInlay() {
     // Flush machinery, botanical water lens or relay calibration rose. Never
     // creates a central obstacle when the authoritative layout has none.
-    const radius = Math.min(5.6, this.map.size * 0.18);
+    const nexus = this.map.nexus;
+    const radius = nexus ? nexus.w * 0.45 : Math.min(5.6, this.map.size * 0.18);
+    if (nexus) {
+      const deck = this.material("#36505f", {roughness: 0.8, metalness: 0.3});
+      this.box(deck,0,0.012,0,nexus.w,0.008,nexus.d);
+      const blue = this.material("#87cee2", {emissive:"#3c8ba4",emissiveIntensity:0.3});
+      this.part("ring",blue,[0,0.05,0],[radius,radius,0.25],[Math.PI/2,0,0]);
+      this.part("ring",blue,[0,0.05,0],[2,2,0.25],[Math.PI/2,0,0]);
+      for (const sign of [-1,1]) {
+        this.box(blue,sign*7,0.04,0,3,0.012,0.15);
+        this.box(blue,0,0.04,sign*7,0.15,0.012,3);
+      }
+      return;
+    }
     this.part("cylinder", this.m.dark, [0, 0.012, 0], [radius, 0.016, radius]);
     this.part("cylinder", this.m.body, [0, 0.024, 0], [radius * 0.93, 0.008, radius * 0.93]);
     this.part("cylinder", this.m.dark, [0, 0.034, 0], [radius * 0.85, 0.008, radius * 0.85]);
@@ -579,12 +592,13 @@ export class World {
       G:[14,17,16,23,17,17,14], I:[31,4,4,4,4,4,31], K:[17,18,20,24,20,18,17],
       L:[16,16,16,16,16,16,31], N:[17,25,21,19,17,17,17], O:[14,17,17,17,17,17,14],
       R:[30,17,17,30,20,18,17], S:[15,16,16,14,1,1,30], T:[31,4,4,4,4,4,4],
-      U:[17,17,17,17,17,17,14], Y:[17,17,10,4,4,4,4],
+      U:[17,17,17,17,17,17,14], X:[17,17,10,4,10,17,17], Y:[17,17,10,4,4,4,4],
     };
     const s = this.map.size;
     const labels = this.map.id==='confluence' ? this.map.districts.filter(d=>d.open).map(d=>[d.label,d.x,d.z-24]) : this.theme === "foundry" ? [["FORGE",0,-7],["DOCK",-s*0.82,-13],["COILS",s*0.82,13]]
       : this.theme === "canopy" ? [["COURT",0,-8],["GARDEN",-18,-10],["LAB",18,10]]
         : [["RELAY",0,22],["RIDGE",-25,10],["RIDGE",25,-10]];
+    if (this.map.nexus) labels.push([this.map.nexus.label,0,-7]);
     const positions = [], indices = [], step = 0.145;
     for (const [text, x, z] of labels) {
       for (let letter = 0; letter < text.length; letter++) {

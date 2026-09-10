@@ -1,0 +1,16 @@
+
+> quantum-drift@1.2.0 test:browser
+> node tests/browser.cjs
+
+PASS: independent browser clients join the same room through an invite
+PASS: directional movement replicates to the other browser
+PASS: keyboard-fired lasers cause one kill, visible death, score, and automatic respawn
+PASS: grenade launch and authoritative area damage
+PASS: ricochet banks off the arena wall and damages the other player
+PASS: mouse aims and fires independently of ship heading
+PASS: all four cameras and radar toggle
+PASS: network loss reconnects to the same room without a ghost player
+PASS: movement prediction reconciles with 120ms simulated round-trip delay
+PASS: leave/reenter and offline practice pause/resume
+PASS: mobile layout, touch controls, and playable missing-model fallback
+PASS: no browser exceptions or broken application requests

@@ -3,6 +3,7 @@ import { io } from "socket.io-client";
 import { ArenaRenderer } from "./core/ArenaRenderer";
 import {Interface} from "./interface/Interface";
 import {MusicBus, BED_FOR_DISTRICT} from "./audio/MusicBus";
+import {regionAt} from "../shared/maps/world";
 import {MAPS,getMap,getWorld} from "../shared/maps";
 import {
   Simulation,
@@ -660,10 +661,8 @@ class Game {
   }
   currentDistrictBed() {
     const p = this.state?.players?.find?.((q) => q.id === this.playerId);
-    const d = p && this.map?.districts?.find?.(
-      (x) => Math.abs(p.x - x.x) < 30 && Math.abs(p.z - x.z) < 30,
-    );
-    return d && BED_FOR_DISTRICT[d.id];
+    const d = p && regionAt(this.map,p);
+    return d?.id === "nexus" ? "signal-hub" : d && BED_FOR_DISTRICT[d.id];
   }
   updateSound() {
     $("sound-button").textContent = this.soundOn ? "Sound on" : "Sound off";
@@ -774,7 +773,7 @@ class Game {
     $("clock").textContent =
       `${Math.floor(remain / 60)}:${String(remain % 60).padStart(2, "0")}`;
     $("round-label").textContent =
-      `Round ${state.round} · ${this.map.districts?.find(d=>Math.abs(p.x-d.x)<30&&Math.abs(p.z-d.z)<30)?.label || "Confluence"} · ${(this.map.stage??3)+1}/4 open`;
+      `Round ${state.round} · ${regionAt(this.map,p)?.label || "Confluence"} · ${(this.map.stage??3)+1}/4 open`;
     $("health-value").textContent = Math.ceil(p.health);
     $("energy-value").textContent = Math.floor(p.energy);
     $("health-bar").style.width = `${p.health}%`;
@@ -871,6 +870,13 @@ class Game {
     ctx.clearRect(0, 0, size, size);
     ctx.strokeStyle = "#426276";
     ctx.strokeRect(8, 8, size - 16, size - 16);
+    if (this.map.nexus) {
+      const n = this.map.nexus, [x,z] = point(n);
+      ctx.fillStyle = n.color + "88";
+      ctx.fillRect(x-n.w*scale/2,z-n.d*scale/2,n.w*scale,n.d*scale);
+      ctx.strokeStyle = "#8ed5eb";
+      ctx.strokeRect(x-n.w*scale/2,z-n.d*scale/2,n.w*scale,n.d*scale);
+    }
     for (const o of this.map.obstacles) {
       const [x, z] = point(o);
       ctx.fillStyle = o.color + "99";

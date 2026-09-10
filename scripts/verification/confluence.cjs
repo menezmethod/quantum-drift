@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs');
 const {chromium}=require('@playwright/test');
 const {io}=require('socket.io-client');
+const {Vector3,Matrix4}=require('three');
 const {createGameServer}=require('../../server/server');
 (async()=>{
  const game=createGameServer();await new Promise(r=>game.server.listen(0,'127.0.0.1',r));
@@ -21,12 +22,33 @@ const {createGameServer}=require('../../server/server');
   await a.mouse.move(700,300);await a.mouse.down();await a.waitForTimeout(500);await a.mouse.up();assert.ok(pilot.shotsFired>0);assert.ok(pilot.energy<90);
   async function receipt(page,name){await page.waitForTimeout(600);await page.screenshot({path:`${out}/${name}.png`});const frames=await page.evaluate(()=>new Promise(resolve=>{let start=performance.now(),last=start,frames=[];function sample(t){frames.push(t-last);last=t;if(t-start>1000)resolve(frames);else requestAnimationFrame(sample);}requestAnimationFrame(sample);}));const s=await page.evaluate(()=>window.__qd.getSnapshot());results.push({name,fps:1000/(frames.reduce((a,b)=>a+b,0)/frames.length),stage:s.state.mapStage,players:s.state.players.length,drawCalls:s.renderer.calls,triangles:s.renderer.triangles});}
   await receipt(a,'core-online');
+  Object.assign(pilot,{x:-6,z:0,vx:0,vz:0});
+  await a.waitForTimeout(400);await a.keyboard.down('a');await a.waitForTimeout(450);await a.keyboard.up('a');
+  assert.ok(Math.hypot(pilot.x+6,pilot.z)>2 && Math.abs(pilot.x)<9 && Math.abs(pilot.z)<9,'Nexus keyboard crossing');
+  await a.waitForFunction(()=>document.querySelector('#round-label').textContent.includes('NEXUS'));
+  await receipt(a,'nexus-online');
+  await a.keyboard.press('v');await receipt(a,'nexus-stage-0');await a.keyboard.press('v');
+  const opponent=[...sim.players.values()][1];
+  for(const [key,weapon,targetX,aimX] of [['1','LASER',6,6],['2','GRENADE',6,6],['3','BOUNCE',-4,8]]){
+   Object.assign(pilot,{x:0,z:0,vx:0,vz:0,angle:0,health:100,energy:100,nextFire:0,protectedUntil:0});
+   Object.assign(opponent,{x:targetX,z:0,vx:0,vz:0,health:100,protectedUntil:0});sim.projectiles.clear();
+   await a.keyboard.press(key);await a.waitForTimeout(500);
+   const camera=(await a.evaluate(()=>window.__qd.getSnapshot())).camera;
+   const target=new Vector3(aimX,0.9,0).applyMatrix4(new Matrix4().fromArray(camera.matrix)).applyMatrix4(new Matrix4().fromArray(camera.projection));
+   await a.mouse.move((target.x+1)*720,(1-target.y)*450);await a.mouse.down();await a.waitForTimeout(80);await a.mouse.up();
+   await b.waitForFunction(id=>window.__qd.getSnapshot().state.players.find(p=>p.id===id).health<100,opponent.id);
+   assert.equal(pilot.angle,0,`${weapon} independent hub aim`);
+   assert.ok(opponent.health<= (weapon==='LASER'?76:weapon==='BOUNCE'?66:30),`${weapon} authoritative hub damage`);
+  }
+  await receipt(a,'nexus-combat');
+  await a.keyboard.press('1');
   for(let i=0;i<5;i++){
    const s=io(url,{transports:['websocket'],forceNew:true});sockets.push(s);await new Promise(r=>s.once('connect',r));
    const ack=await new Promise(r=>s.emit('join',{mode:'join',code:room,name:`Verifier ${i}`},r));assert.ok(ack.code);
    if(i%2===0) for(const p of pages) await p.waitForFunction(stage=>window.__qd.getSnapshot().state.mapStage===stage,1+i/2,{timeout:12000});
   }
   for(const p of pages)await p.waitForFunction(()=>window.__qd.getSnapshot().state.mapStage===3,{},{timeout:12000});
+  Object.assign(pilot,{x:0,z:0,vx:0,vz:0});await receipt(a,'nexus-expanded');
   await a.keyboard.press('v');await receipt(a,'whole-world');
   await a.keyboard.press('v');pilot.x=-52;pilot.z=8;await receipt(a,'forest');
   pilot.x=-30;pilot.z=30;pilot.vx=pilot.vz=0;await receipt(a,'forest-centre');
@@ -42,6 +64,10 @@ const {createGameServer}=require('../../server/server');
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:button.x+button.width/2,y:button.y+button.height/2}]});
   await touch.waitForTimeout(500);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
   assert.ok(Math.hypot(tp.x+30,tp.z-30)>2,'touch movement in forest clearing');await receipt(touch,'forest-mobile');
+  Object.assign(tp,{x:0,z:0,vx:0,vz:0});await touch.waitForTimeout(500);
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:button.x+button.width/2,y:button.y+button.height/2}]});
+  await touch.waitForTimeout(400);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  assert.ok(Math.hypot(tp.x,tp.z)>2,'touch movement in Nexus');await receipt(touch,'nexus-mobile');
   await touch.close();
   sockets.forEach(s=>s.disconnect());await a.waitForTimeout(500);assert.equal(sim.map.stage,3);
   sim.newRound();

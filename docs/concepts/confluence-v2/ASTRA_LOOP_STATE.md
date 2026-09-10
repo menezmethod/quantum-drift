@@ -1,44 +1,32 @@
 # Astra Loop State
 
 **Branch:** `design/confluence-gameplay-v2`  
-**Status:** IN PROGRESS — iteration 02 validated and checkpointed; overall exit criteria not met  
-**Owner:** GPT-6 Astra (entire loop); Sonnet supervises/resumes  
-
-## Current objective
-
-Beat the Confluence concept references in the real game while preserving drift, independent aim, authoritative combat, population expansion and clear routes.
+**Status:** IN PROGRESS — iteration 03 validated; overall exit criteria not met  
+**Owner:** GPT-6 Astra; Sonnet supervises/resumes
 
 ## Completed work
 
-- Iteration 00 baseline and iteration 01 district geometry remain complete and unchanged.
-- Iteration 02: `src/world/World.js` adds Forest-only flat organic shallow-water decals, ground leaves and denser roof foliage inside existing footprints. Uses existing static geometry/material ownership; no physics, asset or dependency changes.
-- `src/world/World.test.mjs` checks every new raised leaf vertex remains inside authoritative cover, ground dressing remains within district, pools remain flat and disappear in closed Forest.
-- `scripts/verification/confluence.cjs` now explicitly checks each 3/5/7-human stage, captures Forest centre and Forest mobile, and exercises keyboard plus native CDP touch movement in Forest.
-- Fixed depth flicker discovered in the first live full-map capture with pool polygon offsets; final captures are clean.
+Iterations 00–02 remain complete. Iteration 03 opens an always-on 20×20 Nexus by notching closed district rectangles and deleting central divider stubs. All district kits and both outer crossings remain. Four hub spawn candidates use existing authoritative safe-spawn selection. Shared `regionAt` feeds HUD and music; renderer/radar show the hub independently of district stage. No client-authoritative changes or dependencies.
 
 ## Validation
 
-- `npm test`: **85/85 pass**.
+- `npm test`: **87/87 pass**, including full hub reachability, two hub exits per open district, sealed closed district exits, safe spawns, unchanged border crossings, exact renderer collision bounds at every stage.
 - `npm run build`: **pass**.
-- `CHROME_BACKEND=native npm run test:browser`: **pass**, including authoritative laser kill/respawn, grenade, ricochet, independent mouse aim, replication/reconnect, cameras, practice and mobile layout.
-- `node scripts/verification/confluence.cjs`: **pass**, zero page errors, 60.1–60.9 fps; whole-world 99 draw calls / 35,884 triangles. Two desktop browsers, five real sockets, plus an eighth touch client in Forest; all threshold stages observed, round contraction safe.
-- Geometry suite preserves spawn disks, collision/render primary bounds, 14-unit Forest clearing and two crossings per open border. No new colliders or changed authoritative behavior.
-- FPS is a local native headless Chrome receipt, not a hardware-wide guarantee.
+- `CHROME_BACKEND=native npm run test:browser`: **pass**, all weapons, independent aim, death/respawn, replication/reconnect, cameras, mobile and practice.
+- `node scripts/verification/confluence.cjs`: **pass**, all 3/5/7-human stages, round contraction, desktop/touch Nexus movement and live server-authoritative Nexus laser/grenade/ricochet bank hits. Zero page errors; 60.09–61.02 fps; whole-world 99 draw calls / 34,792 triangles. Local native headless Chrome measurement only.
 
 ## Evidence and comparison
 
-`loop-runs/iteration-02/`: refreshed gauntlet screenshots and verification.json, forest-centre.png, forest-mobile.png, README.md and test/build/browser logs.
+`loop-runs/iteration-03/` contains screenshots, verification.json, full test/build/browser/live receipts and README. `nexus-stage-0.png` and `nexus-expanded.png` show the new hub; `nexus-combat.png` records the live combat fixture. Removed flickering legacy centre-inlay layers after first capture. The centre now works, but the whole-world square grid still falls short of the radial concept. Forest pools show rough full-map triangulation/overlap in this capture, to revisit after macro gameplay.
 
-Compared with iteration 01 and `images/quantum_drift_verdant_basin_blueprint.png`: Forest now has recognizable pools and foliage around a clear court, but remains visibly simpler than the reference. The four-room macro silhouette remains the largest weakness; cosmetics alone do not satisfy the exit criteria.
+## Scores (0–10, higher is better; Astra self-critique)
 
-## Scores (0–10; higher is better)
-
-Movement freedom **7**; combat readability **7**; zone identity **7**; composition/silhouette **6**; materials/lighting/VFX **6** (was 5); implementation realism **8**; performance safety **8**.
+Movement freedom **8**; combat readability **7**; zone identity **7**; composition/silhouette **6**; materials/lighting/VFX **6**; implementation realism **9**; performance safety **8**.
 
 ## Remaining gap
 
-The centre is a blocked cross between four rooms, not an always-on Nexus with fast exits. Forest materials still look simple, but further cosmetic work is lower value than fixing that junction. The concept's radial silhouette and unlock order remain unfinished.
+The Nexus is a junction, not yet a complete starting arena. Forge remains open at low population; the target calls for a useful self-contained Nexus and district unlocks around it. Radial perimeter and richer environmental routing remain unfinished. No claim of human-tested fun or meeting the concept floor.
 
 ## NEXT_ACTION
 
-Implement a shippable first macro-topology step: open a distinct always-on central Nexus combat junction in every stage by cutting the inner corners out of closed district blockers and removing the centre divider stubs. Preserve existing district kits and both outer border crossings; add shared-map Nexus metadata, safe hub spawns, renderer/minimap/HUD support and connectivity/traceWalls regression checks. Validate build/tests, staged population expansion, live hub combat and fresh screenshots before checkpointing and selecting the next single gap.
+Make Nexus the self-contained low-population arena: enlarge its court to 28×28, add two sparse staggered authoritative cover islands with clear axes and flank loops, and unlock Snow at 3 humans, Forest at 5, Forge plus Rails at 7. Preserve district kits and two hub exits; update staging, spawns, HUD counts and browser/geometry fixtures. Validate live core combat, all thresholds and touch movement, then capture/critique/checkpoint.

@@ -34,6 +34,7 @@ const ice=[
  {type:'cylinder',x:16,z:9,r:2,h:3.2,role:'relay-pylon',color:'#95b4c4'},
 ];
 const kits=[core,forests,rails,ice];
+const nexus={id:'nexus',name:'Nexus Core',label:'NEXUS',x:0,z:0,w:20,d:20,color:'#467a91',open:true};
 const cache=new Map();
 function getWorld(stage=0){
  stage=Math.max(0,Math.min(3,Math.floor(Number(stage)||0)));
@@ -41,18 +42,29 @@ function getWorld(stage=0){
  const districts=zones.map((z,i)=>({...z,w:60,d:60,open:i<=stage}));
  const obstacles=[];
  for(const [i,z] of zones.entries()){
-  if(i>stage){obstacles.push({...box(z.x,z.z,60,60,2),closedSector:true,sector:i});continue;}
+  if(i>stage){
+   // Two rectangles leave the inner 10x10 corner open to the always-on Nexus.
+   const sx=Math.sign(z.x),sz=Math.sign(z.z),half=nexus.w/2;
+   for(const o of [box(sx*(30+half/2),z.z,60-half,60,2),box(sx*half/2,sz*(30+half/2),half,60-half,2)])
+    obstacles.push({...o,closedSector:true,sector:i});
+   continue;
+  }
   for(const o of kits[i])obstacles.push({...o,x:o.x+z.x,z:o.z+z.z,theme:z.theme,sector:i});
  }
  // Two 12-unit crossings per shared border. Continuous dividers keep themes
  // distinct while preventing an uninterrupted full-world firing line.
  for(const c of [-30,30])for(const [offset,length]of [[-26,8],[0,20],[26,8]]){
+  if(Math.abs(c+offset)<nexus.w/2)continue;
   obstacles.push({...box(c+offset,0,length,2,3),divider:true});
   obstacles.push({...box(0,c+offset,2,length,3),divider:true});
  }
  const spawnPoints=districts.filter(z=>z.open).flatMap(z=>[-1,1].flatMap(x=>[-1,1].map(s=>({x:z.x+x*22,z:z.z+s*22}))));
- const map={id:'confluence',name:'Confluence',subtitle:'One connected world · industry, forest, orbital rails & ice',theme:'foundry',size:60,stage,districts,obstacles,spawnPoints,props:[],palette:{floor:'#18232b',cover:'#53616a',accent:'#ffad69',background:'#090f18'}};
+ spawnPoints.push(...[-1,1].flatMap(x=>[-1,1].map(z=>({x:x*6,z:z*6}))));
+ const map={nexus,id:'confluence',name:'Confluence',subtitle:'One connected world · industry, forest, orbital rails & ice',theme:'foundry',size:60,stage,districts,obstacles,spawnPoints,props:[],palette:{floor:'#18232b',cover:'#53616a',accent:'#ffad69',background:'#090f18'}};
  cache.set(stage,map);return map;
 }
 function stageForHumans(count){return count>=7?3:count>=5?2:count>=3?1:0;}
-module.exports={getWorld,stageForHumans};
+function regionAt(map,p){
+ return [map.nexus,...(map.districts||[])].find(d=>d&&d.open!==false&&Math.abs(p.x-d.x)<=d.w/2&&Math.abs(p.z-d.z)<=d.d/2);
+}
+module.exports={getWorld,stageForHumans,regionAt};

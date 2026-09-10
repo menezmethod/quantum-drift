@@ -2,6 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {Simulation,blocked,traceWalls}=require('../shared/simulation');
 const {getWorld,MAPS}=require('../shared/maps');
+const {regionAt}=require('../shared/maps/world');
 const advance=s=>{for(let i=0;i<310;i++)s.step();};
 test('single public world; all open districts are connected and closed districts are solid',()=>{
  assert.deepEqual(MAPS.map(m=>m.id),['confluence']);
@@ -14,10 +15,23 @@ test('single public world; all open districts are connected and closed districts
    for(const [dx,dz]of [[2,0],[-2,0],[0,2],[0,-2]])if(Math.abs(x+dx)<60&&Math.abs(z+dz)<60)queue.push([x+dx,z+dz]);
   }
   for(const d of map.districts){
-   assert.equal(seen.has(`${d.x-22},${d.z-22}`),d.open,d.name);
+   assert.equal(seen.has(`${d.x+Math.sign(d.x)*22},${d.z+Math.sign(d.z)*22}`),d.open,d.name);
    if(!d.open)assert.ok(blocked(d.x,d.z,0.8,map));
   }
   for(const p of map.spawnPoints)assert.equal(blocked(p.x,p.z,0.8,map),false);
+  for(let x=-8;x<=8;x+=2)for(let z=-8;z<=8;z+=2){
+   assert.ok(seen.has(`${x},${z}`),'entire Nexus reachable in every stage');
+   assert.equal(regionAt(map,{x,z}).id,'nexus');
+  }
+  assert.equal(traceWalls(-8,0,16,0,0.8,map),null,'east-west hub drift');
+  assert.equal(traceWalls(0,-8,0,16,0.8,map),null,'north-south hub drift');
+  for(const d of map.districts){
+   const sx=Math.sign(d.x),sz=Math.sign(d.z);
+   // Two separate exits from the hub into each district's inner apron.
+   for(const [x,z,dx,dz] of [[sx*6,sz*6,sx*10,0],[sx*6,sz*6,0,sz*10]])
+    assert.equal(!!traceWalls(x,z,dx,dz,0.8,map),!d.open,`${d.id} hub exit`);
+   assert.equal(regionAt(map,d)?.id,d.open?d.id:undefined);
+  }
  }
  assert.ok(traceWalls(-45,-3,0,6,0.1,getWorld(0)));
  assert.equal(traceWalls(-45,-3,0,6,0.1,getWorld(1)),null);
