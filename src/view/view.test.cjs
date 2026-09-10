@@ -129,7 +129,7 @@ test('Confluence overview fits active territory at every stage without shrinking
   assert.equal(pose.target.z,(bounds.minZ+bounds.maxZ)/2);
   for(const x of [bounds.minX,bounds.maxX])for(const z of [bounds.minZ,bounds.maxZ]){
    const p=new THREE.Vector3(x,0,z).project(camera);
-   assert.ok(Math.abs(p.x)<=0.87&&Math.abs(p.y)<=0.79,'active territory fits');
+   assert.ok(Math.abs(p.x)<=0.87&&Math.abs(p.y)<=0.79&&p.z>-1&&p.z<1,'active territory fits frustum');
   }
   if(stage===0){
    const edge=new THREE.Vector3(14,0,14).project(camera);

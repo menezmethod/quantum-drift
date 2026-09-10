@@ -63,6 +63,7 @@ export function cameraPose({ player, aim, map, lobby = false, view = 0, zoom = 1
 export class CameraRig {
   constructor(camera) {
     this.camera = camera;
+    this.baseFar = camera.far;
     this.preset = 0;
     this.reset();
   }
@@ -81,6 +82,9 @@ export class CameraRig {
       this.camera.position[axis] += (pose.position[axis] - this.camera.position[axis]) * blend;
       this.target[axis] += (pose.target[axis] - this.target[axis]) * blend;
     }
+    const distance = Math.hypot(pose.position.x-pose.target.x,pose.position.y-pose.target.y,pose.position.z-pose.target.z);
+    const far = Math.max(this.baseFar,distance+Math.max(4,finite(options.map?.size,25))*3);
+    if (this.camera.far !== far) { this.camera.far=far;this.camera.updateProjectionMatrix(); }
     this.camera.up.set(0, 1, 0);
     this.camera.lookAt(this.target.x, this.target.y, this.target.z);
     this.camera.updateMatrixWorld();

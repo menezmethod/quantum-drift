@@ -874,6 +874,11 @@ class Game {
     ctx.strokeStyle = "#426276";
     const [left,top] = point({x:bounds.minX,z:bounds.maxZ});
     ctx.strokeRect(left,top,(bounds.maxX-bounds.minX)*scale,(bounds.maxZ-bounds.minZ)*scale);
+    for (const tile of this.map.deck || []) {
+      const [x,z] = point(tile);
+      ctx.fillStyle = tile.color + "88";
+      ctx.fillRect(x-tile.w*scale/2,z-tile.d*scale/2,tile.w*scale,tile.d*scale);
+    }
     if (this.map.nexus) {
       const n = this.map.nexus, [x,z] = point(n);
       ctx.fillStyle = n.color + "88";
@@ -882,6 +887,7 @@ class Game {
       ctx.strokeRect(x-n.w*scale/2,z-n.d*scale/2,n.w*scale,n.d*scale);
     }
     for (const o of this.map.obstacles) {
+      if (o.void) continue;
       const [x, z] = point(o);
       ctx.fillStyle = o.color + "99";
       if (o.type === "box")

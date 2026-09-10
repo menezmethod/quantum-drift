@@ -168,6 +168,8 @@ export class World {
     });
     this.clear();
     this.map = map;
+    this.fog.near = map.deck ? map.size * 6 : 100;
+    this.fog.far = map.deck ? map.size * 9 : 205;
     this.theme = themeFor(map);
     this.palette = PALETTES[this.theme];
     const p = this.palette;
@@ -285,6 +287,19 @@ export class World {
   }
 
   floor() {
+    if (this.map.deck) {
+      const finishes = new Map();
+      for (const tile of this.map.deck) {
+        if (!finishes.has(tile.surface)) {
+          const texture = this.own(surfaceTexture(tile.theme, PALETTES[tile.theme]));
+          texture.repeat.set(6,6);
+          finishes.set(tile.surface,this.material("#ffffff",{map:texture,roughness:0.85,metalness:0.2}));
+        }
+        this.box(finishes.get(tile.surface),tile.x,-0.18,tile.z,tile.w,0.36,tile.d);
+        this.box(this.m.dark,tile.x,-0.65,tile.z,tile.w,0.6,tile.d);
+      }
+      return;
+    }
     const s = this.map.size;
     const texture = this.own(surfaceTexture(this.theme, this.palette));
     texture.repeat.set(s / 9, s / 9);
@@ -376,6 +391,15 @@ export class World {
   }
 
   boundary() {
+    if (this.map.boundaries) {
+      for (const edge of this.map.boundaries) {
+        const x=edge.x+edge.nx*0.125,z=edge.z+edge.nz*0.125;
+        const w=edge.nx?0.25:edge.length,d=edge.nz?0.25:edge.length;
+        this.box(this.m.body,x,0.8,z,w,1.6,d);
+        this.box(this.m.glow,x,1.62,z,w,0.04,d);
+      }
+      return;
+    }
     const s = this.map.size;
     for (const sign of [-1, 1]) {
       // Keep the inside edge at the collision boundary; no rail intrudes.
@@ -394,6 +418,8 @@ export class World {
   }
 
   cover(o, index) {
+    // The void collider is represented by its exact deck-edge guardrail.
+    if (o.void) return;
     const { x, z, h } = o;
     if (![x, z, h].every(Number.isFinite) || h <= 0) throw new TypeError(`Invalid cover ${index}`);
     const box = o.type === "box", sphere = o.type === "sphere";

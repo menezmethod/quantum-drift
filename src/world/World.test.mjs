@@ -44,7 +44,7 @@ for (const map of MAPS) test(`${map.id}: exact primary collision cover, bounded 
       assert.equal(object.material.transparent, false);
     }
   });
-  assert.equal(found.size, map.obstacles.length);
+  assert.equal(found.size, map.obstacles.filter(o=>!o.void).length);
   assert.ok(draws <= 150, `${draws} environment draw submissions`);
   assert.ok(triangles < 100000, `${triangles} triangles`);
   assert.equal(root.userData.environmentDrawCalls, draws);
@@ -131,7 +131,7 @@ test("Verdant dressing stays on its floor or inside authoritative cover footprin
   world.root.updateMatrixWorld(true);
   for (const pool of world.root.children.filter(o => o.name === 'verdant-pool')) {
     const bounds = new THREE.Box3().setFromObject(pool);
-    assert.ok(bounds.min.x > -60 && bounds.max.x < 0 && bounds.min.z > 0 && bounds.max.z < 60);
+    assert.ok(bounds.min.x > district.x-30 && bounds.max.x < district.x+30 && bounds.min.z > district.z-30 && bounds.max.z < district.z+30);
     assert.ok(bounds.max.y < 0.1);
   }
   world.build(getWorld(0));
