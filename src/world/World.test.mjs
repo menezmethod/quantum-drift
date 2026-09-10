@@ -106,3 +106,35 @@ test("invalid map input leaves the existing world intact; unknown IDs use Foundr
   world.dispose();
   assert.throws(() => world.build(MAPS[0]), /disposed/);
 });
+
+test("Verdant dressing stays on its floor or inside authoritative cover footprints", () => {
+  const world = new World(new THREE.Scene(), null), map = getWorld(3);
+  world.build(map);
+  const district = map.districts.find(d => d.id === 'forest');
+  const vertices = [];
+  const original = world.part;
+  world.part = function(shape, material, position, scale, rotation) {
+    const matrix = new THREE.Matrix4().compose(new THREE.Vector3(...position),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)), new THREE.Vector3(...scale));
+    const points = this.geometry[shape].attributes.position;
+    for (let i = 0; i < points.count; i++) vertices.push(new THREE.Vector3().fromBufferAttribute(points, i).applyMatrix4(matrix));
+  };
+  world.verdantBasin(district);
+  world.part = original;
+  for (const p of vertices) {
+    assert.ok(Math.abs(p.x - district.x) < 30 && Math.abs(p.z - district.z) < 30, 'inside district');
+    if (p.y < 0.1) continue;
+    assert.ok(map.obstacles.some(o => o.sector === 1 && (o.type === 'box'
+      ? Math.abs(p.x - o.x) <= o.w / 2 && Math.abs(p.z - o.z) <= o.d / 2
+      : Math.hypot(p.x - o.x, p.z - o.z) <= o.r)), 'raised foliage inside cover');
+  }
+  world.root.updateMatrixWorld(true);
+  for (const pool of world.root.children.filter(o => o.name === 'verdant-pool')) {
+    const bounds = new THREE.Box3().setFromObject(pool);
+    assert.ok(bounds.min.x > -60 && bounds.max.x < 0 && bounds.min.z > 0 && bounds.max.z < 60);
+    assert.ok(bounds.max.y < 0.1);
+  }
+  world.build(getWorld(0));
+  assert.equal(world.root.children.some(o => o.name === 'verdant-pool'), false, 'closed forest has no pools');
+  world.dispose();
+});

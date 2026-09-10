@@ -24,12 +24,25 @@ const {createGameServer}=require('../../server/server');
   for(let i=0;i<5;i++){
    const s=io(url,{transports:['websocket'],forceNew:true});sockets.push(s);await new Promise(r=>s.once('connect',r));
    const ack=await new Promise(r=>s.emit('join',{mode:'join',code:room,name:`Verifier ${i}`},r));assert.ok(ack.code);
+   if(i%2===0) for(const p of pages) await p.waitForFunction(stage=>window.__qd.getSnapshot().state.mapStage===stage,1+i/2,{timeout:12000});
   }
   for(const p of pages)await p.waitForFunction(()=>window.__qd.getSnapshot().state.mapStage===3,{},{timeout:12000});
   await a.keyboard.press('v');await receipt(a,'whole-world');
   await a.keyboard.press('v');pilot.x=-52;pilot.z=8;await receipt(a,'forest');
+  pilot.x=-30;pilot.z=30;pilot.vx=pilot.vz=0;await receipt(a,'forest-centre');
+  const forestStart={x:pilot.x,z:pilot.z};await a.keyboard.down('d');await a.waitForTimeout(500);await a.keyboard.up('d');assert.ok(Math.hypot(pilot.x-forestStart.x,pilot.z-forestStart.z)>2,'forest clearing movement');
   pilot.x=8;pilot.z=8;await receipt(a,'ice');
   pilot.x=8;pilot.z=-52;await receipt(a,'rails');
+  const touch=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  touch.on('pageerror',e=>errors.push(e.message));await touch.goto(url);await touch.fill('#room-code',room);await touch.click('#join-room');
+  await touch.waitForFunction(()=>window.__qd.getSnapshot().mode==='online');
+  const touchId=await touch.evaluate(()=>window.__qd.getSnapshot().playerId),tp=sim.players.get(touchId);
+  Object.assign(tp,{x:-30,z:30,vx:0,vz:0});await touch.waitForTimeout(500);
+  const cdp=await touch.context().newCDPSession(touch),button=await touch.locator('[data-control="KeyD"]').boundingBox();
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:button.x+button.width/2,y:button.y+button.height/2}]});
+  await touch.waitForTimeout(500);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  assert.ok(Math.hypot(tp.x+30,tp.z-30)>2,'touch movement in forest clearing');await receipt(touch,'forest-mobile');
+  await touch.close();
   sockets.forEach(s=>s.disconnect());await a.waitForTimeout(500);assert.equal(sim.map.stage,3);
   sim.newRound();
   for(const p of pages)await p.waitForFunction(()=>window.__qd.getSnapshot().state.mapStage===0);

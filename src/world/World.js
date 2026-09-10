@@ -214,6 +214,9 @@ export class World {
       this.cover(obstacle,index);
     });
     this.m=baseMaterials;this.theme=baseTheme;
+    for (const district of map.districts || []) {
+      if (map.id === "confluence" && district.id === "forest" && district.open) this.verdantBasin(district);
+    }
     this.centralInlay();
     this.routeCallouts();
     if (this.theme === "canopy") this.canopy();
@@ -507,6 +510,47 @@ export class World {
       this.part("leaf", i % 2 ? this.m.foliage : this.m.leafTip, [x, y + 0.14, z], [length * 0.85, 1.15, length], [-0.48, a, 0]);
     }
     this.part("pod", this.m.secondary, [x, y + 0.43, z], [0.07, 0.18, 0.07]);
+  }
+
+  verdantBasin(district) {
+    // Flush shallow pools and groundcover: hover routes stay entirely open.
+    // Static opaque batches avoid transparency sorting and per-frame work.
+    const water = this.material("#286a70", { roughness: 0.32, metalness: 0.22, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -5 });
+    const bank = this.material("#61785c", { roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
+    for (const [dx, dz, rx, rz] of [[-17, 5, 7, 9], [9, 17, 10, 6], [12, -19, 8, 4]]) {
+      const x = district.x + dx, z = district.z + dz;
+      const shape = new THREE.Shape();
+      for (let i = 0; i <= 48; i++) {
+        const a = i / 48 * TAU, r = 1 + 0.08 * Math.sin(a * 3) + 0.05 * Math.cos(a * 5);
+        const px = Math.cos(a) * r, pz = Math.sin(a) * r;
+        if (i === 0) shape.moveTo(px, pz); else shape.lineTo(px, pz);
+      }
+      const geometry = this.own(new THREE.ShapeGeometry(shape));
+      for (const [material, scale, y] of [[bank, 1, 0.035], [water, 0.91, 0.045]]) {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = "verdant-pool";
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(x, y, z);
+        mesh.scale.set(rx * scale, rz * scale, 1);
+        this.root.add(mesh);
+      }
+      for (let i = 0; i < 24; i++) {
+        const a = i * TAU / 24, radius = 0.92 + 0.04 * Math.sin(i * 7);
+        // Leaf relief stays below 0.06 units, never resembling solid cover.
+        this.part("leaf", i % 3 ? this.m.foliage : this.m.leafTip,
+          [x + Math.cos(a) * rx * radius, 0.055, z + Math.sin(a) * rz * radius],
+          [0.65, 0.015, 1.1], [0, a + 0.7, 0]);
+      }
+    }
+    for (const o of this.map.obstacles.filter(o => o.sector === this.map.districts.indexOf(district) && !o.closedSector)) {
+      const radius = o.type === "box" ? Math.min(o.w, o.d) / 2 : o.r;
+      for (let layer = 0; layer < 3; layer++) for (let i = 0; i < 9; i++) {
+        const a = i * TAU / 9 + layer * 0.4;
+        this.part("leaf", (i + layer) % 3 ? this.m.foliage : this.m.leafTip,
+          [o.x, o.h + 0.2 + layer * 0.23, o.z],
+          [radius * 0.7, 0.8, radius * (0.86 - layer * 0.14)], [-0.22, a, 0]);
+      }
+    }
   }
 
   centralInlay() {
