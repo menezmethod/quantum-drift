@@ -16,8 +16,8 @@ function gap(a,b){
 }
 const roles=['forge','heat-exchanger','conduit','planter','growth-vat','rail-platform','relay-housing','ice-baffle','relay-pylon'];
 const throats=[
- [1,-46,0],[1,-14,0],[2,0,-46],[2,0,-14],
- [3,46,0],[3,14,0],[3,0,46],[3,0,14],
+ [3,-46,0],[3,-14,0],[3,0,-46],[3,0,-14],
+ [3,46,0],[3,14,0],[2,0,46],[2,0,14],
 ];
 for(let stage=0;stage<=3;stage++)test(`Confluence stage ${stage}: safe district geometry and crossings`,()=>{
  const map=getWorld(stage),kits=new Map();
@@ -28,7 +28,7 @@ for(let stage=0;stage<=3;stage++)test(`Confluence stage ${stage}: safe district 
   assert.match(o.color,/^#[0-9a-f]{6}$/i);
   const rx=o.type==='box'?o.w/2:o.r,rz=o.type==='box'?o.d/2:o.r;
   assert.ok(rx>0&&rz>0);
-  if(o.divider||o.closedSector)continue;
+  if(o.divider||o.closedSector||o.nexusCover)continue;
   assert.ok(roles.includes(o.role));
   const cx=o.x<0?-30:30,cz=o.z<0?-30:30,key=`${cx},${cz}`;
   assert.ok(Math.abs(o.x-cx)+rx<=24&&Math.abs(o.z-cz)+rz<=24,'local extent cap');
@@ -36,7 +36,7 @@ for(let stage=0;stage<=3;stage++)test(`Confluence stage ${stage}: safe district 
   if(!kits.has(key))kits.set(key,[]);
   kits.get(key).push(o);
  }
- assert.equal(kits.size,stage+1);
+ assert.equal(kits.size,map.districts.filter(d=>d.open).length);
  for(const kit of kits.values())for(let i=0;i<kit.length;i++)for(const other of kit.slice(i+1)){
   assert.ok(gap(kit[i],other)>=4,`obstacles too close: ${JSON.stringify([kit[i],other])}`);
  }

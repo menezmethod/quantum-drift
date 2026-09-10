@@ -7,7 +7,9 @@ const advance=s=>{for(let i=0;i<310;i++)s.step();};
 test('single public world; all open districts are connected and closed districts are solid',()=>{
  assert.deepEqual(MAPS.map(m=>m.id),['confluence']);
  for(let stage=0;stage<4;stage++){
-  const map=getWorld(stage),seen=new Set(),queue=[[-52,-52]];
+  const map=getWorld(stage);
+  assert.deepEqual(map.districts.filter(d=>d.open).map(d=>d.id),[[],['ice'],['forest','ice'],['core','forest','rails','ice']][stage]);
+  const seen=new Set(),queue=[[0,0]];
   for(let i=0;i<queue.length;i++){
    const [x,z]=queue[i],key=`${x},${z}`;
    if(seen.has(key)||blocked(x,z,0.8,map))continue;
@@ -19,7 +21,8 @@ test('single public world; all open districts are connected and closed districts
    if(!d.open)assert.ok(blocked(d.x,d.z,0.8,map));
   }
   for(const p of map.spawnPoints)assert.equal(blocked(p.x,p.z,0.8,map),false);
-  for(let x=-8;x<=8;x+=2)for(let z=-8;z<=8;z+=2){
+  for(let x=-12;x<=12;x+=2)for(let z=-12;z<=12;z+=2){
+   if(blocked(x,z,0.8,map))continue;
    assert.ok(seen.has(`${x},${z}`),'entire Nexus reachable in every stage');
    assert.equal(regionAt(map,{x,z}).id,'nexus');
   }
@@ -28,13 +31,13 @@ test('single public world; all open districts are connected and closed districts
   for(const d of map.districts){
    const sx=Math.sign(d.x),sz=Math.sign(d.z);
    // Two separate exits from the hub into each district's inner apron.
-   for(const [x,z,dx,dz] of [[sx*6,sz*6,sx*10,0],[sx*6,sz*6,0,sz*10]])
+   for(const [x,z,dx,dz] of [[sx*8,sz*2,sx*10,0],[sx*2,sz*8,0,sz*10]])
     assert.equal(!!traceWalls(x,z,dx,dz,0.8,map),!d.open,`${d.id} hub exit`);
    assert.equal(regionAt(map,d)?.id,d.open?d.id:undefined);
   }
  }
  assert.ok(traceWalls(-45,-3,0,6,0.1,getWorld(0)));
- assert.equal(traceWalls(-45,-3,0,6,0.1,getWorld(1)),null);
+ assert.equal(traceWalls(-45,-3,0,6,0.1,getWorld(3)),null);
 });
 test('humans open territory after delay; bots and brief joins do not; closing waits for safe round reset',()=>{
  const s=new Simulation({map:getWorld(0)});
@@ -51,4 +54,20 @@ test('humans open territory after delay; bots and brief joins do not; closing wa
 });
 test('practice keeps all districts open across rounds',()=>{
  const s=new Simulation({map:getWorld(3),populationExpansion:false});s.addPlayer('a','A');advance(s);s.newRound();assert.equal(s.map.stage,3);
+});
+
+test('Nexus cover shelters blasts while the outer drift loop stays clear',()=>{
+ for(let stage=0;stage<4;stage++){
+  const map=getWorld(stage);
+  for(const [x,z,dx,dz] of [[-10,-10,20,0],[10,-10,0,20],[10,10,-20,0],[-10,10,0,-20]])
+   assert.equal(traceWalls(x,z,dx,dz,0.8,map),null,'outer hub loop');
+  assert.ok(traceWalls(2,-5,6,0,0.15,map),'hub cover stops laser');
+  const sim=new Simulation({map,populationExpansion:false}),p=sim.addPlayer('target','Target');
+  Object.assign(p,{x:7,z:-5,protectedUntil:0});
+  sim.explode({x:3,z:-5,owner:'other',weapon:'GRENADE'});
+  assert.equal(p.health,100,'cover blocks blast');
+  Object.assign(p,{x:7,z:0});
+  sim.explode({x:3,z:0,owner:'other',weapon:'GRENADE'});
+  assert.ok(p.health<100,'same range across open axis causes damage');
+ }
 });

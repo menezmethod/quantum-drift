@@ -17,7 +17,7 @@ const {createGameServer}=require('../../server/server');
   const room=(await a.evaluate(()=>window.__qd.getSnapshot())).room;
   await b.fill('#room-code',room);await b.click('#join-room');await b.waitForFunction(()=>window.__qd.getSnapshot().mode==='online');
   const sim=game.rooms.get(room).sim;
-  const pilot=[...sim.players.values()][0];pilot.x=-52;pilot.z=-52;pilot.angle=0;
+  const pilot=[...sim.players.values()][0];pilot.x=-10;pilot.z=-10;pilot.angle=0;
   await a.waitForTimeout(300);const before=pilot.z;await a.keyboard.down('w');await a.waitForTimeout(400);await a.keyboard.up('w');assert.ok(Math.abs(pilot.z-before)>2,'keyboard movement');
   await a.mouse.move(700,300);await a.mouse.down();await a.waitForTimeout(500);await a.mouse.up();assert.ok(pilot.shotsFired>0);assert.ok(pilot.energy<90);
   async function receipt(page,name){await page.waitForTimeout(600);await page.screenshot({path:`${out}/${name}.png`});const frames=await page.evaluate(()=>new Promise(resolve=>{let start=performance.now(),last=start,frames=[];function sample(t){frames.push(t-last);last=t;if(t-start>1000)resolve(frames);else requestAnimationFrame(sample);}requestAnimationFrame(sample);}));const s=await page.evaluate(()=>window.__qd.getSnapshot());results.push({name,fps:1000/(frames.reduce((a,b)=>a+b,0)/frames.length),stage:s.state.mapStage,players:s.state.players.length,drawCalls:s.renderer.calls,triangles:s.renderer.triangles});}
@@ -45,7 +45,12 @@ const {createGameServer}=require('../../server/server');
   for(let i=0;i<5;i++){
    const s=io(url,{transports:['websocket'],forceNew:true});sockets.push(s);await new Promise(r=>s.once('connect',r));
    const ack=await new Promise(r=>s.emit('join',{mode:'join',code:room,name:`Verifier ${i}`},r));assert.ok(ack.code);
-   if(i%2===0) for(const p of pages) await p.waitForFunction(stage=>window.__qd.getSnapshot().state.mapStage===stage,1+i/2,{timeout:12000});
+   if(i%2===0){
+    for(const p of pages) await p.waitForFunction(stage=>window.__qd.getSnapshot().state.mapStage===stage,1+i/2,{timeout:12000});
+    const district=sim.map.districts.find(d=>d.id===(i===0?'ice':i===2?'forest':'core'));
+    assert.ok(district.open);Object.assign(pilot,{x:district.x,z:district.z+(i===4?-22:0),vx:0,vz:0});
+    await receipt(a,`unlock-stage-${1+i/2}`);
+   }
   }
   for(const p of pages)await p.waitForFunction(()=>window.__qd.getSnapshot().state.mapStage===3,{},{timeout:12000});
   Object.assign(pilot,{x:0,z:0,vx:0,vz:0});await receipt(a,'nexus-expanded');

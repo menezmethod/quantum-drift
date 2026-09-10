@@ -1,10 +1,10 @@
 // One 120x120 world, four connected 60x60 districts. Stage only opens territory;
 // collision, navigation and rendering consume the same authoritative map variant.
 const zones=[
- {id:'core',name:'Industrial core',label:'FORGE',x:-30,z:-30,theme:'foundry',color:'#28333e',humans:1},
- {id:'forest',name:'Forest biodome',label:'GARDEN',x:-30,z:30,theme:'canopy',color:'#426350',humans:3},
- {id:'rails',name:'Orbital rail yard',label:'DOCK',x:30,z:-30,theme:'foundry',color:'#353553',humans:5},
- {id:'ice',name:'Frozen relay',label:'RELAY',x:30,z:30,theme:'glacier',color:'#90afbb',humans:7},
+ {id:'core',name:'Forge district',label:'FORGE',x:-30,z:-30,theme:'foundry',color:'#28333e',humans:7,stage:3},
+ {id:'forest',name:'Forest biodome',label:'GARDEN',x:-30,z:30,theme:'canopy',color:'#426350',humans:5,stage:2},
+ {id:'rails',name:'Orbital rail yard',label:'DOCK',x:30,z:-30,theme:'foundry',color:'#353553',humans:7,stage:3},
+ {id:'ice',name:'Frozen relay',label:'RELAY',x:30,z:30,theme:'glacier',color:'#90afbb',humans:3,stage:1},
 ];
 const box=(x,z,w,d,h=2.6,role='conduit')=>({type:'box',x,z,w,d,h,role,color:'#53616a'});
 // Parallel conveyors flank factory blocks with four-unit shortcuts.
@@ -34,16 +34,16 @@ const ice=[
  {type:'cylinder',x:16,z:9,r:2,h:3.2,role:'relay-pylon',color:'#95b4c4'},
 ];
 const kits=[core,forests,rails,ice];
-const nexus={id:'nexus',name:'Nexus Core',label:'NEXUS',x:0,z:0,w:20,d:20,color:'#467a91',open:true};
+const nexus={id:'nexus',name:'Nexus Core',label:'NEXUS',x:0,z:0,w:28,d:28,color:'#467a91',open:true};
 const cache=new Map();
 function getWorld(stage=0){
  stage=Math.max(0,Math.min(3,Math.floor(Number(stage)||0)));
  if(cache.has(stage))return cache.get(stage);
- const districts=zones.map((z,i)=>({...z,w:60,d:60,open:i<=stage}));
- const obstacles=[];
+ const districts=zones.map((z,i)=>({...z,w:60,d:60,open:z.stage<=stage}));
+ const obstacles=[...[-1,1].map(sign=>({...box(sign*5,-sign*5,2,4,2.2,'relay-housing'),nexusCover:true}))];
  for(const [i,z] of zones.entries()){
-  if(i>stage){
-   // Two rectangles leave the inner 10x10 corner open to the always-on Nexus.
+  if(z.stage>stage){
+   // Two rectangles leave the inner corner open to the always-on Nexus.
    const sx=Math.sign(z.x),sz=Math.sign(z.z),half=nexus.w/2;
    for(const o of [box(sx*(30+half/2),z.z,60-half,60,2),box(sx*half/2,sz*(30+half/2),half,60-half,2)])
     obstacles.push({...o,closedSector:true,sector:i});
@@ -58,8 +58,8 @@ function getWorld(stage=0){
   obstacles.push({...box(c+offset,0,length,2,3),divider:true});
   obstacles.push({...box(0,c+offset,2,length,3),divider:true});
  }
- const spawnPoints=districts.filter(z=>z.open).flatMap(z=>[-1,1].flatMap(x=>[-1,1].map(s=>({x:z.x+x*22,z:z.z+s*22}))));
- spawnPoints.push(...[-1,1].flatMap(x=>[-1,1].map(z=>({x:x*6,z:z*6}))));
+ const spawnPoints=districts.filter(z=>z.open).flatMap(z=>[-1,1].flatMap(x=>[-1,1].map(s=>({x:z.x+x*22,z:z.z+s*22})))).filter(p=>Math.abs(p.x)>nexus.w/2||Math.abs(p.z)>nexus.d/2);
+ spawnPoints.push(...[-1,1].flatMap(x=>[-1,1].map(z=>({x:x*10,z:z*10}))));
  const map={nexus,id:'confluence',name:'Confluence',subtitle:'One connected world · industry, forest, orbital rails & ice',theme:'foundry',size:60,stage,districts,obstacles,spawnPoints,props:[],palette:{floor:'#18232b',cover:'#53616a',accent:'#ffad69',background:'#090f18'}};
  cache.set(stage,map);return map;
 }

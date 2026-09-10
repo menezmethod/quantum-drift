@@ -114,8 +114,8 @@ async function main() {
       const pa = room.sim.players.get(idA),
         pb = room.sim.players.get(idB);
       Object.assign(pa, {
-        x: -56,
-        z: az - 30,
+        x: 0,
+        z: az,
         angle: 0,
         vx: 0,
         vz: 0,
@@ -127,8 +127,8 @@ async function main() {
         health: 100,
       });
       Object.assign(pb, {
-        x: -56,
-        z: bz - 30,
+        x: 0,
+        z: bz,
         vx: 0,
         vz: 0,
         protectedUntil: 0,
@@ -165,7 +165,7 @@ async function main() {
     await until(() => pb.health < 100);
     assert.equal(pb.health, 20);
     console.log("PASS: grenade launch and authoritative area damage");
-    ({ pa, pb } = fixture("BOUNCE", 27, 22));
+    ({ pa, pb } = fixture("BOUNCE", 10, 5));
     await a.keyboard.press("Digit3");
     await sleep(250);
     await a.keyboard.down("Space");
@@ -180,7 +180,7 @@ async function main() {
     assert.equal((await snapshot(a)).view, 2);
     await sleep(900);
     ({ pa, pb } = fixture("LASER", 0, 0));
-    pb.x = -50;
+    pb.x = 6;
     await a.keyboard.press("Digit1");
     await sleep(300);
     // Project the authoritative target using the actual camera matrices, so this

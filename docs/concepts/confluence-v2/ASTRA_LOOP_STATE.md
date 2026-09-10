@@ -1,32 +1,33 @@
 # Astra Loop State
 
 **Branch:** `design/confluence-gameplay-v2`  
-**Status:** IN PROGRESS — iteration 03 validated; overall exit criteria not met  
+**Status:** IN PROGRESS — iteration 04 validated; overall exit criteria not met  
 **Owner:** GPT-6 Astra; Sonnet supervises/resumes
 
 ## Completed work
 
-Iterations 00–02 remain complete. Iteration 03 opens an always-on 20×20 Nexus by notching closed district rectangles and deleting central divider stubs. All district kits and both outer crossings remain. Four hub spawn candidates use existing authoritative safe-spawn selection. Shared `regionAt` feeds HUD and music; renderer/radar show the hub independently of district stage. No client-authoritative changes or dependencies.
+Iterations 00–03 remain complete. Iteration 04 enlarges Nexus to 28×28 and adds two sparse staggered authoritative cover islands. Nexus alone opens initially; Frozen Relay at 3 humans, Forest at 5, Forge and Rails at 7. District kits are preserved. Hub axes and the outer drift loop remain clear, cover shelters grenade blasts, and two exits into each open district remain. Safe hub spawn candidates replace district spawn candidates inside the hub. HUD counts real open districts. Browser fixtures now exercise the starting Nexus instead of closed Forge.
 
 ## Validation
 
-- `npm test`: **87/87 pass**, including full hub reachability, two hub exits per open district, sealed closed district exits, safe spawns, unchanged border crossings, exact renderer collision bounds at every stage.
+- `npm test`: **88/88 pass**: explicit unlock identities, reachability, sealed closed exits, two hub exits, both border crossings, safe spawns, hub drift loop, blast shelter and exact renderer bounds at every stage.
 - `npm run build`: **pass**.
-- `CHROME_BACKEND=native npm run test:browser`: **pass**, all weapons, independent aim, death/respawn, replication/reconnect, cameras, mobile and practice.
-- `node scripts/verification/confluence.cjs`: **pass**, all 3/5/7-human stages, round contraction, desktop/touch Nexus movement and live server-authoritative Nexus laser/grenade/ricochet bank hits. Zero page errors; 60.09–61.02 fps; whole-world 99 draw calls / 34,792 triangles. Local native headless Chrome measurement only.
+- `CHROME_BACKEND=native npm run test:browser`: **pass**: live Nexus weapons, independent aim, death/respawn, replication/reconnect, cameras, mobile and practice.
+- `node scripts/verification/confluence.cjs`: **pass**: each new district stage captured, 3/5/7 thresholds, contraction, desktop/touch hub movement, server-authoritative Nexus laser/grenade/ricochet hits. Zero page errors; 60.06–61.00 fps; whole-world 99 draws / 35,108 triangles. Local native headless Chrome only.
+- Fresh four-bot probes, 30 simulated seconds per stage: zero invalid positions, 56/36/36/36 hits. No claim of human-tested fun.
 
 ## Evidence and comparison
 
-`loop-runs/iteration-03/` contains screenshots, verification.json, full test/build/browser/live receipts and README. `nexus-stage-0.png` and `nexus-expanded.png` show the new hub; `nexus-combat.png` records the live combat fixture. Removed flickering legacy centre-inlay layers after first capture. The centre now works, but the whole-world square grid still falls short of the radial concept. Forest pools show rough full-map triangulation/overlap in this capture, to revisit after macro gameplay.
+`loop-runs/iteration-04/` has fresh stage/core/district/mobile captures, verification.json, bot probe, test/build/browser/live receipts and README. Core is now a complete playable starting court, with more tactical cover than iteration 03. Removed an accidentally copied stale iteration-02 bot probe from iteration-03 evidence; iteration-04's probe is fresh.
 
 ## Scores (0–10, higher is better; Astra self-critique)
 
-Movement freedom **8**; combat readability **7**; zone identity **7**; composition/silhouette **6**; materials/lighting/VFX **6**; implementation realism **9**; performance safety **8**.
+Movement **8**; combat readability **8**; zone identity **7**; composition/silhouette **6**; materials/lighting/VFX **6**; implementation realism **9**; performance safety **8**.
 
 ## Remaining gap
 
-The Nexus is a junction, not yet a complete starting arena. Forge remains open at low population; the target calls for a useful self-contained Nexus and district unlocks around it. Radial perimeter and richer environmental routing remain unfinished. No claim of human-tested fun or meeting the concept floor.
+Full Map still frames locked territory: at stage 0 the useful court occupies a tiny fraction of the image, despite working well in Arena view. Radar has the same problem. Radial outer silhouette, district environmental routing and simple materials remain unfinished; Forest pool full-map rendering needs a later correction.
 
 ## NEXT_ACTION
 
-Make Nexus the self-contained low-population arena: enlarge its court to 28×28, add two sparse staggered authoritative cover islands with clear axes and flank loops, and unlock Snow at 3 humans, Forest at 5, Forge plus Rails at 7. Preserve district kits and two hub exits; update staging, spawns, HUD counts and browser/geometry fixtures. Validate live core combat, all thresholds and touch movement, then capture/critique/checkpoint.
+Derive shared active territory bounds from Nexus plus open districts and use them to frame Full Map and radar at every stage. Preserve Arena camera distance/orientation and independent aim. Add portrait/wide corner-fit checks and capture stage-0/1/2/3 overviews plus mobile Nexus, then validate, critique and checkpoint.

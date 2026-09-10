@@ -773,7 +773,7 @@ class Game {
     $("clock").textContent =
       `${Math.floor(remain / 60)}:${String(remain % 60).padStart(2, "0")}`;
     $("round-label").textContent =
-      `Round ${state.round} · ${regionAt(this.map,p)?.label || "Confluence"} · ${(this.map.stage??3)+1}/4 open`;
+      `Round ${state.round} · ${regionAt(this.map,p)?.label || "Confluence"} · Nexus + ${this.map.districts?.filter(d=>d.open).length??0}/4 districts`;
     $("health-value").textContent = Math.ceil(p.health);
     $("energy-value").textContent = Math.floor(p.energy);
     $("health-bar").style.width = `${p.health}%`;

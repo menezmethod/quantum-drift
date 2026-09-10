@@ -87,7 +87,7 @@ Multiplayer is designed for a single server process. Pilot identity is a random 
 
 ## Arenas and pilot records
 
-Confluence is one 120×120 world: a tight industrial core, forest biodome, orbital rail yard, and frozen relay. Online play starts in the core; 3, 5, and 7 connected humans unlock additional districts after five seconds. Bots do not expand the map. Open territory remains available until the next round, when everyone safely respawns within the new population boundary. Practice opens the entire world immediately. Two crossings on each district border provide flanking routes. Previous maps remain only as internal regression fixtures; public matches no longer rotate between arenas.
+Confluence is one 120×120 world: a tight industrial core, forest biodome, orbital rail yard, and frozen relay. Online play starts in the 28×28 Nexus court; 3 connected humans unlock Frozen Relay, 5 unlock Forest, and 7 unlock Forge plus Orbital Rails after five seconds. Bots do not expand the map. Open territory remains available until the next round, when everyone safely respawns within the new population boundary. Practice opens the entire world immediately. Two crossings on each district border provide flanking routes. Previous maps remain only as internal regression fixtures; public matches no longer rotate between arenas.
 
 Arena is the default overhead camera with a fixed angle and distance, smooth ship tracking, and no cursor-driven movement. V toggles Arena / full map. Chase, isometric, and zoom remain under Advanced camera views in Flight menu. Portrait framing preserves a useful lateral view. Overhead segments show actual hull; PROTECTED means temporary spawn protection, not energy.
 
