@@ -22,4 +22,14 @@ Planned concept set:
 - modular props and cover
 - portals, gates, traversal, and traps
 
-The concept graphics are visual direction / blockout references rather than final gameplay specifications.
+The concept graphics are visual direction / blockout references rather than final gameplay specifications. They are meant to be **beaten by the shipped implementation**, not copied mechanically.
+
+## Astra closed loop
+
+The project-specific autonomous iteration workflow lives here:
+
+- [`ASTRA_DREAM_LOOP.md`](./ASTRA_DREAM_LOOP.md) — gameplay-first closed-loop rules
+- [`ASTRA_LOOP_STATE.md`](./ASTRA_LOOP_STATE.md) — durable resume/checkpoint state for quota interruptions
+- [`RUN_ASTRA_PROMPT.md`](./RUN_ASTRA_PROMPT.md) — full Codex kickoff prompt plus a short resume prompt
+
+This workflow is inspired by [`achimala/dream-loop`](https://github.com/achimala/dream-loop), but intentionally changes the ownership model: **Astra owns planning, implementation, testing, screenshots, critique, checkpointing, and iteration end-to-end.** Critic subagents are optional reviewers, not the primary builders.
