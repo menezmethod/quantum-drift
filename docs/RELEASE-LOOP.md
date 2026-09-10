@@ -1,5 +1,7 @@
 # Mini-release Gauntlet
 
+The user deleted the schedule. No recurring execution is authorized by this document. Resume on user request, using the single connected-world roadmap; never select another standalone map feature.
+
 Adapted from https://www.thepromptindex.com/ai-loop-engineering-gauntlet-loop-guide.html. Objective, evidence and stopping boundaries matter more than endless iterations. This protocol governs incremental execution of ROADMAP.md; hosting is owned separately.
 
 ## One cycle

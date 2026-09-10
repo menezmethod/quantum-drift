@@ -1,0 +1,54 @@
+{
+  "method": "Two native headless Chrome clients plus five real sockets; movement, weapon energy, synchronized population expansion, screenshots. Draw counts are frame telemetry, not a load benchmark.",
+  "errors": [],
+  "results": [
+    {
+      "name": "core-online",
+      "fps": 60.28263662133166,
+      "stage": 0,
+      "players": 2,
+      "drawCalls": 37,
+      "triangles": 15252
+    },
+    {
+      "name": "whole-world",
+      "fps": 60.217176700028304,
+      "stage": 3,
+      "players": 7,
+      "drawCalls": 94,
+      "triangles": 33436
+    },
+    {
+      "name": "forest",
+      "fps": 60.17559435588959,
+      "stage": 3,
+      "players": 7,
+      "drawCalls": 51,
+      "triangles": 21252
+    },
+    {
+      "name": "ice",
+      "fps": 60.086682424285705,
+      "stage": 3,
+      "players": 7,
+      "drawCalls": 57,
+      "triangles": 23492
+    },
+    {
+      "name": "rails",
+      "fps": 60.93297372889819,
+      "stage": 3,
+      "players": 7,
+      "drawCalls": 43,
+      "triangles": 18044
+    },
+    {
+      "name": "practice-mobile",
+      "fps": 60.53388905284982,
+      "stage": 3,
+      "players": 4,
+      "drawCalls": 51,
+      "triangles": 24076
+    }
+  ]
+}

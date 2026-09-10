@@ -4,7 +4,7 @@ const path = require("node:path");
 const { randomBytes, createHash } = require("node:crypto");
 const { Server } = require("socket.io");
 const { Simulation, MAP, STEP } = require("../shared/simulation");
-const { MAPS, getMap, MAP_ROTATION } = require("../shared/maps");
+const { LEGACY_MAPS, getMap, MAP_ROTATION } = require("../shared/maps");
 const { RankingStore } = require("./rankings");
 
 function createGameServer({
@@ -12,6 +12,7 @@ function createGameServer({
   tick = true,
   rankingsFile = null,
   reconnectGraceMs = 30000,
+  allowLegacyMaps = false,
   maxRooms = Math.max(1, Math.min(100, Number(process.env.MAX_ROOMS) || 8)),
   maxConnections = Math.max(8, Math.min(1000, Number(process.env.MAX_CONNECTIONS) || 96)),
 } = {}) {
@@ -92,7 +93,7 @@ function createGameServer({
       const profileId = profileKey(request.profileToken) || createHash("sha256").update(socket.id).digest("hex");
       if(socket.data.profileId && socket.data.profileId!==profileId)return ack({error:"Reconnect before changing pilot identity."});
       const mode = request.mode;
-      const requestedMap = typeof request.mapId === "string" && MAPS.some(map=>map.id===request.mapId) ? request.mapId : "classic";
+      const requestedMap = typeof request.mapId === "string" && allowLegacyMaps && LEGACY_MAPS.some(map=>map.id===request.mapId) ? request.mapId : allowLegacyMaps ? "classic" : "confluence";
       let room;
       if (mode === "quick") {
         room = [...rooms.values()].find(

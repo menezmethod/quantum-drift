@@ -58,7 +58,7 @@ async function main() {
     const a = await newPage();
     await a.screenshot({ path: path.join(out, "lobby.png") });
     await a.fill("#pilot-name", "Alpha");
-    await a.click('[data-map-id="classic"]');
+    await a.click('[data-map-id="confluence"]');
     await a.uncheck("#fill-bots");
     await a.click("#create-room");
     await a.waitForFunction(() => window.__qd.getSnapshot().mode === "online");
@@ -114,8 +114,8 @@ async function main() {
       const pa = room.sim.players.get(idA),
         pb = room.sim.players.get(idB);
       Object.assign(pa, {
-        x: 0,
-        z: az,
+        x: -56,
+        z: az - 30,
         angle: 0,
         vx: 0,
         vz: 0,
@@ -127,8 +127,8 @@ async function main() {
         health: 100,
       });
       Object.assign(pb, {
-        x: 0,
-        z: bz,
+        x: -56,
+        z: bz - 30,
         vx: 0,
         vz: 0,
         protectedUntil: 0,
@@ -165,7 +165,7 @@ async function main() {
     await until(() => pb.health < 100);
     assert.equal(pb.health, 20);
     console.log("PASS: grenade launch and authoritative area damage");
-    ({ pa, pb } = fixture("BOUNCE", 23, 18));
+    ({ pa, pb } = fixture("BOUNCE", 27, 22));
     await a.keyboard.press("Digit3");
     await sleep(250);
     await a.keyboard.down("Space");
@@ -180,7 +180,7 @@ async function main() {
     assert.equal((await snapshot(a)).view, 2);
     await sleep(900);
     ({ pa, pb } = fixture("LASER", 0, 0));
-    pb.x = 6;
+    pb.x = -50;
     await a.keyboard.press("Digit1");
     await sleep(300);
     // Project the authoritative target using the actual camera matrices, so this

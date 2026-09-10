@@ -202,7 +202,18 @@ export class World {
     this.floor();
     this.peripheralGround();
     this.boundary();
-    map.obstacles.forEach((obstacle, index) => this.cover(obstacle, index));
+    const baseMaterials=this.m, baseTheme=this.theme, kits={};
+    map.obstacles.forEach((obstacle,index)=>{
+      const theme=obstacle.theme || baseTheme;
+      if(theme!==baseTheme && !kits[theme]) {
+        const palette=PALETTES[theme];
+        kits[theme]={...baseMaterials};
+        for(const key of ['body','cap','dark','accent','secondary','glow']) kits[theme][key]=this.material(palette[key]);
+      }
+      this.m=kits[theme]||baseMaterials;this.theme=theme;
+      this.cover(obstacle,index);
+    });
+    this.m=baseMaterials;this.theme=baseTheme;
     this.centralInlay();
     this.routeCallouts();
     if (this.theme === "canopy") this.canopy();
@@ -287,8 +298,10 @@ export class World {
       if (right <= left || far <= near) continue;
       // Preserve the finish inside route regions: r1's solid rectangles erased
       // the panel texture and read as flat placemats beneath cover.
-      const tint = new THREE.Color("#ffffff").lerp(new THREE.Color(district.color || this.palette.floor), 0.12);
-      this.box(this.material(tint, { map: texture }), (left + right) / 2, 0.002 + districtIndex * 0.001, (near + far) / 2, right - left, 0.002, far - near);
+      const tint = new THREE.Color("#ffffff").lerp(new THREE.Color(district.color || this.palette.floor), this.map.id==='confluence'?0.38:0.12);
+      let finish=texture;
+      if(this.map.id==='confluence') {finish=this.own(surfaceTexture(district.theme,PALETTES[district.theme]));finish.repeat.set(60/9,60/9);}
+      this.box(this.material(tint, { map: finish }), (left + right) / 2, 0.002 + districtIndex * 0.001, (near + far) / 2, right - left, 0.002, far - near);
     }
     // Broad service strips are directional floor material, not a fine grid.
     for (const sign of [-1, 1]) {
@@ -384,6 +397,14 @@ export class World {
     this.contact(x, z, box ? o.w : o.r * 2, box ? o.d : o.r * 2, !box);
     if (box ? !(o.w > 0 && o.d > 0) : !(o.r > 0)) throw new TypeError(`Invalid cover footprint ${index}`);
     this.part(box ? "box" : sphere ? "sphere" : "cylinder", this.m.body, [x, h / 2, z], box ? [o.w, h, o.d] : [o.r, sphere ? h / 2 : h, o.r], [0, 0, 0], index);
+    if(o.closedSector) {
+      this.box(this.m.dark,x,h+0.01,z,o.w,0.02,o.d);
+      for(const side of [-1,1]) {
+        this.box(this.m.accent,x+side*(o.w/2-0.2),h+0.04,z,0.2,0.03,o.d);
+        this.box(this.m.accent,x,h+0.04,z+side*(o.d/2-0.2),o.w,0.03,0.2);
+      }
+      return;
+    }
     if (box) {
       if (this.theme === "canopy") {
         this.planter(o);
@@ -517,7 +538,7 @@ export class World {
       U:[17,17,17,17,17,17,14], Y:[17,17,10,4,4,4,4],
     };
     const s = this.map.size;
-    const labels = this.theme === "foundry" ? [["FORGE",0,-7],["DOCK",-s*0.82,-13],["COILS",s*0.82,13]]
+    const labels = this.map.id==='confluence' ? this.map.districts.filter(d=>d.open).map(d=>[d.label,d.x,d.z-24]) : this.theme === "foundry" ? [["FORGE",0,-7],["DOCK",-s*0.82,-13],["COILS",s*0.82,13]]
       : this.theme === "canopy" ? [["COURT",0,-8],["GARDEN",-18,-10],["LAB",18,10]]
         : [["RELAY",0,22],["RIDGE",-25,10],["RIDGE",25,-10]];
     const positions = [], indices = [], step = 0.145;

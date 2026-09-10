@@ -1,5 +1,6 @@
 // This module is used unchanged by Node and the browser. Distances are world units;
 // time is seconds. Only inputs cross the trust boundary, never positions or damage.
+const {getWorld,stageForHumans}=require('./maps/world');
 const STEP = 1 / 60;
 const RULES = Object.freeze({
   radius: 0.8,
@@ -281,8 +282,12 @@ class Simulation {
     roundTime = RULES.roundTime,
     fragLimit = RULES.fragLimit,
     mapRotation = [],
+    populationExpansion = true,
   } = {}) {
     this.map = map;
+    this.populationExpansion=populationExpansion;
+    this.expansionSince=null;
+    this.expansionTarget=0;
     this.mapRotation = mapRotation;
     this.departed = new Map();
     this.recap = null;
@@ -540,6 +545,17 @@ class Simulation {
       );
     }
   }
+  updateTerritory() {
+    if(this.map.id!=='confluence'||!this.populationExpansion)return;
+    const target=stageForHumans([...this.players.values()].filter(p=>!p.bot).length);
+    if(target<=this.map.stage){this.expansionSince=null;return;}
+    if(this.expansionSince===null||target!==this.expansionTarget){this.expansionSince=this.time;this.expansionTarget=target;}
+    if(this.time-this.expansionSince>=5){
+      this.map=getWorld(target);this.expansionSince=null;
+      for(const p of this.players.values()){p.path=null;p.navigateAt=0;}
+      this.emit('mapChanged',{map:this.map,announcement:this.map.districts.filter(z=>z.open).map(z=>z.name).join(' · ')+' open'});
+    }
+  }
   step(dt = STEP) {
     this.time += dt;
     this.tick++;
@@ -551,6 +567,7 @@ class Simulation {
       this.endRound();
       return;
     }
+    this.updateTerritory();
     for (const p of this.players.values()) {
       if (!p.alive) {
         if (this.time >= p.respawnAt) this.spawn(p);
@@ -656,7 +673,10 @@ class Simulation {
   newRound() {
     this.round++;
     this.recap = null; this.winnerId = null; this.departed.clear();
-    if (this.mapRotation.length) {
+    if(this.map.id==='confluence'){
+      if(this.populationExpansion)this.map=getWorld(stageForHumans([...this.players.values()].filter(p=>!p.bot).length));
+      this.expansionSince=null;this.emit('mapChanged',{map:this.map});
+    } else if (this.mapRotation.length) {
       const index = this.mapRotation.findIndex(map => map.id === this.map.id);
       this.map = this.mapRotation[(index + 1) % this.mapRotation.length];
       this.emit("mapChanged", {map:this.map});
@@ -674,6 +694,7 @@ class Simulation {
   snapshot() {
     return {
       mapId:this.map.id,
+      mapStage:this.map.stage,
       recap:this.recap,
       tick: this.tick,
       time: this.time,

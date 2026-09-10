@@ -25,7 +25,7 @@ For friends outside your LAN, run the same server on a reachable host or use a s
 
 ## v1.0 release
 
-Browser arena shooter with four maps, bot practice, private invites, and server-authoritative multiplayer. Download a ready-built Node server from [GitHub Releases](https://github.com/menezmethod/quantum-drift/releases). Extract it, run `npm ci --omit=dev`, then `npm run serve`. Node.js 20+ is required; there is no native desktop installer.
+Browser arena shooter with one connected, expanding world, bot practice, private invites, and server-authoritative multiplayer. Download a ready-built Node server from [GitHub Releases](https://github.com/menezmethod/quantum-drift/releases). Extract it, run `npm ci --omit=dev`, then `npm run serve`. Node.js 20+ is required; there is no native desktop installer.
 
 See [release notes](CHANGELOG.md), [hosting](docs/HOSTING.md), and the [next milestones](docs/ROADMAP.md).
 
@@ -87,7 +87,7 @@ Multiplayer is designed for a single server process. Pilot identity is a random 
 
 ## Arenas and pilot records
 
-Choose Foundry (central solid forge and flanking lanes), Canopy (open courtyard and planted cover), Glacier (long baffle lanes), or Classic before practice or matchmaking. The server owns cover collision and rotates maps between rounds.
+Confluence is one 120×120 world: a tight industrial core, forest biodome, orbital rail yard, and frozen relay. Online play starts in the core; 3, 5, and 7 connected humans unlock additional districts after five seconds. Bots do not expand the map. Open territory remains available until the next round, when everyone safely respawns within the new population boundary. Practice opens the entire world immediately. Two crossings on each district border provide flanking routes. Previous maps remain only as internal regression fixtures; public matches no longer rotate between arenas.
 
 Arena is the default overhead camera with a fixed angle and distance, smooth ship tracking, and no cursor-driven movement. V toggles Arena / full map. Chase, isometric, and zoom remain under Advanced camera views in Flight menu. Portrait framing preserves a useful lateral view. Overhead segments show actual hull; PROTECTED means temporary spawn protection, not energy.
 
@@ -95,7 +95,7 @@ Pilot records include lifetime and per-map score, wins, kills/deaths, damage, ac
 
 ## Visual Gauntlet
 
-`node scripts/verification/matrix.cjs r1` captures a serial map/view/light/state matrix. `npm run capture -- --map foundry --camera tactical --time dusk --state combat --out test-results/capture` captures one scene. These staged diagnostics require `?showcase`; their synthetic counters never become online records. PNGs and JSON telemetry live in `docs/gauntlet/evidence/`; independent evaluations and unresolved defects are tracked in `docs/STATUS.json`. Headless SwiftShader FPS is a regression measure, not a native GPU benchmark.
+`npm run test:browser` verifies combat, cameras, reconnect and mobile practice. `node scripts/verification/confluence.cjs` checks two browsers, seven connected pilots, and synchronized expansion/reset; receipts are in `docs/gauntlet/confluence/`. Historical tooling: `node scripts/verification/matrix.cjs r1` captures a serial map/view/light/state matrix. `npm run capture -- --map foundry --camera tactical --time dusk --state combat --out test-results/capture` captures one scene. These staged diagnostics require `?showcase`; their synthetic counters never become online records. PNGs and JSON telemetry live in `docs/gauntlet/evidence/`; independent evaluations and unresolved defects are tracked in `docs/STATUS.json`. Headless SwiftShader FPS is a regression measure, not a native GPU benchmark.
 
 Capacity defaults to eight rooms (up to eight humans each) and 96 connected sockets. These are protective admission limits, not a measured 64-player performance guarantee. Configure `MAX_ROOMS` and `MAX_CONNECTIONS` only after load testing your host.
 

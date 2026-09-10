@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { MAPS, MAP_ROTATION, getMap } = require('./index');
+const { LEGACY_MAPS: MAPS, MAP_ROTATION, getMap } = require('./index');
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 function clearance(o, x, z) {

@@ -11,7 +11,8 @@ const require = createRequire(import.meta.url);
 const threeURL = pathToFileURL(require.resolve("three").replace("three.cjs", "three.module.js")).href;
 const source = (await readFile(new URL("./World.js", import.meta.url), "utf8")).replace('from "three"', `from "${threeURL}"`);
 const { World } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
-const { MAPS } = require("../../shared/maps/index.js");
+const { LEGACY_MAPS, getWorld } = require("../../shared/maps/index.js");
+const MAPS=[...LEGACY_MAPS,getWorld(0),getWorld(3)];
 
 for (const map of MAPS) test(`${map.id}: exact primary collision cover, bounded geometry and draw submissions`, () => {
   const scene = new THREE.Scene(), world = new World(scene, null);

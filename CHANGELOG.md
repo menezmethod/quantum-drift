@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 — 2026-09-09
+
+- Replaced public map selection and rotation with Confluence: one connected 120×120 world with industrial, forest, rail, and ice districts.
+- Preserved tight core combat; connected districts have two border crossings for flanks.
+- Server-authoritative territory unlocks at 3/5/7 humans after five seconds. Bots do not unlock territory; shrinking waits until safe round respawn.
+- Practice exposes all four districts. District status appears in the HUD. Current movement, camera, and weapon economy are unchanged.
+- Verified 80 tests, two native browser clients plus five sockets, synchronized expansion/reset, weapon energy, and mobile practice. Bespoke art and human population-balance tuning remain future work.
+
 ## 1.1.0 — 2026-09-09
 
 - Added Junction, an optional close-quarters map using existing Foundry art: offset central cover, side fighting pockets, and clear flanking routes. Select it explicitly; existing default map rotation is unchanged.

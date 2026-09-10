@@ -2,7 +2,7 @@ import "./styles/main.css";
 import { io } from "socket.io-client";
 import { ArenaRenderer } from "./core/ArenaRenderer";
 import {Interface} from "./interface/Interface";
-import {MAPS,getMap,MAP_ROTATION} from "../shared/maps";
+import {MAPS,getMap,getWorld} from "../shared/maps";
 import {
   Simulation,
   MAP,
@@ -32,7 +32,7 @@ const storage = {
 class Game {
   constructor() {
     this.mode = "lobby";
-    this.selectedMap = getMap(storage.get("qd-map", "foundry")).id;
+    this.selectedMap = "confluence";
     this.profileToken=storage.get("qd-profile", "");
     if(!this.profileToken){this.profileToken=Array.from(crypto.getRandomValues(new Uint8Array(24)),v=>v.toString(16).padStart(2,"0")).join("");storage.set("qd-profile",this.profileToken);}
     this.keys = new Set();
@@ -48,7 +48,7 @@ class Game {
     this.renderer = new ArenaRenderer($("arena"));
     this.demo = this.makePractice(true);
     this.state = this.demo.snapshot();
-    this.map = getMap(this.selectedMap);
+    this.map = this.demo.map;
     this.renderer.buildArena(this.map);
     this.lastFrame = performance.now();
     this.accumulator = 0;
@@ -95,7 +95,7 @@ class Game {
   chooseMap(id){
     if(this.mode==='online')return;
     this.selectedMap=getMap(id).id;storage.set('qd-map',this.selectedMap);this.interface?.setMaps(MAPS,this.selectedMap);
-    if(this.mode==='lobby'){this.demo=this.makePractice(true);this.state=this.demo.snapshot();this.applyMap(getMap(id));}
+    if(this.mode==='lobby'){this.demo=this.makePractice(true);this.state=this.demo.snapshot();this.applyMap(this.demo.map);}
   }
   applyMap(map){this.map=map;this.renderer.buildArena(map);this.renderer.cameraReady=false;}
   async loadCareer(){
@@ -130,7 +130,7 @@ class Game {
     $('room-label').textContent='Showcase / '+(config.module||'arena');return true;
   }
   makePractice(demo = false) {
-    const sim = new Simulation({map:getMap(this.selectedMap),mapRotation:MAP_ROTATION.map(getMap)});
+    const sim = new Simulation({map:getWorld(3),populationExpansion:false});
     if (!demo) sim.addPlayer("local", $("pilot-name").value);
     for (let i = 0; i < (demo ? 4 : 3); i++)
       sim.addPlayer(`bot-${i}`, ["Vector", "Nova", "Echo", "Flux"][i], true);
@@ -480,7 +480,7 @@ class Game {
     $("lobby-status").textContent = message;
   }
   receive(state) {
-    if(state.mapId && state.mapId!==this.map.id)this.applyMap(getMap(state.mapId));
+    if(state.mapId && (state.mapId!==this.map.id||state.mapStage!==this.map.stage))this.applyMap(state.mapId==='confluence'?getWorld(state.mapStage):getMap(state.mapId));
     this.previousState = this.state;
     this.state = state;
     this.receivedAt = performance.now();
@@ -556,7 +556,7 @@ class Game {
   leave() {
     this.showcaseConfig=null;this.renderer.showcaseModule=null;delete document.body.dataset.showcase;
     this.mode = "lobby";
-    this.demo=this.makePractice(true);this.state=this.demo.snapshot();this.applyMap(getMap(this.selectedMap));
+    this.demo=this.makePractice(true);this.state=this.demo.snapshot();this.applyMap(this.demo.map);
     this.socket?.disconnect();
     this.connected = false;
     this.pending = [];
@@ -591,6 +591,7 @@ class Game {
     this.noticeUntil = performance.now() + seconds * 1000;
   }
   event(e) {
+    if(e.type==='mapChanged'&&e.announcement)this.notice(e.announcement,6);
     this.renderer.event(e);
     if (e.type === "fire")
       this.playSound(e.weapon, e.player === this.playerId ? 1 : 0.18);
@@ -673,7 +674,7 @@ class Game {
         this.sim.setInput(this.playerId, this.input());
         this.sim.step();
         this.state = this.sim.snapshot();
-        if(this.state.mapId!==this.map.id)this.applyMap(this.sim.map);
+        if(this.state.mapId!==this.map.id||this.state.mapStage!==this.map.stage)this.applyMap(this.sim.map);
         this.predicted = {
           ...this.state.players.find((p) => p.id === this.playerId),
         };
@@ -719,7 +720,7 @@ class Game {
     $("clock").textContent =
       `${Math.floor(remain / 60)}:${String(remain % 60).padStart(2, "0")}`;
     $("round-label").textContent =
-      `Round ${state.round} · First to ${state.fragLimit}`;
+      `Round ${state.round} · ${this.map.districts?.find(d=>Math.abs(p.x-d.x)<30&&Math.abs(p.z-d.z)<30)?.label || "Confluence"} · ${(this.map.stage??3)+1}/4 open`;
     $("health-value").textContent = Math.ceil(p.health);
     $("energy-value").textContent = Math.floor(p.energy);
     $("health-bar").style.width = `${p.health}%`;

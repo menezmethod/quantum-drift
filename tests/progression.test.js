@@ -1,4 +1,5 @@
-const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs/promises');const os=require('node:os');const path=require('node:path');const {io}=require('socket.io-client');const {createGameServer}=require('../server/server');const {Simulation,STEP}=require('../shared/simulation');const {getMap,MAP_ROTATION}=require('../shared/maps');
+const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs/promises');const os=require('node:os');const path=require('node:path');const {io}=require('socket.io-client');const {createGameServer:createServer}=require('../server/server');
+const createGameServer=options=>createServer({allowLegacyMaps:true,...options});const {Simulation,STEP}=require('../shared/simulation');const {getMap,MAP_ROTATION}=require('../shared/maps');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(fn,ms=4000){const start=Date.now();while(!fn()){if(Date.now()-start>ms)throw Error('Timed out');await delay(20);}}
 async function connect(url){const s=io(url,{transports:['websocket'],reconnection:false});await new Promise((r,j)=>{s.once('connect',r);s.once('connect_error',j);});return s;}

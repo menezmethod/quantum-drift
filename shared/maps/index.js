@@ -2,6 +2,7 @@
 // imports: the simulation can safely import this registry without a require cycle.
 const classic = require('./classic');
 const junction = require('./junction');
+const {getWorld,stageForHumans}=require('./world');
 const box = (x, z, w, d, h, color, role) => ({ type: 'box', x, z, w, d, h, color, role });
 const cylinder = (x, z, r, h, color, role) => ({ type: 'cylinder', x, z, r, h, color, role });
 const district = (id, name, x, z, w, d, color) => ({ id, name, x, z, w, d, color });
@@ -87,14 +88,16 @@ function freeze(value) {
 }
 
 const mapsById = freeze({ foundry, canopy, glacier, classic, junction });
-const MAPS = Object.freeze([foundry, canopy, glacier, classic, junction]);
+const LEGACY_MAPS = Object.freeze([foundry, canopy, glacier, classic, junction]);
+const MAPS = Object.freeze([getWorld(0)]);
 const MAP_ROTATION = Object.freeze(['foundry', 'canopy', 'glacier', 'classic']);
 
 // Old replay/map IDs continue to resolve. Unknown network input has a stable
 // fallback; inherited Object keys must never resolve to non-map objects.
 function getMap(id) {
+  if(id==='confluence')return getWorld(0);
   if (id === 'quantum-arena-v1') return classic;
   return typeof id === 'string' && Object.hasOwn(mapsById, id) ? mapsById[id] : foundry;
 }
 
-module.exports = { MAPS, getMap, MAP_ROTATION };
+module.exports = { MAPS, LEGACY_MAPS, getMap, getWorld, stageForHumans, MAP_ROTATION };

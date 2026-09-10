@@ -10,6 +10,7 @@ const node = (tag, className, text) => {
   return element;
 };
 const themes = {
+  confluence: {color:'#a3daee',label:'One world · expands at 3 / 5 / 7 pilots',mark:'01'},
   foundry: { color: '#ffae70', label: 'Industrial forge', mark: '01' },
   canopy: { color: '#b4dc95', label: 'Research garden', mark: '02' },
   glacier: { color: '#a3daee', label: 'Polar relay', mark: '03' },
@@ -30,7 +31,12 @@ function thumbnail(id) {
     svg.append(shape);
   };
   draw('path', { d: 'M0 92H240M0 20H240M32 0V112M208 0V112', stroke: 'currentColor', opacity: '.12', fill: 'none' });
-  if (id === 'junction') {
+  if(id==='confluence') {
+    for(const [x,y,color] of [[35,15,'#aa794e'],[35,57,'#5b9675'],[122,15,'#7978a7'],[122,57,'#90bfce']]) {
+      draw('rect',{x,y,width:83,height:38,rx:3,fill:color,opacity:'.65'});
+      draw('path',{d:`M${x+15} ${y+10}h20v8h-20z M${x+50} ${y+23}h18v7h-18z`,fill:'#192b34'});
+    }
+  } else if (id === 'junction') {
     draw('path', {d:'M32 56H208 M120 12V100',stroke:'currentColor',opacity:'.3',fill:'none'});
     for (const [x,y,w,h] of [[93,32,22,22],[125,58,22,22],[52,20,12,30],[52,64,12,30],[176,20,12,30],[176,64,12,30],[86,10,30,8],[124,94,30,8]])
       draw('rect',{x,y,width:w,height:h,rx:2,fill:'#263039',stroke:'currentColor'});

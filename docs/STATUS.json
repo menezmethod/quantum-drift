@@ -1,6 +1,6 @@
 {
   "goal": "Quantum Drift WOW gauntlet",
-  "status": "screen-relative-movement-running",
+  "status": "confluence-1.2.0-verified",
   "passScore": 8.5,
   "integrator": "parent agent (sole core writer)",
   "referenceScope": "Nex Machina, WipEout, Battlerite: aspirational design references, not claimed parity",
@@ -224,7 +224,7 @@
       "native captures and two-client verification",
       "independent review with honest limits"
     ],
-    "next": "When allowance meets policy, start one small Junction obstacle/escape refinement; preserve current controls and coordinate with hosting work.",
+    "next": "Superseded by currentRelease; one connected world.",
     "completed": [
       {
         "feature": "junction-map",
@@ -247,8 +247,21 @@
       "scope": "shared account; not exclusive feature cost"
     },
     "automation": {
-      "id": "quantum-drift-mini-releases",
-      "intervalHours": 6
+      "status": "deleted-by-user"
     }
+  },
+  "currentRelease": {
+    "version": "1.2.0",
+    "feature": "One connected population-scaled world",
+    "tests": 80,
+    "receipts": "docs/gauntlet/confluence/verification.json",
+    "review": "docs/gauntlet/confluence/REVIEW.md",
+    "open": [
+      "Human balance and encounter-density tuning",
+      "Bespoke forest/ice/rail art",
+      "Pickups, portals, teams in subsequent bounded releases"
+    ],
+    "next": "Refine cover and crossing fights based on human play; no additional maps",
+    "automation": "Deleted by user; do not recreate"
   }
 }

@@ -1,0 +1,16 @@
+[
+  {
+    "stage": 0,
+    "simulatedSeconds": 30,
+    "wallMs": 63.450667,
+    "invalidPositions": 0,
+    "hits": 28
+  },
+  {
+    "stage": 3,
+    "simulatedSeconds": 30,
+    "wallMs": 133.467375,
+    "invalidPositions": 0,
+    "hits": 24
+  }
+]

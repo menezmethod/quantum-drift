@@ -1,7 +1,8 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { io } = require("socket.io-client");
-const { createGameServer } = require("../server/server");
+const { createGameServer: createServer } = require("../server/server");
+const createGameServer = options => createServer({allowLegacyMaps:true,...options});
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function connect(url) {
   const socket = io(url, {
