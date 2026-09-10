@@ -27,7 +27,9 @@ export function cameraPose({ player, aim, map, lobby = false, view = 0, zoom = 1
 
   }
   if (overview) {
-    x = z = 0;
+    const bounds = map?.activeBounds || {minX:-size,maxX:size,minZ:-size,maxZ:size};
+    x = (bounds.minX + bounds.maxX) / 2;
+    z = (bounds.minZ + bounds.maxZ) / 2;
     // Fit all four ground corners, including perspective depth, with HUD margin.
     const direction = view === 2 ? { x: 0, y: 1, z: -0.001 } : { x: 0.46, y: 0.76, z: -0.46 };
     const length = Math.hypot(direction.x, direction.y, direction.z);
@@ -36,7 +38,7 @@ export function cameraPose({ player, aim, map, lobby = false, view = 0, zoom = 1
     const right = { x: n.z / horizontal, z: -n.x / horizontal };
     const up = { x: -n.y * n.x / horizontal, z: -n.y * n.z / horizontal };
     let distance = 0;
-    for (const cx of [-size, size]) for (const cz of [-size, size]) {
+    for (const cx of [bounds.minX-x, bounds.maxX-x]) for (const cz of [bounds.minZ-z, bounds.maxZ-z]) {
       const depth = n.x * cx + n.z * cz;
       distance = Math.max(distance, depth + Math.abs(right.x * cx + right.z * cz) / (tan * aspect * 0.86), depth + Math.abs(up.x * cx + up.z * cz) / (tan * 0.78));
     }

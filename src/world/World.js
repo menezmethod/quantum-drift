@@ -606,7 +606,7 @@ export class World {
         for (let row = 0; row < 7; row++) for (let column = 0; column < 5; column++) {
           if (!(rows[row] & (1 << (4 - column)))) continue;
           const px = x - (letter * 6 + column - text.length * 3) * step;
-          const pz = z - (3 - row) * step, p = positions.length / 3;
+          const pz = z + (3 - row) * step, p = positions.length / 3;
           positions.push(px,0.033,pz, px-step,0.033,pz, px-step,0.033,pz-step, px,0.033,pz-step);
           indices.push(p,p+2,p+1,p,p+3,p+2);
         }

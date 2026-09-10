@@ -773,7 +773,7 @@ class Game {
     $("clock").textContent =
       `${Math.floor(remain / 60)}:${String(remain % 60).padStart(2, "0")}`;
     $("round-label").textContent =
-      `Round ${state.round} · ${regionAt(this.map,p)?.label || "Confluence"} · Nexus + ${this.map.districts?.filter(d=>d.open).length??0}/4 districts`;
+      `Round ${state.round} · ${regionAt(this.map,p)?.label || "Confluence"} · ${this.map.districts?.filter(d=>d.open).length??0}/4 districts open`;
     $("health-value").textContent = Math.ceil(p.health);
     $("energy-value").textContent = Math.floor(p.energy);
     $("health-bar").style.width = `${p.health}%`;
@@ -865,11 +865,15 @@ class Game {
     const canvas = $("radar"),
       ctx = canvas.getContext("2d"),
       size = canvas.width,
-      scale = (size - 16) / (this.map.size * 2),
-      point = (p) => [size / 2 + p.x * scale, size / 2 - p.z * scale];
+      bounds = this.map.activeBounds || {minX:-this.map.size,maxX:this.map.size,minZ:-this.map.size,maxZ:this.map.size},
+      scale = (size - 16) / Math.max(bounds.maxX-bounds.minX,bounds.maxZ-bounds.minZ),
+      point = (p) => [size / 2 + (p.x-(bounds.minX+bounds.maxX)/2) * scale, size / 2 - (p.z-(bounds.minZ+bounds.maxZ)/2) * scale];
     ctx.clearRect(0, 0, size, size);
+    ctx.save();
+    ctx.beginPath();ctx.rect(8,8,size-16,size-16);ctx.clip();
     ctx.strokeStyle = "#426276";
-    ctx.strokeRect(8, 8, size - 16, size - 16);
+    const [left,top] = point({x:bounds.minX,z:bounds.maxZ});
+    ctx.strokeRect(left,top,(bounds.maxX-bounds.minX)*scale,(bounds.maxZ-bounds.minZ)*scale);
     if (this.map.nexus) {
       const n = this.map.nexus, [x,z] = point(n);
       ctx.fillStyle = n.color + "88";
@@ -908,6 +912,7 @@ class Game {
         ctx.stroke();
       }
     }
+    ctx.restore();
   }
 }
 try {

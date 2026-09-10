@@ -118,3 +118,23 @@ test('avoids HUD and overlapping labels, with local priority', () => {
   indicators.update(args);
   assert.equal(local.hidden, true);
 });
+
+test('Confluence overview fits active territory at every stage without shrinking the Nexus',()=>{
+ const {getWorld}=require('../../shared/maps');
+ for(let stage=0;stage<4;stage++)for(const aspect of [0.46,1,2.4]){
+  const map=getWorld(stage),bounds=map.activeBounds;
+  const camera=new THREE.PerspectiveCamera(60,aspect,0.1,500);
+  const pose=new CameraRig(camera).update({player,map,view:2});
+  assert.equal(pose.target.x,(bounds.minX+bounds.maxX)/2);
+  assert.equal(pose.target.z,(bounds.minZ+bounds.maxZ)/2);
+  for(const x of [bounds.minX,bounds.maxX])for(const z of [bounds.minZ,bounds.maxZ]){
+   const p=new THREE.Vector3(x,0,z).project(camera);
+   assert.ok(Math.abs(p.x)<=0.87&&Math.abs(p.y)<=0.79,'active territory fits');
+  }
+  if(stage===0){
+   const edge=new THREE.Vector3(14,0,14).project(camera);
+   assert.ok(Math.max(Math.abs(edge.x),Math.abs(edge.y))>.75,'core fills useful viewport');
+  }
+  assert.deepEqual(cameraPose({player,map,view:0,aspect}),cameraPose({player,map:{...map,activeBounds:undefined},view:0,aspect}),'Arena camera unchanged');
+ }
+});

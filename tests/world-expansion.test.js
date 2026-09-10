@@ -8,6 +8,7 @@ test('single public world; all open districts are connected and closed districts
  assert.deepEqual(MAPS.map(m=>m.id),['confluence']);
  for(let stage=0;stage<4;stage++){
   const map=getWorld(stage);
+  assert.deepEqual(Object.values(map.activeBounds),[[-14,14,-14,14],[-14,60,-14,60],[-60,60,-14,60],[-60,60,-60,60]][stage]);
   assert.deepEqual(map.districts.filter(d=>d.open).map(d=>d.id),[[],['ice'],['forest','ice'],['core','forest','rails','ice']][stage]);
   const seen=new Set(),queue=[[0,0]];
   for(let i=0;i<queue.length;i++){

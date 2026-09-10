@@ -60,7 +60,9 @@ function getWorld(stage=0){
  }
  const spawnPoints=districts.filter(z=>z.open).flatMap(z=>[-1,1].flatMap(x=>[-1,1].map(s=>({x:z.x+x*22,z:z.z+s*22})))).filter(p=>Math.abs(p.x)>nexus.w/2||Math.abs(p.z)>nexus.d/2);
  spawnPoints.push(...[-1,1].flatMap(x=>[-1,1].map(z=>({x:x*10,z:z*10}))));
- const map={nexus,id:'confluence',name:'Confluence',subtitle:'One connected world · industry, forest, orbital rails & ice',theme:'foundry',size:60,stage,districts,obstacles,spawnPoints,props:[],palette:{floor:'#18232b',cover:'#53616a',accent:'#ffad69',background:'#090f18'}};
+ const regions=[nexus,...districts.filter(d=>d.open)];
+ const activeBounds={minX:Math.min(...regions.map(d=>d.x-d.w/2)),maxX:Math.max(...regions.map(d=>d.x+d.w/2)),minZ:Math.min(...regions.map(d=>d.z-d.d/2)),maxZ:Math.max(...regions.map(d=>d.z+d.d/2))};
+ const map={nexus,activeBounds,id:'confluence',name:'Confluence',subtitle:'One connected world · industry, forest, orbital rails & ice',theme:'foundry',size:60,stage,districts,obstacles,spawnPoints,props:[],palette:{floor:'#18232b',cover:'#53616a',accent:'#ffad69',background:'#090f18'}};
  cache.set(stage,map);return map;
 }
 function stageForHumans(count){return count>=7?3:count>=5?2:count>=3?1:0;}

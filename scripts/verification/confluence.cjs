@@ -50,6 +50,7 @@ const {createGameServer}=require('../../server/server');
     const district=sim.map.districts.find(d=>d.id===(i===0?'ice':i===2?'forest':'core'));
     assert.ok(district.open);Object.assign(pilot,{x:district.x,z:district.z+(i===4?-22:0),vx:0,vz:0});
     await receipt(a,`unlock-stage-${1+i/2}`);
+    await a.keyboard.press('v');await receipt(a,`overview-stage-${1+i/2}`);await a.keyboard.press('v');
    }
   }
   for(const p of pages)await p.waitForFunction(()=>window.__qd.getSnapshot().state.mapStage===3,{},{timeout:12000});
@@ -73,10 +74,15 @@ const {createGameServer}=require('../../server/server');
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:button.x+button.width/2,y:button.y+button.height/2}]});
   await touch.waitForTimeout(400);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
   assert.ok(Math.hypot(tp.x,tp.z)>2,'touch movement in Nexus');await receipt(touch,'nexus-mobile');
+  await touch.keyboard.press('v');await receipt(touch,'nexus-mobile-overview');
   await touch.close();
   sockets.forEach(s=>s.disconnect());await a.waitForTimeout(500);assert.equal(sim.map.stage,3);
   sim.newRound();
   for(const p of pages)await p.waitForFunction(()=>window.__qd.getSnapshot().state.mapStage===0);
+  const hubMobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  hubMobile.on('pageerror',e=>errors.push(e.message));await hubMobile.goto(url);await hubMobile.fill('#room-code',room);await hubMobile.click('#join-room');
+  await hubMobile.waitForFunction(()=>window.__qd.getSnapshot().mode==='online');
+  await hubMobile.keyboard.press('v');await receipt(hubMobile,'nexus-mobile-stage-0');await hubMobile.close();
   const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});mobile.on('pageerror',e=>errors.push(e.message));await mobile.goto(url);await mobile.click('#practice');await mobile.waitForFunction(()=>window.__qd.getSnapshot().state.mapStage===3&&window.__qd.getSnapshot().mode==='practice');await receipt(mobile,'practice-mobile');
   assert.deepEqual(errors,[]);
   fs.writeFileSync(`${out}/verification.json`,JSON.stringify({method:'Two native headless Chrome clients plus five real sockets; movement, weapon energy, synchronized population expansion, screenshots. Draw counts are frame telemetry, not a load benchmark.',errors,results},null,2));
