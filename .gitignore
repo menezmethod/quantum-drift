@@ -44,3 +44,6 @@ logs
 
 # Downloadable release output
 /release-artifacts/
+
+# Astra / dream-loop local working context
+/.dream-loop/
