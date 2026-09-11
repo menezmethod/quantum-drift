@@ -138,3 +138,25 @@ test("Verdant dressing stays on its floor or inside authoritative cover footprin
   assert.equal(world.root.children.some(o => o.name === 'verdant-pool'), false, 'closed forest has no pools');
   world.dispose();
 });
+
+
+test("radial overview stays ahead of fog at portrait zoom and restores ground fog", async () => {
+  const { cameraPose } = await import(`data:text/javascript;base64,${Buffer.from(await readFile(new URL("../view/CameraRig.js", import.meta.url))).toString("base64")}`);
+  const world = new World(new THREE.Scene(), null);
+  for (let stage = 0; stage < 4; stage++) {
+    const map = getWorld(stage);world.build(map);
+    for (const aspect of [.25, .46, 1.6]) for (const zoom of [.7, 1]) {
+      const camera = new THREE.PerspectiveCamera(55, aspect, .1, 400);
+      const pose = cameraPose({player:{x:0,z:0},map,aspect,fov:55,view:2,zoom});
+      camera.position.copy(pose.position);camera.lookAt(pose.target.x,0,pose.target.z);camera.updateMatrixWorld();
+      world.update(1,.016,camera);
+      for (const x of [map.activeBounds.minX,map.activeBounds.maxX]) for (const z of [map.activeBounds.minZ,map.activeBounds.maxZ]) {
+        const depth = -new THREE.Vector3(x,0,z).applyMatrix4(camera.matrixWorldInverse).z;
+        assert.ok(depth < world.fog.near, 'combat deck is before fog');
+      }
+      camera.position.y=37;world.update(2,.016,camera);
+      assert.equal(world.fog.near,504);assert.equal(world.fog.far,756);
+    }
+  }
+  world.dispose();
+});

@@ -91,7 +91,7 @@ export class ArenaRenderer {
     if(!this.cameraReady)this.rig.reset();
     this.rig.update({player:local,aim,map:this.map,dt,lobby:lobby||worldOnly,view:this.view,zoom:this.zoom});this.cameraReady=true;
     for(const ship of this.ships.values())ship.silhouette.visible=ship.alive&&!lobby&&!worldOnly&&coverOccludes(this.camera.position,ship.group.position,this.map.obstacles);
-    this.world.update(this.frameTime,dt);
+    this.world.update(this.frameTime,dt,this.camera);
     if(!worldOnly)this.fx.update({...state,players:rendered},dt,this.ships);else this.fx.clear();
     this.indicatorRoot.hidden=lobby||worldOnly;
     if(!lobby&&!worldOnly)this.indicators.update({players:rendered,localId:playerId,camera:this.camera,width:innerWidth,height:innerHeight,time:state.time,aim});

@@ -847,8 +847,13 @@ export class World {
     this.showcase = module;
   }
 
-  update(time, dt) {
+  update(time, dt, camera) {
     if (this.disposed || !this.m || !Number.isFinite(time)) return;
+    // Preserve ground fog; overview altitude must not fog out the combat deck.
+    if (this.map.deck && camera) {
+      this.fog.near = Math.max(this.map.size * 6, camera.position.y + this.map.size * 2);
+      this.fog.far = this.fog.near + this.map.size * 3;
+    }
     // One slow peripheral signal. No moving floor, cover, leaves or allocations.
     if (this.aurora) this.aurora.position.y = Math.sin(time * 0.08) * 0.3;
   }

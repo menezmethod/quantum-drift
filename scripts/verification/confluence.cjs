@@ -21,7 +21,25 @@ const {createGameServer}=require('../../server/server');
   const pilot=[...sim.players.values()][0];pilot.x=-10;pilot.z=-10;pilot.angle=0;
   await a.waitForTimeout(300);const before=pilot.z;await a.keyboard.down('w');await a.waitForTimeout(400);await a.keyboard.up('w');assert.ok(Math.abs(pilot.z-before)>2,'keyboard movement');
   await a.mouse.move(700,300);await a.mouse.down();await a.waitForTimeout(500);await a.mouse.up();assert.ok(pilot.shotsFired>0);assert.ok(pilot.energy<90);
-  async function receipt(page,name){await page.waitForTimeout(600);await page.screenshot({path:`${out}/${name}.png`});const frames=await page.evaluate(()=>new Promise(resolve=>{let start=performance.now(),last=start,frames=[];function sample(t){frames.push(t-last);last=t;if(t-start>1000)resolve(frames);else requestAnimationFrame(sample);}requestAnimationFrame(sample);}));const s=await page.evaluate(()=>window.__qd.getSnapshot());results.push({name,fps:1000/(frames.reduce((a,b)=>a+b,0)/frames.length),stage:s.state.mapStage,players:s.state.players.length,drawCalls:s.renderer.calls,triangles:s.renderer.triangles});}
+  async function receipt(page,name){
+   await page.waitForTimeout(600);
+   const png=await page.screenshot({path:`${out}/${name}.png`});
+   let visibleFraction;
+   if(name.includes('overview')||name.includes('stage-0')||name==='whole-world'){
+    // Inspect the interior image, excluding edge HUD. PNG byte size alone can
+    // pass on an empty arena with detailed overlays or a noisy background.
+    visibleFraction=await page.evaluate(async data=>{
+     const img=new Image();img.src=data;await img.decode();
+     const canvas=document.createElement('canvas');canvas.width=100;canvas.height=100;
+     const ctx=canvas.getContext('2d');
+     ctx.drawImage(img,img.width*.22,img.height*.25,img.width*.56,img.height*.5,0,0,100,100);
+     const pixels=ctx.getImageData(0,0,100,100).data;let visible=0;
+     for(let i=0;i<pixels.length;i+=4)if(.2126*pixels[i]+.7152*pixels[i+1]+.0722*pixels[i+2]>45)visible++;
+     return visible/10000;
+    },`data:image/png;base64,${png.toString('base64')}`);
+    assert.ok(visibleFraction>.08,`${name}: overview deck visible (${visibleFraction})`);
+   }
+const frames=await page.evaluate(()=>new Promise(resolve=>{let start=performance.now(),last=start,frames=[];function sample(t){frames.push(t-last);last=t;if(t-start>1000)resolve(frames);else requestAnimationFrame(sample);}requestAnimationFrame(sample);}));const s=await page.evaluate(()=>window.__qd.getSnapshot());results.push({name,visibleFraction,fps:1000/(frames.reduce((a,b)=>a+b,0)/frames.length),stage:s.state.mapStage,players:s.state.players.length,drawCalls:s.renderer.calls,triangles:s.renderer.triangles});}
   await receipt(a,'core-online');
   Object.assign(pilot,{x:-6,z:0,vx:0,vz:0});
   await a.waitForTimeout(400);await a.keyboard.down('a');await a.waitForTimeout(450);await a.keyboard.up('a');
@@ -88,6 +106,8 @@ const {createGameServer}=require('../../server/server');
   await touch.waitForTimeout(1400);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
   assert.ok(tp.x < -23,'touch bridge drift into Rails');await receipt(touch,'bridge-mobile');
   await touch.keyboard.press('v');await receipt(touch,'nexus-mobile-overview');
+  await touch.locator('#qd-zoom').evaluate(e=>{e.value='0.7';e.dispatchEvent(new Event('input',{bubbles:true}));});
+  await receipt(touch,'nexus-mobile-overview-wide');
   await touch.close();
   sockets.forEach(s=>s.disconnect());await a.waitForTimeout(500);assert.equal(sim.map.stage,3);
   sim.newRound();
