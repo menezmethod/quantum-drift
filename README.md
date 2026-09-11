@@ -93,12 +93,12 @@ Arena is the default overhead camera with a fixed angle and distance, smooth shi
 
 Pilot records include lifetime and per-map score, wins, kills/deaths, damage, accuracy, XP, and level. Match recaps separate practice results from saved online rounds. Score is 100 per kill, one point per five damage, minus 25 per death, plus 250 for the round winner (minimum zero). XP is 25 participation, 40 per kill, one per ten damage, and 150 for a win. Level is `1 + floor(sqrt(totalXP / 250))`. Bots never enter persistent leaderboards.
 
-## Visual Gauntlet
+## Scene verification
 
-`npm run test:browser` verifies combat, cameras, reconnect and mobile practice. `node scripts/verification/confluence.cjs` checks two browsers, seven connected pilots, and synchronized expansion/reset; receipts are in `docs/gauntlet/confluence/`. Historical tooling: `node scripts/verification/matrix.cjs r1` captures a serial map/view/light/state matrix. `npm run capture -- --map foundry --camera tactical --time dusk --state combat --out test-results/capture` captures one scene. These staged diagnostics require `?showcase`; their synthetic counters never become online records. PNGs and JSON telemetry live in `docs/gauntlet/evidence/`; independent evaluations and unresolved defects are tracked in `docs/STATUS.json`. Headless SwiftShader FPS is a regression measure, not a native GPU benchmark.
+Beyond the test suite above, `node scripts/verification/confluence.cjs` checks two browsers, seven connected pilots, and synchronized map expansion/reset. `npm run capture -- --map foundry --camera tactical --time dusk --state combat --out test-results/capture` captures a single reference scene. These staged diagnostics require `?showcase`; their synthetic counters never become online records. Headless SwiftShader FPS is a regression measure, not a native GPU benchmark.
 
 Capacity defaults to eight rooms (up to eight humans each) and 96 connected sockets. These are protective admission limits, not a measured 64-player performance guarantee. Configure `MAX_ROOMS` and `MAX_CONNECTIONS` only after load testing your host.
 
 ## Junction mini-release (v1.1.0)
 
-Select Junction for offset central cover, tight side pockets, and quick flanks using the existing Foundry art. It is optional and does not alter the original rotation. See [release loop](docs/RELEASE-LOOP.md) for incremental delivery and [critic evidence](docs/gauntlet/junction-review/REVIEW.md) for the limits of the first review.
+Select Junction for offset central cover, tight side pockets, and quick flanks using the existing Foundry art. It is optional and does not alter the original rotation. See [release loop](docs/RELEASE-LOOP.md) for incremental delivery.
