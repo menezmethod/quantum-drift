@@ -219,6 +219,7 @@ export class World {
     for (const district of map.districts || []) {
       if (map.id === "confluence" && district.id === "forest" && district.open) this.verdantBasin(district);
     }
+    for (const surface of map.surfaces || []) this.iceField(surface);
     this.centralInlay();
     this.routeCallouts();
     if (this.theme === "canopy") this.canopy();
@@ -576,6 +577,27 @@ export class World {
           [o.x, o.h + 0.2 + layer * 0.23, o.z],
           [radius * 0.7, 0.8, radius * (0.86 - layer * 0.14)], [-0.22, a, 0]);
       }
+    }
+  }
+
+  iceField({x,z,rx,rz}) {
+    // One flush opaque surface: visual edge and shared traction ellipse coincide.
+    const ice = this.material("#659cba", {roughness:0.3,metalness:0.28});
+    const frost = this.material("#b6d8dc", {roughness:0.8,metalness:0});
+    const geometry = this.own(new THREE.CircleGeometry(1,64));
+    const field = new THREE.Mesh(geometry,ice);
+    field.name = "drift-ice";
+    field.rotation.x = -Math.PI/2;field.position.set(x,0.035,z);field.scale.set(rx,rz,1);
+    this.root.add(field);
+    this.part("ring",frost,[x,0.05,z],[rx,rz,0.2],[Math.PI/2,0,0]);
+    // Short branching fractures stay in the ellipse and below the hover plane.
+    for (let i=0;i<12;i++) {
+      const a=i*TAU/12, turn=a+0.14*Math.sin(i*3), r=0.4+(i%3)*0.14;
+      const outer=[x+Math.cos(a)*rx*.96,0.045,z+Math.sin(a)*rz*.96];
+      const mid=[x+Math.cos(turn)*rx*r,0.045,z+Math.sin(turn)*rz*r];
+      const tip=[x+Math.cos(turn+.22)*rx*(r-.18),0.045,z+Math.sin(turn+.22)*rz*(r-.18)];
+      this.beam(frost,outer,mid,0.035,0.012);this.beam(frost,mid,tip,0.025,0.012);
+      if (i%2===0) this.beam(frost,mid,[x+Math.cos(turn-.2)*rx*(r+.17),0.045,z+Math.sin(turn-.2)*rz*(r+.17)],0.025,0.012);
     }
   }
 

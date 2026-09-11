@@ -160,3 +160,20 @@ test("radial overview stays ahead of fog at portrait zoom and restores ground fo
   }
   world.dispose();
 });
+
+test("ice surface visual bounds match shared traction bounds and disappear when locked", () => {
+  const world = new World(new THREE.Scene(), null);
+  for (let stage=0;stage<4;stage++) {
+    const map=getWorld(stage);world.build(map);world.root.updateMatrixWorld(true);
+    const fields=world.root.children.filter(o=>o.name==='drift-ice');
+    assert.equal(fields.length,map.surfaces.length);
+    for (const [i,field] of fields.entries()) {
+      const s=map.surfaces[i],b=new THREE.Box3().setFromObject(field);
+      assert.ok(Math.abs(b.min.x-(s.x-s.rx))<1e-5&&Math.abs(b.max.x-(s.x+s.rx))<1e-5);
+      assert.ok(Math.abs(b.min.z-(s.z-s.rz))<1e-5&&Math.abs(b.max.z-(s.z+s.rz))<1e-5);
+      assert.ok(b.max.y<.1&&b.min.y>0,'flush surface');
+      assert.equal(field.material.transparent,false);
+    }
+  }
+  world.dispose();
+});

@@ -1,0 +1,35 @@
+
+> quantum-drift@1.2.0 build
+> webpack --mode production
+
+assets by status 551 KiB [cached] 1 asset
+assets by path assets/ 6.81 MiB
+  assets by path assets/music/*.ogg 4.48 MiB
+    assets by status 4.34 MiB [big] 6 assets
+    + 3 assets
+  assets by path assets/sounds/*.mp3 192 KiB
+    asset assets/sounds/laser-bounce.mp3 41.7 KiB [compared for emit] [from: src/assets/sounds/laser-bounce.mp3] [copied]
+    + 8 assets
+  assets by path assets/models/ships/*.glb 2.14 MiB
+    asset assets/models/ships/avrocar_vz-9-av_experimental_aircraft.glb 1.55 MiB [compared for emit] [from: src/assets/models/ships/avrocar_vz-9-av_experimental_aircraft.glb] [copied] [big]
+    asset assets/models/ships/cryptos_saucer.glb 555 KiB [compared for emit] [from: src/assets/models/ships/cryptos_saucer.glb] [copied] [big]
+    asset assets/models/ships/ufo.glb 51.3 KiB [compared for emit] [from: src/assets/models/ships/ufo.glb] [copied]
+assets by status 156 KiB [emitted]
+  asset main.de5b2ee6425eda033706.js 150 KiB [emitted] [immutable] [minimized] (name: main)
+  asset index.html 5.85 KiB [emitted] [compared for emit] [minimized]
+Entrypoint main [big] 701 KiB = 293.eb119857250d7018b997.js 551 KiB main.de5b2ee6425eda033706.js 150 KiB
+orphan modules 238 KiB [orphan] 39 modules
+runtime modules 3.67 KiB 7 modules
+cacheable modules 1.59 MiB
+  modules by path ./node_modules/ 1.38 MiB 11 modules
+  modules by path ./shared/ 35.7 KiB
+    ./shared/simulation.js 23 KiB [built] [code generated]
+    ./shared/maps/world.js 5.37 KiB [built] [code generated]
+    ./shared/maps/index.js 4.52 KiB [built] [code generated]
+    + 2 modules
+  modules by path ./src/ 180 KiB
+    ./src/index.js + 11 modules 148 KiB [built] [code generated]
+    ./node_modules/css-loader/dist/cjs.js!./src/styles/main.css 14.7 KiB [built] [code generated]
+    ./node_modules/css-loader/dist/cjs.js!./src/interface/Interface.css 14.5 KiB [built] [code generated]
+    ./node_modules/css-loader/dist/cjs.js!./src/view/indicators.css 2.32 KiB [built] [code generated]
+webpack 5.110.3 compiled successfully in 1520 ms

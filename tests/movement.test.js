@@ -12,3 +12,41 @@ test('world movement commands ignore heading, normalize diagonals and reject inv
  assert.equal(sanitizeInput({move:{x:Infinity,z:0}}).move,null);
  assert.deepEqual(sanitizeInput({move:{x:100,z:-100}}).move,{x:1,z:-1});
 });
+
+test('ice carries momentum, countersteers predictably, and uses shared authoritative movement',()=>{
+ const {getWorld,surfaceAt}=require('../shared/maps/world');
+ const {Simulation,STEP,blocked,traceWalls}=require('../shared/simulation');
+ assert.deepEqual(getWorld(0).surfaces,[]);
+ for(let stage=1;stage<=3;stage++){
+  const map=getWorld(stage),ice=map.surfaces[0];
+  assert.equal(surfaceAt(map,ice),ice);
+  assert.equal(surfaceAt(map,{x:ice.x+ice.rx+.01,z:ice.z}),undefined);
+  const run=(z,input)=>{
+   const p={alive:true,x:-3,z,vx:13,vz:0,angle:1};
+   for(let i=0;i<30;i++)movePlayer(p,sanitizeInput(input),STEP,map);
+   return p;
+  };
+  const coast=run(ice.z,{}),dry=run(26,{}),brake=run(ice.z,{move:{x:-1,z:0}});
+  assert.ok(coast.x+3>(dry.x+3)*3,'ice coasts substantially farther');
+  assert.ok(brake.vx<0&&coast.vx>0,'countersteer reverses momentum');
+  assert.deepEqual(run(ice.z,{aim:{x:80,z:0}}),coast,'aim never changes drift');
+  for(const x of [-24,24]){
+   assert.equal(traceWalls(x,26,0,48,.8,map),null,'continuous dry outer bypass');
+   for(let z=26;z<=74;z++)assert.equal(surfaceAt(map,{x,z}),undefined);
+  }
+  const sim=new Simulation({map,populationExpansion:false});
+  for(let i=0;i<8;i++){
+   const p=sim.addPlayer(String(i),'Pilot');
+   assert.equal(surfaceAt(map,p),undefined,'spawn stays on dry ground');
+   assert.equal(blocked(p.x,p.z,1.2,map),false);
+  }
+  const p=sim.players.get('0');Object.assign(p,{x:-3,z:ice.z,vx:13,vz:0});
+  const predicted={...p},input=sanitizeInput({move:{x:0,z:1},aim:{x:50,z:50}});
+  for(let i=0;i<60;i++){
+   sim.setInput(p.id,{...input,seq:i+1});sim.step();movePlayer(predicted,input,STEP,map);
+   for(const key of ['x','z','vx','vz','angle'])assert.equal(predicted[key],p[key],'prediction matches shared server stepping');
+   assert.ok(Math.hypot(p.vx,p.vz)<=RULES.speed+1e-8,'speed cap');
+   assert.equal(blocked(p.x,p.z,.8,map),false,'ice does not bypass cover');
+  }
+ }
+});

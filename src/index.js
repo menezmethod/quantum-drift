@@ -886,6 +886,10 @@ class Game {
       ctx.strokeStyle = "#8ed5eb";
       ctx.strokeRect(x-n.w*scale/2,z-n.d*scale/2,n.w*scale,n.d*scale);
     }
+    for (const s of this.map.surfaces || []) {
+      const [x,z]=point(s);ctx.fillStyle='#82bfd8';
+      ctx.beginPath();ctx.ellipse(x,z,s.rx*scale,s.rz*scale,0,0,Math.PI*2);ctx.fill();
+    }
     for (const o of this.map.obstacles) {
       if (o.void) continue;
       const [x, z] = point(o);

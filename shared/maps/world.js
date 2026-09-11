@@ -79,11 +79,16 @@ function getWorld(stage=0){
  const spawnPoints=districts.filter(d=>d.open).flatMap(d=>[-1,1].flatMap(x=>[-1,1].map(z=>({x:d.x+x*22,z:d.z+z*22}))));
  spawnPoints.push(...[-1,1].flatMap(x=>[-1,1].map(z=>({x:x*10,z:z*10}))));
  const activeBounds={minX:Math.min(...areas.map(d=>d.x-d.w/2)),maxX:Math.max(...areas.map(d=>d.x+d.w/2)),minZ:Math.min(...areas.map(d=>d.z-d.d/2)),maxZ:Math.max(...areas.map(d=>d.z+d.d/2))};
- const map={nexus,activeBounds,deck,boundaries,connectors,id:'confluence',name:'Confluence',subtitle:'Nexus station · four expanding combat platforms',theme:'foundry',size,stage,districts,obstacles,spawnPoints,props:[],palette:{floor:'#18232b',cover:'#53616a',accent:'#ffad69',background:'#090f18'}};
+ const iceDistrict=districts.find(d=>d.id==='ice');
+ const surfaces=iceDistrict.open?[{kind:'ice',x:iceDistrict.x,z:iceDistrict.z-2,rx:7.5,rz:11,traction:0.23}]:[];
+ const map={nexus,activeBounds,deck,boundaries,connectors,surfaces,id:'confluence',name:'Confluence',subtitle:'Nexus station · four expanding combat platforms',theme:'foundry',size,stage,districts,obstacles,spawnPoints,props:[],palette:{floor:'#18232b',cover:'#53616a',accent:'#ffad69',background:'#090f18'}};
  cache.set(stage,map);return map;
 }
 function stageForHumans(count){return count>=7?3:count>=5?2:count>=3?1:0;}
 function regionAt(map,p){
  return [map.nexus,...(map.districts||[]),...(map.connectors||[])].find(d=>d&&d.open!==false&&Math.abs(p.x-d.x)<=d.w/2&&Math.abs(p.z-d.z)<=d.d/2);
 }
-module.exports={getWorld,stageForHumans,regionAt};
+function surfaceAt(map,p){
+ return map.surfaces?.find(s=>((p.x-s.x)/s.rx)**2+((p.z-s.z)/s.rz)**2<=1);
+}
+module.exports={getWorld,stageForHumans,regionAt,surfaceAt};

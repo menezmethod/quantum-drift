@@ -1,6 +1,6 @@
 // This module is used unchanged by Node and the browser. Distances are world units;
 // time is seconds. Only inputs cross the trust boundary, never positions or damage.
-const {getWorld,stageForHumans}=require('./maps/world');
+const {getWorld,stageForHumans,surfaceAt}=require('./maps/world');
 const STEP = 1 / 60;
 const RULES = Object.freeze({
   radius: 0.8,
@@ -200,7 +200,7 @@ function movePlayer(p, input, dt, map = MAP) {
     vx=input.move.x/length*RULES.speed;vz=input.move.z/length*RULES.speed;
     if(Math.hypot(vx,vz)>.01)p.angle+=angleDiff(Math.atan2(vx,vz),p.angle)*(1-Math.exp(-15*dt));
   }
-  const blend = 1 - Math.exp(-RULES.acceleration * dt);
+  const blend = 1 - Math.exp(-RULES.acceleration * (surfaceAt(map,p)?.traction ?? 1) * dt);
   p.vx += (vx - p.vx) * blend;
   p.vz += (vz - p.vz) * blend;
   const steps = Math.max(1, Math.ceil((Math.hypot(p.vx, p.vz) * dt) / 0.3));
@@ -363,7 +363,7 @@ class Simulation {
     for (let x = -this.map.size + 3; x <= this.map.size - 3; x += 4)
       for (let z = -this.map.size + 3; z <= this.map.size - 3; z += 4) candidates.push({x,z});
     for (const {x,z} of candidates) {
-        if (blocked(x, z, RULES.radius + 0.4, this.map)) continue;
+        if (blocked(x, z, RULES.radius + 0.4, this.map) || surfaceAt(this.map,{x,z})) continue;
         const other = [...this.players.values()].filter(
           (q) => q.id !== p.id && q.alive,
         );

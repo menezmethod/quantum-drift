@@ -8,7 +8,7 @@ const {createGameServer}=require('../../server/server');
  const url=`http://127.0.0.1:${game.server.address().port}`;
  const browser=await chromium.launch({...(fs.existsSync(process.env.CHROME_PATH||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')?{executablePath:process.env.CHROME_PATH||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'}:{}),headless:true});
  const sockets=[],errors=[],out='docs/gauntlet/confluence';fs.mkdirSync(out,{recursive:true});
- const results=[];
+ const results=[],coasting=[];
  try{
   const pages=[];for(let i=0;i<2;i++){const c=await browser.newContext({viewport:{width:1440,height:900}});const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto(url);await p.waitForFunction(()=>window.__qd);pages.push(p);}
   const [a,b]=pages;
@@ -48,17 +48,20 @@ const frames=await page.evaluate(()=>new Promise(resolve=>{let start=performance
   await receipt(a,'nexus-online');
   await a.keyboard.press('v');await receipt(a,'nexus-stage-0');await a.keyboard.press('v');
   const opponent=[...sim.players.values()][1];
+  async function verifyWeapons(z=0){
   for(const [key,weapon,targetX,aimX] of [['1','LASER',6,6],['2','GRENADE',6,6],['3','BOUNCE',-4,8]]){
-   Object.assign(pilot,{x:0,z:0,vx:0,vz:0,angle:0,health:100,energy:100,nextFire:0,protectedUntil:0});
-   Object.assign(opponent,{x:targetX,z:0,vx:0,vz:0,health:100,protectedUntil:0});sim.projectiles.clear();
+   Object.assign(pilot,{x:0,z,vx:0,vz:0,angle:0,health:100,energy:100,nextFire:0,protectedUntil:0});
+   Object.assign(opponent,{x:targetX,z,vx:0,vz:0,health:100,protectedUntil:0});sim.projectiles.clear();
    await a.keyboard.press(key);await a.waitForTimeout(500);
    const camera=(await a.evaluate(()=>window.__qd.getSnapshot())).camera;
-   const target=new Vector3(aimX,0.9,0).applyMatrix4(new Matrix4().fromArray(camera.matrix)).applyMatrix4(new Matrix4().fromArray(camera.projection));
+   const target=new Vector3(aimX,0.9,z).applyMatrix4(new Matrix4().fromArray(camera.matrix)).applyMatrix4(new Matrix4().fromArray(camera.projection));
    await a.mouse.move((target.x+1)*720,(1-target.y)*450);await a.mouse.down();await a.waitForTimeout(80);await a.mouse.up();
    await b.waitForFunction(id=>window.__qd.getSnapshot().state.players.find(p=>p.id===id).health<100,opponent.id);
-   assert.equal(pilot.angle,0,`${weapon} independent hub aim`);
-   assert.ok(opponent.health<= (weapon==='LASER'?76:weapon==='BOUNCE'?66:30),`${weapon} authoritative hub damage`);
+   assert.equal(pilot.angle,0,`${weapon} independent aim at z=${z}`);
+   assert.ok(opponent.health<= (weapon==='LASER'?76:weapon==='BOUNCE'?66:30),`${weapon} authoritative damage at z=${z}`);
   }
+  }
+  await verifyWeapons();
   await receipt(a,'nexus-combat');
   await a.keyboard.press('1');
   for(let i=0;i<5;i++){
@@ -86,7 +89,18 @@ const frames=await page.evaluate(()=>new Promise(resolve=>{let start=performance
   await a.keyboard.press('v');pilot.x=forest.x-22;pilot.z=forest.z-22;await receipt(a,'forest');
   pilot.x=forest.x;pilot.z=forest.z;pilot.vx=pilot.vz=0;await receipt(a,'forest-centre');
   const forestStart={x:pilot.x,z:pilot.z};await a.keyboard.down('d');await a.waitForTimeout(500);await a.keyboard.up('d');assert.ok(Math.hypot(pilot.x-forestStart.x,pilot.z-forestStart.z)>2,'forest clearing movement');
-  pilot.x=ice.x;pilot.z=ice.z;await receipt(a,'ice');
+  for(const [name,z] of [['ice',ice.z-2],['dry',ice.z-24]]){
+   Object.assign(pilot,{x:ice.x-5,z,vx:0,vz:0});await a.waitForTimeout(400);
+   await a.keyboard.down('a');await a.waitForTimeout(600);await a.keyboard.up('a');
+   const start=pilot.x;await a.waitForTimeout(500);
+   coasting.push({name,distance:pilot.x-start});
+   const snapshot=await a.evaluate(()=>window.__qd.getSnapshot());
+   assert.ok(Math.abs(snapshot.predicted.x-pilot.x)<1.2,`${name} prediction reconciles`);
+  }
+  assert.ok(coasting[0].distance>coasting[1].distance*1.8,'ice carries momentum farther than dry deck');
+  await verifyWeapons(ice.z-2);
+  Object.assign(pilot,{x:ice.x,z:ice.z-2,vx:0,vz:0});await receipt(a,'ice');
+  await a.keyboard.press('1');
   pilot.x=rails.x;pilot.z=rails.z-22;await receipt(a,'rails');
   const touch=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   touch.on('pageerror',e=>errors.push(e.message));await touch.goto(url);await touch.fill('#room-code',room);await touch.click('#join-room');
@@ -97,6 +111,11 @@ const frames=await page.evaluate(()=>new Promise(resolve=>{let start=performance
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:button.x+button.width/2,y:button.y+button.height/2}]});
   await touch.waitForTimeout(500);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
   assert.ok(Math.hypot(tp.x-forest.x,tp.z-forest.z)>2,'touch movement in forest clearing');await receipt(touch,'forest-mobile');
+  Object.assign(tp,{x:ice.x+5,z:ice.z-2,vx:0,vz:0});await touch.waitForTimeout(500);
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:button.x+button.width/2,y:button.y+button.height/2}]});
+  await touch.waitForTimeout(600);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  const iceRelease=tp.x;await touch.waitForTimeout(450);
+  assert.ok(iceRelease-tp.x>1.5,'native touch ice coasting');await receipt(touch,'ice-mobile');
   Object.assign(tp,{x:0,z:0,vx:0,vz:0});await touch.waitForTimeout(500);
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:button.x+button.width/2,y:button.y+button.height/2}]});
   await touch.waitForTimeout(400);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
@@ -118,7 +137,7 @@ const frames=await page.evaluate(()=>new Promise(resolve=>{let start=performance
   await hubMobile.keyboard.press('v');await receipt(hubMobile,'nexus-mobile-stage-0');await hubMobile.close();
   const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});mobile.on('pageerror',e=>errors.push(e.message));await mobile.goto(url);await mobile.click('#practice');await mobile.waitForFunction(()=>window.__qd.getSnapshot().state.mapStage===3&&window.__qd.getSnapshot().mode==='practice');await receipt(mobile,'practice-mobile');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(`${out}/verification.json`,JSON.stringify({method:'Two native headless Chrome clients plus five real sockets; movement, weapon energy, synchronized population expansion, screenshots. Draw counts are frame telemetry, not a load benchmark.',errors,results},null,2));
+  fs.writeFileSync(`${out}/verification.json`,JSON.stringify({method:'Two native headless Chrome clients plus five real sockets; movement, weapon energy, synchronized population expansion, screenshots. Draw counts are frame telemetry, not a load benchmark.',errors,coasting,results},null,2));
   console.log(JSON.stringify(results));
  }finally{sockets.forEach(s=>s.disconnect());await browser.close();await game.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});
