@@ -8,7 +8,7 @@ const {createGameServer}=require('../../server/server');
  const url=`http://127.0.0.1:${game.server.address().port}`;
  const browser=await chromium.launch({...(fs.existsSync(process.env.CHROME_PATH||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')?{executablePath:process.env.CHROME_PATH||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'}:{}),headless:true});
  const sockets=[],errors=[],out='docs/gauntlet/confluence';fs.mkdirSync(out,{recursive:true});
- const results=[],coasting=[];
+ const results=[],coasting=[],conveyors=[];
  try{
   const pages=[];for(let i=0;i<2;i++){const c=await browser.newContext({viewport:{width:1440,height:900}});const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto(url);await p.waitForFunction(()=>window.__qd);pages.push(p);}
   const [a,b]=pages;
@@ -102,6 +102,33 @@ const frames=await page.evaluate(()=>new Promise(resolve=>{let start=performance
   Object.assign(pilot,{x:ice.x,z:ice.z-2,vx:0,vz:0});await receipt(a,'ice');
   await a.keyboard.press('1');
   pilot.x=rails.x;pilot.z=rails.z-22;await receipt(a,'rails');
+  const belts=sim.map.surfaces.filter(s=>s.kind==='conveyor');
+  for(const belt of belts){
+   Object.assign(pilot,{x:belt.x,z:belt.z,vx:0,vz:0});await a.waitForTimeout(400);
+   const start=pilot.z;await a.waitForTimeout(600);
+   const carry=pilot.z-start,sign=Math.sign(belt.pushZ),key=sign>0?'s':'w';
+   assert.ok(carry*sign>2,'authoritative passive conveyor transport');
+   const brakeStart=pilot.z;await a.keyboard.down(key);await a.waitForTimeout(600);await a.keyboard.up(key);
+   const countersteer=pilot.z-brakeStart;assert.ok(countersteer*sign < -3,'keyboard overcomes belt');
+   await a.waitForTimeout(400);const snapshot=await a.evaluate(()=>window.__qd.getSnapshot());
+   assert.ok(Math.abs(snapshot.predicted.z-pilot.z)<1.2,'conveyor prediction reconciles');
+   conveyors.push({x:belt.x,carry,countersteer});
+  }
+  // Real mouse shots while carried by the eastern belt. Bank the ricochet off
+  // the outer wall with a small lead on the target riding the same belt.
+  for(const [key,weapon,targetX] of [['1','LASER',28],['2','GRENADE',28],['3','BOUNCE',23]]){
+   Object.assign(pilot,{x:24,z:-54,vx:0,vz:0,angle:0,health:100,energy:100,nextFire:0,protectedUntil:0});
+   Object.assign(opponent,{x:targetX,z:-54,vx:0,vz:0,health:100,protectedUntil:0});sim.projectiles.clear();
+   await a.keyboard.press(key);await a.waitForTimeout(500);
+   const camera=(await a.evaluate(()=>window.__qd.getSnapshot())).camera;
+   const aimX=weapon==='BOUNCE'?60-targetX:targetX;
+   const aimZ=opponent.z+(weapon==='BOUNCE'?opponent.vz*(aimX-pilot.x)/39:0);
+   const target=new Vector3(aimX,.9,aimZ).applyMatrix4(new Matrix4().fromArray(camera.matrix)).applyMatrix4(new Matrix4().fromArray(camera.projection));
+   await a.mouse.move((target.x+1)*720,(1-target.y)*450);await a.mouse.down();await a.waitForTimeout(80);await a.mouse.up();
+   await b.waitForFunction(id=>window.__qd.getSnapshot().state.players.find(p=>p.id===id).health<100,opponent.id,{timeout:3000});
+   assert.equal(pilot.angle,0,`${weapon} conveyor drift independent of aim`);
+  }
+  Object.assign(pilot,{x:24,z:-54,vx:0,vz:0});await receipt(a,'forge-conveyor');await a.keyboard.press('1');
   const touch=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   touch.on('pageerror',e=>errors.push(e.message));await touch.goto(url);await touch.fill('#room-code',room);await touch.click('#join-room');
   await touch.waitForFunction(()=>window.__qd.getSnapshot().mode==='online');
@@ -116,6 +143,11 @@ const frames=await page.evaluate(()=>new Promise(resolve=>{let start=performance
   await touch.waitForTimeout(600);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
   const iceRelease=tp.x;await touch.waitForTimeout(450);
   assert.ok(iceRelease-tp.x>1.5,'native touch ice coasting');await receipt(touch,'ice-mobile');
+  Object.assign(tp,{x:24,z:-54,vx:0,vz:0});await touch.waitForTimeout(500);
+  const beltStart=tp.z;await touch.waitForTimeout(500);assert.ok(tp.z-beltStart>2,'touch client conveyor carry');
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:button.x+button.width/2,y:button.y+button.height/2}]});
+  await touch.waitForTimeout(350);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  assert.ok(tp.x<22,'touch exits belt laterally');await receipt(touch,'forge-mobile');
   Object.assign(tp,{x:0,z:0,vx:0,vz:0});await touch.waitForTimeout(500);
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:button.x+button.width/2,y:button.y+button.height/2}]});
   await touch.waitForTimeout(400);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
@@ -137,7 +169,7 @@ const frames=await page.evaluate(()=>new Promise(resolve=>{let start=performance
   await hubMobile.keyboard.press('v');await receipt(hubMobile,'nexus-mobile-stage-0');await hubMobile.close();
   const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});mobile.on('pageerror',e=>errors.push(e.message));await mobile.goto(url);await mobile.click('#practice');await mobile.waitForFunction(()=>window.__qd.getSnapshot().state.mapStage===3&&window.__qd.getSnapshot().mode==='practice');await receipt(mobile,'practice-mobile');
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(`${out}/verification.json`,JSON.stringify({method:'Two native headless Chrome clients plus five real sockets; movement, weapon energy, synchronized population expansion, screenshots. Draw counts are frame telemetry, not a load benchmark.',errors,coasting,results},null,2));
+  fs.writeFileSync(`${out}/verification.json`,JSON.stringify({method:'Two native headless Chrome clients plus five real sockets; movement, weapon energy, synchronized population expansion, screenshots. Draw counts are frame telemetry, not a load benchmark.',errors,coasting,conveyors,results},null,2));
   console.log(JSON.stringify(results));
  }finally{sockets.forEach(s=>s.disconnect());await browser.close();await game.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -887,8 +887,14 @@ class Game {
       ctx.strokeRect(x-n.w*scale/2,z-n.d*scale/2,n.w*scale,n.d*scale);
     }
     for (const s of this.map.surfaces || []) {
-      const [x,z]=point(s);ctx.fillStyle='#82bfd8';
-      ctx.beginPath();ctx.ellipse(x,z,s.rx*scale,s.rz*scale,0,0,Math.PI*2);ctx.fill();
+      const [x,z]=point(s);
+      if(s.kind==='conveyor'){
+        ctx.fillStyle='#e59c50';ctx.fillRect(x-s.w*scale/2,z-s.d*scale/2,s.w*scale,s.d*scale);
+        const sign=Math.sign(s.pushZ);ctx.strokeStyle='#392b22';ctx.beginPath();
+        ctx.moveTo(x-2,z+sign*2);ctx.lineTo(x,z-sign*2);ctx.lineTo(x+2,z+sign*2);ctx.stroke();
+      }else{
+        ctx.fillStyle='#82bfd8';ctx.beginPath();ctx.ellipse(x,z,s.rx*scale,s.rz*scale,0,0,Math.PI*2);ctx.fill();
+      }
     }
     for (const o of this.map.obstacles) {
       if (o.void) continue;

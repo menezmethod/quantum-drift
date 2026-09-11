@@ -50,3 +50,46 @@ test('ice carries momentum, countersteers predictably, and uses shared authorita
   }
  }
 });
+
+test('Forge conveyors carry, allow countersteering and dry flanks, and preserve collision, aim and prediction',()=>{
+ const {getWorld,surfaceAt}=require('../shared/maps/world');
+ const {Simulation,STEP,blocked,traceWalls}=require('../shared/simulation');
+ for(let stage=0;stage<3;stage++)assert.ok(getWorld(stage).surfaces.every(s=>s.kind!=='conveyor'));
+ const map=getWorld(3),belts=map.surfaces.filter(s=>s.kind==='conveyor');
+ assert.equal(belts.length,2);assert.equal(belts[0].pushZ,-belts[1].pushZ);
+ for(const s of belts){
+  const sign=Math.sign(s.pushZ);
+  assert.equal(surfaceAt(map,{x:s.x+s.w/2,z:s.z+s.d/2}),s,'rectangular corners are active');
+  assert.equal(surfaceAt(map,{x:s.x+s.w/2+.01,z:s.z}),undefined);
+  const run=(move,aim)=>{
+   const p={alive:true,x:s.x,z:s.z,vx:0,vz:0,angle:0};
+   for(let i=0;i<60;i++){
+    movePlayer(p,sanitizeInput({move,aim}),STEP,map);
+    assert.ok(Math.hypot(p.vx,p.vz)<=RULES.speed+1e-8);
+    assert.equal(blocked(p.x,p.z,RULES.radius,map),false);
+   }
+   return p;
+  };
+  const coast=run(),against=run({x:0,z:-sign}),withBelt=run({x:0,z:sign});
+  assert.ok((coast.z-s.z)*sign>3,'passive transport');
+  assert.ok((against.z-s.z)*sign < -7,'full thrust overcomes belt');
+  assert.ok((withBelt.z-s.z)*sign>11,'downstream traverse');
+  assert.deepEqual(run(undefined,{x:80,z:80}),coast,'mouse aim cannot redirect belt or hull');
+  const exit=run({x:sign,z:0});
+  assert.equal(surfaceAt(map,exit),undefined,'lateral exit to dry deck');
+  assert.equal(traceWalls(sign*28,-74,0,50,.8,map),null,'clear dry outer flank');
+  for(let z=-74;z<=-24;z++)assert.equal(surfaceAt(map,{x:sign*28,z}),undefined);
+  const sim=new Simulation({map,populationExpansion:false});
+  const p=sim.addPlayer('pilot','Pilot');Object.assign(p,{x:s.x,z:s.z,vx:0,vz:0});
+  const predicted={...p};
+  for(let i=0;i<120;i++){
+   const input=sanitizeInput({move:{x:i<60?0:sign,z:-sign},aim:{x:0,z:0},seq:i+1});
+   sim.setInput(p.id,input);sim.step();movePlayer(predicted,input,STEP,map);
+   for(const k of ['x','z','vx','vz','angle'])assert.equal(predicted[k],p[k]);
+   assert.equal(blocked(p.x,p.z,RULES.radius,map),false);
+  }
+ }
+ const sim=new Simulation({map,populationExpansion:false});
+ for(let i=0;i<8;i++)assert.equal(surfaceAt(map,sim.addPlayer(String(i),'Pilot')),undefined,'safe dry spawn');
+ for(const p of map.spawnPoints)assert.equal(surfaceAt(map,p),undefined);
+});

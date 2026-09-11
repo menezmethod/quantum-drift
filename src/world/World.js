@@ -249,7 +249,10 @@ export class World {
     for (const district of map.districts || []) {
       if (map.id === "confluence" && district.id === "forest" && district.open) this.verdantBasin(district);
     }
-    for (const surface of map.surfaces || []) this.iceField(surface);
+    for (const surface of map.surfaces || []) {
+      if (surface.kind === 'ice') this.iceField(surface);
+      else if (surface.kind === 'conveyor') this.conveyor(surface);
+    }
     this.centralInlay();
     this.routeCallouts();
     if (this.theme === "canopy") this.canopy();
@@ -620,6 +623,29 @@ export class World {
     this.root.add(field);
   }
 
+  conveyor({x,z,w,d,pushZ}) {
+    // Animated tread under fixed arrows: the entire readable belt is pushable,
+    // with no raised lips or invisible collision along its dry bypass.
+    const n=64,pixels=new Uint8Array(n*n*4);
+    for(let y=0;y<n;y++)for(let x=0;x<n;x++) {
+      const seam=y%16<2,grain=(x*13+y*7)%9;
+      const value=(seam?27:70)+grain,i=(y*n+x)*4;
+      pixels.set([value,value+4,value+7,255],i);
+    }
+    const texture=this.own(new THREE.DataTexture(pixels,n,n));
+    texture.colorSpace=THREE.SRGBColorSpace;texture.wrapS=texture.wrapT=THREE.RepeatWrapping;
+    texture.magFilter=THREE.LinearFilter;texture.minFilter=THREE.LinearMipmapLinearFilter;
+    texture.generateMipmaps=true;texture.repeat.set(1,d/4);texture.needsUpdate=true;
+    this.conveyors.push({texture,pushZ});
+    const belt=new THREE.Mesh(this.geometry.plane,this.material('#ffffff',{map:texture,roughness:.7,metalness:.4}));
+    belt.name='forge-conveyor';belt.rotation.x=-Math.PI/2;belt.position.set(x,.035,z);belt.scale.set(w,d,1);
+    this.root.add(belt);
+    for(const side of [-1,1])this.box(this.m.accent,x+side*(w/2-.08),.05,z,.16,.02,d);
+    const sign=Math.sign(pushZ);
+    for(let dz=-d/2+2;dz<d/2;dz+=4)for(const side of [-1,1])
+      this.box(this.m.accent,x+side*.4,.065,z+dz,.15,.02,1.2,Math.atan2(-side*.8,sign*.9));
+  }
+
   centralInlay() {
     // Flush machinery, botanical water lens or relay calibration rose. Never
     // creates a central obstacle when the authoritative layout has none.
@@ -895,7 +921,8 @@ export class World {
       this.fog.near = Math.max(this.map.size * 6, camera.position.y + this.map.size * 2);
       this.fog.far = this.fog.near + this.map.size * 3;
     }
-    // One slow peripheral signal. No moving floor, cover, leaves or allocations.
+    for (const {texture,pushZ} of this.conveyors) texture.offset.y = (time*pushZ/4)%1;
+    // One slow peripheral signal. No moving cover, leaves or allocations.
     if (this.aurora) this.aurora.position.y = Math.sin(time * 0.08) * 0.3;
   }
 
@@ -908,6 +935,7 @@ export class World {
     this.resources.clear();
     this.batches.clear();
     this.aurora = null;
+    this.conveyors = [];
     this.sun = this.rim = this.hemisphere = null;
   }
 

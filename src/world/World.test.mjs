@@ -166,9 +166,10 @@ test("ice surface visual bounds match shared traction bounds and disappear when 
   for (let stage=0;stage<4;stage++) {
     const map=getWorld(stage);world.build(map);world.root.updateMatrixWorld(true);
     const fields=world.root.children.filter(o=>o.name==='drift-ice');
-    assert.equal(fields.length,map.surfaces.length);
+    const surfaces=map.surfaces.filter(s=>s.kind==='ice');
+    assert.equal(fields.length,surfaces.length);
     for (const [i,field] of fields.entries()) {
-      const s=map.surfaces[i],b=new THREE.Box3().setFromObject(field);
+      const s=surfaces[i],b=new THREE.Box3().setFromObject(field);
       assert.ok(Math.abs(b.min.x-(s.x-s.rx))<1e-5&&Math.abs(b.max.x-(s.x+s.rx))<1e-5);
       assert.ok(Math.abs(b.min.z-(s.z-s.rz))<1e-5&&Math.abs(b.max.z-(s.z+s.rz))<1e-5);
       assert.ok(b.max.y<.1&&b.min.y>0,'flush surface');
@@ -184,5 +185,25 @@ test("ice surface visual bounds match shared traction bounds and disappear when 
       assert.ok(rim/rimCount>center/centerCount*1.3,'frost clearly borders darker ice plates');
     }
   }
+  world.dispose();
+});
+
+test("conveyor tread bounds and animation match the authoritative lanes, including rebuild disposal", () => {
+  const world=new World(new THREE.Scene(),null),map=getWorld(3);
+  world.build(map);world.root.updateMatrixWorld(true);
+  const belts=world.root.children.filter(o=>o.name==='forge-conveyor');
+  const surfaces=map.surfaces.filter(s=>s.kind==='conveyor');
+  assert.equal(belts.length,2);
+  world.update(.2,.016);
+  for(const [i,belt] of belts.entries()) {
+    const s=surfaces[i],b=new THREE.Box3().setFromObject(belt);
+    assert.deepEqual([b.min.x,b.max.x,b.min.z,b.max.z],[s.x-s.w/2,s.x+s.w/2,s.z-s.d/2,s.z+s.d/2]);
+    assert.ok(b.max.y<.1&&b.min.y>0);
+    assert.equal(belt.material.transparent,false);
+    assert.equal(Math.sign(belt.material.map.offset.y),Math.sign(s.pushZ),'UV +V faces world -Z; positive offset carries tread +Z');
+  }
+  world.build(getWorld(2));
+  assert.equal(world.conveyors.length,0);
+  assert.equal(world.root.children.some(o=>o.name==='forge-conveyor'),false);
   world.dispose();
 });

@@ -200,7 +200,13 @@ function movePlayer(p, input, dt, map = MAP) {
     vx=input.move.x/length*RULES.speed;vz=input.move.z/length*RULES.speed;
     if(Math.hypot(vx,vz)>.01)p.angle+=angleDiff(Math.atan2(vx,vz),p.angle)*(1-Math.exp(-15*dt));
   }
-  const blend = 1 - Math.exp(-RULES.acceleration * (surfaceAt(map,p)?.traction ?? 1) * dt);
+  const surface = surfaceAt(map,p);
+  if (surface?.kind === 'conveyor') {
+    vz += surface.pushZ;
+    const scale = Math.max(1, Math.hypot(vx,vz) / RULES.speed);
+    vx /= scale; vz /= scale;
+  }
+  const blend = 1 - Math.exp(-RULES.acceleration * (surface?.traction ?? 1) * dt);
   p.vx += (vx - p.vx) * blend;
   p.vz += (vz - p.vz) * blend;
   const steps = Math.max(1, Math.ceil((Math.hypot(p.vx, p.vz) * dt) / 0.3));

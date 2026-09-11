@@ -81,6 +81,8 @@ function getWorld(stage=0){
  const activeBounds={minX:Math.min(...areas.map(d=>d.x-d.w/2)),maxX:Math.max(...areas.map(d=>d.x+d.w/2)),minZ:Math.min(...areas.map(d=>d.z-d.d/2)),maxZ:Math.max(...areas.map(d=>d.z+d.d/2))};
  const iceDistrict=districts.find(d=>d.id==='ice');
  const surfaces=iceDistrict.open?[{kind:'ice',x:iceDistrict.x,z:iceDistrict.z-2,rx:7.5,rz:11,traction:0.23}]:[];
+ const forge=districts.find(d=>d.id==='core');
+ if(forge.open)for(const side of [-1,1])surfaces.push({kind:'conveyor',x:forge.x+side*24,z:forge.z-4,w:4,d:32,pushZ:side*4.5});
  const map={nexus,activeBounds,deck,boundaries,connectors,surfaces,id:'confluence',name:'Confluence',subtitle:'Nexus station · four expanding combat platforms',theme:'foundry',size,stage,districts,obstacles,spawnPoints,props:[],palette:{floor:'#18232b',cover:'#53616a',accent:'#ffad69',background:'#090f18'}};
  cache.set(stage,map);return map;
 }
@@ -89,6 +91,8 @@ function regionAt(map,p){
  return [map.nexus,...(map.districts||[]),...(map.connectors||[])].find(d=>d&&d.open!==false&&Math.abs(p.x-d.x)<=d.w/2&&Math.abs(p.z-d.z)<=d.d/2);
 }
 function surfaceAt(map,p){
- return map.surfaces?.find(s=>((p.x-s.x)/s.rx)**2+((p.z-s.z)/s.rz)**2<=1);
+ return map.surfaces?.find(s=>s.w
+  ? Math.abs(p.x-s.x)<=s.w/2&&Math.abs(p.z-s.z)<=s.d/2
+  : ((p.x-s.x)/s.rx)**2+((p.z-s.z)/s.rz)**2<=1);
 }
 module.exports={getWorld,stageForHumans,regionAt,surfaceAt};

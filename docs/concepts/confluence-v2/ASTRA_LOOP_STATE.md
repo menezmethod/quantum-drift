@@ -1,84 +1,73 @@
 # Astra Loop State
 
 **Branch:** `design/confluence-gameplay-v2`
-**Status:** IN PROGRESS — iteration 09 complete and checkpointed; overall exit criteria NOT met
-**Owner:** GPT-6 Astra (implements the loop); Sonnet supervises, validates, checkpoints, resumes after quota resets
+**Status:** IN PROGRESS — iteration 10 complete; overall exit criteria NOT met
+**Owner:** GPT-6 Astra implements; Sonnet supervises/resumes after quota resets
 
 ## Completed work
 
-- Iterations 00–06 intact (baseline → district differentiation → Forest dressing
-  → always-on Nexus junction → matches start in Nexus → active-territory framing
-  → radial cardinal topology).
-- Iteration 07 fixed the iteration-06 regression: the full-map `V` overview was
-  rendering near-black for the size-84 radial world. Also added a `visibleFraction`
-  image-content assertion to `scripts/verification/confluence.cjs` so a
-  near-empty overview capture can't silently pass again.
-- Iteration 08 added a Frozen Relay low-traction "drift ice" hazard: an
-  authoritative surface ellipse (`shared/maps/world.js` `surfaces`/`surfaceAt`,
-  `shared/simulation.js` traction in the shared `movePlayer` path — server,
-  Practice, and prediction/replay all agree), dry safe spawns/bypasses, radar
-  marking, Flight-help/README notes on countersteering.
-- **Iteration 09** replaced the ice field's flat colour + straight spoke
-  fractures with a procedural cellular `DataTexture` (`driftIceTexture()` in
-  `src/world/World.js`): irregular cracked ice plates + frosted rim, pure
-  material swap over the same authoritative ellipse. New pixel-level test
-  asserts opacity + rim/centre brightness contrast.
-- Codex hit its ChatGPT usage limit again right after finishing iteration 09
-  (before writing its own checkpoint). Sonnet validated the interrupted tree,
-  assembled the checkpoint evidence, and is committing/pushing it.
-  **Reset reported by Codex: `Sep 11th, 2026 3:05 AM`** (America/New_York).
-  A fresh Astra resume is scheduled after that.
+Iterations 00–09 remain intact: district geometry/dressing, always-on Nexus,
+low-population Nexus starts, active framing, radial topology, overview fog
+regression guard, authoritative Frozen Relay ice, procedural cracked-ice finish.
+The stale kickoff's central-junction next action has already been completed.
 
-## Validation of iteration 09 (Sonnet, on the interrupted tree)
+**Iteration 10:** added opposing Forge conveyor flanks. Shared rectangular
+surfaces at x=±24,z=-54,w=4,d=32 supply ±4.5 units/s carry through `movePlayer`.
+Server/Practice/prediction/replay use the same code. Thrust overcomes the push;
+velocity target remains capped at 13. Spawn selection avoids surfaces. Two dry
+outer bypasses and all existing district crossings remain open. Procedural
+moving treads and static amber arrows match the exact shared bounds. Radar,
+Flight help and README explain the mechanic. No dependencies or imported assets.
 
-- `npm test` → **93/93 pass**. `npm run build` → **pass**.
-- `node scripts/verification/confluence.cjs` → 0 page errors, **60 fps** across
-  all 28 captures; `visibleFraction` 0.33–0.81 depending on framing (no
-  near-black overview). Evidence + logs: `loop-runs/iteration-09/`.
-- Visual: `ice.png` / `whole-world.png` show real irregular cracked ice with a
-  frosted rim, readable at both ground-play and full-map zoom — a clear step up
-  from the flat-colour placeholder.
-- No collision/authority changes; this iteration only replaced the ice
-  material. Multiplayer stays server-authoritative.
+## Validation
 
-## Scores (0–10, higher is better; last fresh critic pass was iteration 08 on the changed area)
+- `npm test`: **95/95 pass**; `npm run build`: **pass**.
+- `node scripts/verification/confluence.cjs`: **pass**, 30 fresh captures,
+  0 page errors, 60.11–60.95 fps, max 107 draw calls. Healthy overview content:
+  visibleFraction 0.209–0.811, whole-world 0.367.
+- Keyboard: ~2.7-unit belt carry in 0.6s; 4.12-unit countersteer in 0.6s on
+  both opposing lanes; prediction reconciles within 1.2 units.
+- Live mouse laser/grenade/ricochet damage while riding the belt; aim does not
+  redirect hull movement. Native touch carry and lateral exit pass.
+- Shared checks: speed cap, collision, dry safe spawns, prediction parity;
+  existing 3/5/7-human expansion, paired bridges, reset and Practice pass.
+- Draw/frame samples establish a rendering regression check, not load capacity.
 
-Movement **7**; combat readability **7**; zone identity **4**;
-composition/silhouette **5**; materials/lighting/VFX **5** (was 3 before iter-09's
-ice texture; other three districts still lack comparable treatment);
-implementation realism **9**; performance safety **9**.
+## Evidence and critique
+
+Durable receipts: `loop-runs/iteration-10/` (README, logs, JSON, four PNGs).
+`forge-conveyor.png` / `forge-mobile.png` show readable directional flanks;
+`whole-world.png` and `unlock-stage-3.png` show factory context. Better route
+choice than iteration 09, but still below the manufacturing-wing concept's
+material depth and landmark identity. No claim of overall completion.
+
+Fresh screenshot-only critic scores (0–10, higher better): movement **7**,
+combat readability **6**, zone identity **6**, composition **5**,
+materials/lighting/VFX **5**, implementation realism **8**, performance safety
+**7 provisional**. Astra accepts the visual scores; live verification supports
+performance safety **9** for this implementation. Largest immediate gap:
+boxed pilot nameplates overlap ships and hide combat/aim space.
 
 ## Remaining gaps
 
-1. **Hazard/mechanic parity across districts.** Only Frozen Relay has an
-   authoritative movement-affecting surface (ice traction). Forge, Forest and
-   Orbital Rails still have plain floors — the concept gives Forge molten
-   hazards/conveyors and Rails low-gravity/breakaway bridges.
-2. Station outer silhouette still reads as platforms-on-black rather than the
-   concept's built-up radial hull (the orange halo ring helps but is thin).
-3. Forest pool triangulation/edges still look rough at some zooms.
-4. Overview nameplates crowd the frame at high population (minor UI polish).
+- Large boxed nameplates obscure ships and overlap in crowded Nexus/overview.
+- Station/district silhouette and landmarks still look like rectangular decks
+  with repeated blocks; concept-level visual identity remains incomplete.
+- Forest pools show conspicuous triangular bank/water artifacts at overview.
+- Rails still has no distinctive authoritative surface mechanic.
 
 ## NEXT_ACTION
 
-Give ONE more district an authoritative movement/hazard surface following the
-iteration-08/09 pattern (shared authoritative surface in
-`shared/maps/world.js` + `shared/simulation.js`'s shared `movePlayer` path, so
-server/Practice/prediction agree; then a `World.js` render pass; then a
-procedural material pass if a flat placeholder is used first). Pick Forge
-(molten hazard / conveyor push, per `orbital_arena_industrial_manufacturing_wing.png`)
-or Orbital Rails (low-gravity pads / breakaway bridge risk, per
-`quantum_drift_orbital_rail_yard.png`) — whichever is the smaller, more
-shippable slice. Keep dry safe spawns, both crossings/bridges, independent aim,
-and the speed cap intact. Validate with `npm test`, `npm run build`,
-`node scripts/verification/confluence.cjs` (checking `visibleFraction` stays
-healthy), live keyboard+touch movement through the new surface, fresh
-screenshots, then checkpoint, commit and push.
+Replace persistent boxed ship nameplates with compact hull bars immediately
+above ships, retaining a clear local-player marker and protection state. Keep
+pilot names available in the scoreboard and accessible labels. Inspect
+`src/view/ShipIndicators.js`, `indicators.css`, their tests and renderer callers;
+validate crowded Nexus and belt combat on desktop/touch plus full-map views.
+Run tests/build and the Chrome gauntlet, capture, critique, checkpoint and push.
 
 ## Checkpoint contract
 
 Every meaningful pass: rewrite this state with exact results, scores and ONE
-`NEXT_ACTION`; commit and push. On a usage limit: finish the checkpoint first,
-then report only the exact reset text Codex supplies (never invent one). A
-fresh Astra context resumes from this file after the reset — never
-fork/continue the oversized context, never switch models.
+NEXT_ACTION; commit with the requested Sonnet attribution and push. On quota,
+record only the exact reset text Codex supplies; never invent a reset time.
+A fresh Astra context resumes from this file. No implementation delegation.
