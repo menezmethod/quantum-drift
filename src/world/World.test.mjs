@@ -173,6 +173,15 @@ test("ice surface visual bounds match shared traction bounds and disappear when 
       assert.ok(Math.abs(b.min.z-(s.z-s.rz))<1e-5&&Math.abs(b.max.z-(s.z+s.rz))<1e-5);
       assert.ok(b.max.y<.1&&b.min.y>0,'flush surface');
       assert.equal(field.material.transparent,false);
+      const {data,width,height}=field.material.map.image;
+      let rim=0,center=0,rimCount=0,centerCount=0;
+      for(let y=0;y<height;y++)for(let x=0;x<width;x++) {
+        const i=(y*width+x)*4,r=Math.hypot(x/(width-1)*2-1,y/(height-1)*2-1);
+        assert.equal(data[i+3],255,'opaque ice texel');
+        if(r>.94&&r<1){rim+=data[i+1];rimCount++;}
+        if(r<.7){center+=data[i+1];centerCount++;}
+      }
+      assert.ok(rim/rimCount>center/centerCount*1.3,'frost clearly borders darker ice plates');
     }
   }
   world.dispose();

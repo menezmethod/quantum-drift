@@ -44,6 +44,36 @@ function surfaceTexture(theme, palette) {
   return texture;
 }
 
+// Static fractured plates: nearest cells set blue depth, their shared edges
+// form cracks. The frosted transition stays inside the exact traction ellipse.
+function driftIceTexture() {
+  const n=256, pixels=new Uint8Array(n*n*4), seeds=[];
+  const noise=(x,y)=>{const v=Math.sin(x*127.1+y*311.7)*43758.5453;return v-Math.floor(v);};
+  for (let y=0;y<5;y++) for (let x=0;x<5;x++)
+    seeds.push([(x+.2+noise(x,y)*.6)/5*2-1,(y+.2+noise(y+8,x)*.6)/5*2-1]);
+  for (let y=0;y<n;y++) for (let x=0;x<n;x++) {
+    const u=x/(n-1)*2-1,v=y/(n-1)*2-1;
+    let first=Infinity,second=Infinity,cell=0;
+    for (let i=0;i<seeds.length;i++) {
+      const d=(u-seeds[i][0])**2+(v-seeds[i][1])**2;
+      if (d<first) {second=first;first=d;cell=i;} else if(d<second) second=d;
+    }
+    const edge=Math.sqrt(second)-Math.sqrt(first),radius=Math.hypot(u,v);
+    const grain=((x*73+y*151+x*y*7)%23)/23;
+    const frost=THREE.MathUtils.clamp((radius-.80+Math.sin(Math.atan2(v,u)*9)*.025)/.2,0,1);
+    const fracture=Math.max(0,1-edge/.035),depth=12*Math.sin(u*9+v*4)+cell%5*5+grain*5;
+    const rgb=[45+depth,97+depth,125+depth],snow=[182,210,218];
+    const whiten=Math.max(frost,fracture*.75),i=(y*n+x)*4;
+    for(let c=0;c<3;c++) pixels[i+c]=rgb[c]*(1-whiten)+snow[c]*whiten;
+    pixels[i+3]=255;
+  }
+  const texture=new THREE.DataTexture(pixels,n,n);
+  texture.colorSpace=THREE.SRGBColorSpace;
+  texture.magFilter=THREE.LinearFilter;texture.minFilter=THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps=true;texture.needsUpdate=true;
+  return texture;
+}
+
 // A curved lanceolate leaf with a raised midrib: recognizable foliage, rather
 // than green spheres. Low poly geometry is intentional for software rendering.
 function leafGeometry() {
@@ -582,23 +612,12 @@ export class World {
 
   iceField({x,z,rx,rz}) {
     // One flush opaque surface: visual edge and shared traction ellipse coincide.
-    const ice = this.material("#659cba", {roughness:0.3,metalness:0.28});
-    const frost = this.material("#b6d8dc", {roughness:0.8,metalness:0});
+    const ice = this.material("#ffffff", {map:this.own(driftIceTexture()),roughness:0.3,metalness:0.18});
     const geometry = this.own(new THREE.CircleGeometry(1,64));
     const field = new THREE.Mesh(geometry,ice);
     field.name = "drift-ice";
     field.rotation.x = -Math.PI/2;field.position.set(x,0.035,z);field.scale.set(rx,rz,1);
     this.root.add(field);
-    this.part("ring",frost,[x,0.05,z],[rx,rz,0.2],[Math.PI/2,0,0]);
-    // Short branching fractures stay in the ellipse and below the hover plane.
-    for (let i=0;i<12;i++) {
-      const a=i*TAU/12, turn=a+0.14*Math.sin(i*3), r=0.4+(i%3)*0.14;
-      const outer=[x+Math.cos(a)*rx*.96,0.045,z+Math.sin(a)*rz*.96];
-      const mid=[x+Math.cos(turn)*rx*r,0.045,z+Math.sin(turn)*rz*r];
-      const tip=[x+Math.cos(turn+.22)*rx*(r-.18),0.045,z+Math.sin(turn+.22)*rz*(r-.18)];
-      this.beam(frost,outer,mid,0.035,0.012);this.beam(frost,mid,tip,0.025,0.012);
-      if (i%2===0) this.beam(frost,mid,[x+Math.cos(turn-.2)*rx*(r+.17),0.045,z+Math.sin(turn-.2)*rz*(r+.17)],0.025,0.012);
-    }
   }
 
   centralInlay() {
