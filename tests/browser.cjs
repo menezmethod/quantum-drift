@@ -334,9 +334,44 @@ async function main() {
       ),
       false,
     );
-    // Fire and the weapon pills must never overlap in either orientation --
-    // a landscape phone (short height) is a distinct failure mode from
-    // portrait and was previously untested.
+    // There is no Fire button: HUD chrome (vitals/weapons/radar) must never
+    // sit inside the joystick's drag zone, or it silently steals taps meant
+    // for those buttons (the bug behind the original "buggy joystick"
+    // report -- confirmed via elementFromPoint before this fix).
+    const noHudOverlap = async (page) =>
+      page.evaluate(() => {
+        const zone = document.getElementById("touch-move-zone").getBoundingClientRect();
+        const weapons = document.querySelector(".weapons").getBoundingClientRect();
+        const vitals = document.querySelector(".vitals").getBoundingClientRect();
+        const radar = document.querySelector(".radar").getBoundingClientRect();
+        const clear = (r1, r2) =>
+          r1.right <= r2.left || r2.right <= r1.left || r1.bottom <= r2.top || r2.bottom <= r1.top;
+        return clear(zone, weapons) && clear(zone, vitals) && clear(vitals, radar);
+      });
+    assert.ok(await noHudOverlap(mobile), "touch HUD elements overlap the joystick zone (portrait)");
+    // Tapping the arena away from the joystick zone must aim and fire --
+    // dispatched as real touch input (CDP), since a synthetic DOM
+    // PointerEvent can't hold the pointer capture the arena handler needs.
+    const cdp = await mobile.context().newCDPSession(mobile);
+    const energyBefore = await mobile.evaluate(
+      () => window.__qd.getSnapshot().state.players.find((p) => p.id === "local").energy,
+    );
+    const fireX = 390 * 0.85, fireY = 844 * 0.4; // right side, clear of the bottom-left joystick zone
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: fireX, y: fireY, id: 1 }],
+    });
+    await sleep(250);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    const energyAfter = await mobile.evaluate(
+      () => window.__qd.getSnapshot().state.players.find((p) => p.id === "local").energy,
+    );
+    assert.ok(energyAfter < energyBefore, "tapping the arena did not fire (energy unchanged)");
+    console.log(
+      "PASS: mobile layout, no HUD overlap with the joystick zone, tap-to-fire, and playable missing-model fallback",
+    );
+    // A landscape phone (short viewport height) is a distinct failure mode
+    // from portrait and was previously untested.
     const landscape = await newPage({
       viewport: { width: 852, height: 393 },
       isMobile: true,
@@ -346,21 +381,10 @@ async function main() {
     await landscape.waitForFunction(
       () => window.__qd.getSnapshot().mode === "practice",
     );
-    const noOverlap = await landscape.evaluate(() => {
-      const a = document.getElementById("touch-fire").getBoundingClientRect();
-      const b = document.querySelector(".weapons").getBoundingClientRect();
-      const c = document.querySelector(".vitals").getBoundingClientRect();
-      const d = document.querySelector(".radar").getBoundingClientRect();
-      const clear = (r1, r2) =>
-        r1.right <= r2.left || r2.right <= r1.left || r1.bottom <= r2.top || r2.bottom <= r1.top;
-      return clear(a, b) && clear(a, c) && clear(c, d);
-    });
-    assert.ok(noOverlap, "touch HUD elements overlap in landscape");
+    assert.ok(await noHudOverlap(landscape), "touch HUD elements overlap the joystick zone (landscape)");
     await landscape.screenshot({ path: path.join(out, "mobile-landscape.png") });
     await landscape.close();
-    console.log(
-      "PASS: mobile layout, touch controls, landscape HUD, and playable missing-model fallback",
-    );
+    console.log("PASS: landscape HUD has no overlap with the joystick zone");
     assert.deepEqual(errors, []);
     console.log("PASS: no browser exceptions or broken application requests");
   } finally {
