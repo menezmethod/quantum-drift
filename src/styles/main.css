@@ -446,6 +446,12 @@ h1 {
   margin: 0;
   font-size: 12px;
 }
+.weapon-icon {
+  display: none;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
 .weapon span {
   font-size: 13px;
 }
@@ -811,6 +817,18 @@ th {
     min-height: 30px;
   }
 }
+/* A landscape phone (short viewport height) doesn't have room for a
+   full-size radar above the bottom-left vitals panel -- the radar's own
+   height, not just the combat-bar's position, is what collides here. */
+@media (max-height: 420px) and (pointer: coarse) {
+  .radar {
+    top: 56px;
+    width: 92px;
+  }
+  .radar > span {
+    display: none;
+  }
+}
 @media (pointer: coarse) {
   .vitals {
     bottom: 230px;
@@ -825,8 +843,13 @@ th {
     padding: 10px 12px;
     gap: 6px;
   }
-  .weapon small {
+  .weapon small,
+  .weapon kbd,
+  .weapon span {
     display: none;
+  }
+  .weapon-icon {
+    display: block;
   }
 }
 @media (max-height: 730px) and (min-width: 701px) {
@@ -912,16 +935,27 @@ body.touch-active #touch-controls { display: block; position: fixed; inset: 0; p
   background: #b3364aa8;
   border: 1px solid #ff6b85;
   color: #fff;
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   touch-action: none;
   pointer-events: auto;
 }
+#touch-fire svg {
+  width: 34px;
+  height: 34px;
+}
 #touch-fire:active { background: #d63f58cc; transform: scale(0.94); }
-/* Arena/Scores/Sound normally sit bottom-right with the weapon footer, the
-   same corner as Fire. Move them out of the way entirely rather than trim
-   margins against a circular button. */
-body.touch-active .flight-tools {
-  position: fixed;
-  top: max(78px, calc(env(safe-area-inset-top) + 60px));
-  right: max(14px, env(safe-area-inset-right));
+/* Arena/Scores/Sound move into the Flight menu on touch (see
+   relocateFlightTools in index.js), so .combat-bar only ever holds vitals +
+   weapons there -- no more arithmetic to keep it clear of Fire's corner. */
+body.touch-active .combat-bar {
+  justify-content: flex-start;
+}
+#menu .flight-tools {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
 }

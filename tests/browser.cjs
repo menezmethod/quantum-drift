@@ -320,7 +320,9 @@ async function main() {
     await mobile.waitForFunction(() => window.__qd);
     await mobile.screenshot({ path: path.join(out, "mobile-lobby.png") });
     assert.ok(await mobile.locator("#practice").isVisible());
-    await mobile.click("#practice");
+    // .tap() dispatches a real touch-flavored pointer event; .click() sends
+    // a mouse-flavored one, which now (correctly) hides the touch chrome.
+    await mobile.tap("#practice");
     await mobile.waitForFunction(
       () => window.__qd.getSnapshot().mode === "practice",
     );
@@ -332,8 +334,32 @@ async function main() {
       ),
       false,
     );
+    // Fire and the weapon pills must never overlap in either orientation --
+    // a landscape phone (short height) is a distinct failure mode from
+    // portrait and was previously untested.
+    const landscape = await newPage({
+      viewport: { width: 852, height: 393 },
+      isMobile: true,
+      hasTouch: true,
+    });
+    await landscape.tap("#practice");
+    await landscape.waitForFunction(
+      () => window.__qd.getSnapshot().mode === "practice",
+    );
+    const noOverlap = await landscape.evaluate(() => {
+      const a = document.getElementById("touch-fire").getBoundingClientRect();
+      const b = document.querySelector(".weapons").getBoundingClientRect();
+      const c = document.querySelector(".vitals").getBoundingClientRect();
+      const d = document.querySelector(".radar").getBoundingClientRect();
+      const clear = (r1, r2) =>
+        r1.right <= r2.left || r2.right <= r1.left || r1.bottom <= r2.top || r2.bottom <= r1.top;
+      return clear(a, b) && clear(a, c) && clear(c, d);
+    });
+    assert.ok(noOverlap, "touch HUD elements overlap in landscape");
+    await landscape.screenshot({ path: path.join(out, "mobile-landscape.png") });
+    await landscape.close();
     console.log(
-      "PASS: mobile layout, touch controls, and playable missing-model fallback",
+      "PASS: mobile layout, touch controls, landscape HUD, and playable missing-model fallback",
     );
     assert.deepEqual(errors, []);
     console.log("PASS: no browser exceptions or broken application requests");

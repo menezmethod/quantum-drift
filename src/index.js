@@ -209,17 +209,31 @@ class Game {
         );
     });
     this.bindTouchStick();
-    // A touch-capable device gets on-screen controls, sticky once shown --
-    // `pointer: coarse` alone misses an iPad with a Magic Keyboard/trackpad
-    // (it reports `fine`), so gate on `maxTouchPoints` and any real touch,
-    // not the media query. Deliberately not hidden again on a later mouse
-    // move: that would also fire (wrongly) on a synthetic/assistive click
-    // that carries a mouse-shaped pointer event on a real touch device.
-    if (navigator.maxTouchPoints > 0) document.body.classList.add("touch-active");
+    // A touch-capable device gets on-screen controls -- `pointer: coarse`
+    // alone misses an iPad with a Magic Keyboard/trackpad (it reports
+    // `fine`), so gate on `maxTouchPoints` and any real touch, not the media
+    // query. A discrete real-mouse pointerdown hides it again for that same
+    // hybrid case; a continuous pointermove is deliberately not the signal,
+    // since Playwright/assistive tooling can synthesize mouse-flavored
+    // events over a real touch device.
+    const setTouchActive = (on) => {
+      document.body.classList.toggle("touch-active", on);
+      if (on) this.relocateFlightTools();
+    };
+    if (navigator.maxTouchPoints > 0) setTouchActive(true);
     window.addEventListener("pointerdown", (e) => {
-      if (e.pointerType === "touch" || e.pointerType === "pen")
-        document.body.classList.add("touch-active");
+      if (e.pointerType === "touch" || e.pointerType === "pen") setTouchActive(true);
+      else if (e.pointerType === "mouse") setTouchActive(false);
     }, true);
+  }
+  // Weapon pills and Arena/Scores/Sound both live in .combat-bar with the
+  // Fire button competing for the same bottom-right thumb zone. On touch,
+  // Arena/Scores/Sound move into the Flight menu (already one tap away via
+  // Menu) instead of sitting permanently on the play screen -- same nodes,
+  // same onclick handlers, just relocated. Idempotent: append() on an
+  // already-placed node is a harmless no-op move.
+  relocateFlightTools() {
+    $("menu").querySelector(".dialog").append(document.querySelector(".flight-tools"));
   }
   bindTouchStick() {
     const zone = $("touch-move-zone"),
