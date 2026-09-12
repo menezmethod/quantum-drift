@@ -47,7 +47,7 @@ See [release notes](CHANGELOG.md), [hosting](docs/HOSTING.md), and the [next mil
 | C | Controls and weapon guide |
 | Escape | Flight menu |
 
-Touch screens get directional movement and fire buttons. Aim by touching the arena; without a target, fire follows the last movement direction. Keyboard and mouse give the most precise control.
+Touch screens get a floating drag joystick (appears wherever you first touch the lower-left) for movement and a dedicated Fire button; aim independently by touching the arena, or fire follows the last movement direction without a target. Keyboard and mouse give the most precise control.
 
 ## Combat
 

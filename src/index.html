@@ -137,15 +137,12 @@
         <span>·</span> Mouse aim <span>·</span> Hold click or Space to fire
       </div>
       <div id="touch-controls">
-        <div class="touch-move">
-          <button data-control="KeyW">↑</button
-          ><button data-control="KeyA">←</button
-          ><button data-control="KeyS">↓</button
-          ><button data-control="KeyD">→</button>
+        <div id="touch-move-zone" aria-hidden="true">
+          <div id="touch-joystick" hidden>
+            <div class="stick-knob"></div>
+          </div>
         </div>
-        <div class="touch-fire">
-          <button data-control="Space">Fire</button>
-        </div>
+        <button id="touch-fire" data-control="Space" aria-label="Fire">Fire</button>
       </div>
     </section>
     <section id="menu" class="modal" hidden>
