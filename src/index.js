@@ -2,6 +2,7 @@ import "./styles/main.css";
 import { io } from "socket.io-client";
 import { ArenaRenderer } from "./core/ArenaRenderer";
 import {Interface} from "./interface/Interface";
+import {MusicBus, BED_FOR_DISTRICT} from "./audio/MusicBus";
 import {MAPS,getMap,getWorld} from "../shared/maps";
 import {
   Simulation,
@@ -45,6 +46,8 @@ class Game {
     this.ping = 0;
     this.connected = false;
     this.soundOn = storage.get("qd-sound", "on") === "on";
+    this.music = null;
+    this._audioState = { bed: null, dead: false, roundOver: false };
     this.renderer = new ArenaRenderer($("arena"));
     this.demo = this.makePractice(true);
     this.state = this.demo.snapshot();
@@ -366,7 +369,10 @@ class Game {
       mode === "practice" ? "Offline practice" : "Connected";
     storage.set("qd-name", $("pilot-name").value);
     this.setBusy(false);
+    this._audioState.dead = false;
+    this._audioState.roundOver = false;
     this.unlockAudio();
+    this.syncMusicToMode();
   }
   practice() {
     this.socket?.disconnect();
@@ -478,6 +484,7 @@ class Game {
     $("lobby").hidden = false;
     $("hud").hidden = $("menu").hidden = true;
     $("lobby-status").textContent = message;
+    this.syncMusicToMode();
   }
   receive(state) {
     if(state.mapId && (state.mapId!==this.map.id||state.mapStage!==this.map.stage))this.applyMap(state.mapId==='confluence'?getWorld(state.mapStage):getMap(state.mapId));
@@ -573,6 +580,10 @@ class Game {
       "Free-for-all · 20 eliminations · 5 minutes";
     this.setBusy(false);
     this.renderer.cameraReady = false;
+    this._audioState.dead = false;
+    this._audioState.roundOver = false;
+    this.music?.unduck(0.3);
+    this.syncMusicToMode();
   }
   async share() {
     const url = new URL(location.href);
@@ -591,7 +602,10 @@ class Game {
     this.noticeUntil = performance.now() + seconds * 1000;
   }
   event(e) {
-    if(e.type==='mapChanged'&&e.announcement)this.notice(e.announcement,6);
+    if(e.type==='mapChanged'&&e.announcement){
+      this.notice(e.announcement,6);
+      this.music?.oneShot('sting-district-unlock',{gain:0.9,duckDb:-6,duckSeconds:4});
+    }
     this.renderer.event(e);
     if (e.type === "fire")
       this.playSound(e.weapon, e.player === this.playerId ? 1 : 0.18);
@@ -607,9 +621,14 @@ class Game {
       while ($("kill-feed").children.length > 4)
         $("kill-feed").lastChild.remove();
       setTimeout(() => entry.remove(), 6000);
-      if (e.player === this.playerId) this.clearInput();
+      if (e.player === this.playerId) {
+        this.clearInput();
+        this.music?.oneShot("ship-destroyed", { gain: 0.7 });
+        this.music?.duck(-9, 3);
+        this._audioState.dead = true;
+      }
     }
-    if (e.type === "explosion") this.playSound("GRENADE", 0.5);
+    if (e.type === "explosion") this.playSound("EXPLOSION", 0.5);
   }
   unlockAudio() {
     if (!this.soundOn) return;
@@ -617,27 +636,62 @@ class Game {
       if (!this.audio)
         this.audio = new (window.AudioContext || window.webkitAudioContext)();
       if (this.audio.state === "suspended") this.audio.resume().catch(() => {});
+      if (!this.music) {
+        this.music = new MusicBus(this.audio);
+        this.syncMusicToMode();
+      }
     } catch {}
+  }
+  // Pick the bed for the current mode; playBed() de-dupes so this is idempotent.
+  syncMusicToMode() {
+    if (!this.music) return;
+    let bed;
+    if (this.mode === "practice") bed = "standby";
+    else if (this.mode === "online") {
+      this.music.prefetch([
+        "foundry", "biodome", "rail-yard", "cold-relay",
+        "sting-district-unlock", "sting-recap", "sting-victory",
+        "respawn", "ship-destroyed",
+      ]);
+      bed = this.currentDistrictBed() || "foundry";
+    } else bed = "signal-hub";
+    this.music.playBed(bed, { fade: this.mode === "online" ? 2 : 1.5 });
+    this._audioState.bed = bed;
+  }
+  currentDistrictBed() {
+    const p = this.state?.players?.find?.((q) => q.id === this.playerId);
+    const d = p && this.map?.districts?.find?.(
+      (x) => Math.abs(p.x - x.x) < 30 && Math.abs(p.z - x.z) < 30,
+    );
+    return d && BED_FOR_DISTRICT[d.id];
   }
   updateSound() {
     $("sound-button").textContent = this.soundOn ? "Sound on" : "Sound off";
     $("sound-button").setAttribute("aria-pressed", String(this.soundOn));
     storage.set("qd-sound", this.soundOn ? "on" : "off");
+    this.music?.setMuted(!this.soundOn);
   }
   playSound(weapon, volume) {
-    if (!this.soundOn || !this.audio || this.audio.state !== "running") return;
-    const now = this.audio.currentTime;
+    if (!this.soundOn) return;
+    const now = this.audio?.currentTime ?? 0;
     if (this.lastSound && now - this.lastSound < 0.04) return;
     this.lastSound = now;
+    const SAMPLE = { LASER: "laser", BOUNCE: "ricochet", GRENADE: "grenade-launch", EXPLOSION: "explosion" };
+    if (this.music && SAMPLE[weapon]) {
+      this.music.sfx(SAMPLE[weapon], Math.min(1, volume));
+      return;
+    }
+    if (!this.audio || this.audio.state !== "running") return;
+    const low = weapon === "GRENADE" || weapon === "EXPLOSION";
     const oscillator = this.audio.createOscillator(),
       gain = this.audio.createGain();
-    oscillator.type = weapon === "GRENADE" ? "triangle" : "sine";
+    oscillator.type = low ? "triangle" : "sine";
     oscillator.frequency.setValueAtTime(
-      weapon === "GRENADE" ? 130 : weapon === "BOUNCE" ? 650 : 1000,
+      low ? 130 : weapon === "BOUNCE" ? 650 : 1000,
       now,
     );
     oscillator.frequency.exponentialRampToValueAtTime(
-      weapon === "GRENADE" ? 35 : 180,
+      low ? 35 : 180,
       now + 0.14,
     );
     gain.gain.setValueAtTime(volume * 0.06, now);
@@ -760,6 +814,34 @@ class Game {
       this.notice("Recharging energy…", 0.3);
     if (!$("scoreboard").hidden) this.renderScores();
     this.radar(p);
+    this.updateMusic(state, p);
+  }
+  // Adaptive score: district-driven bed, round-end stings, respawn chime.
+  updateMusic(state, p) {
+    if (!this.music) return;
+    const over = !!state.restartAt;
+    if (this.mode === "online" && !over) {
+      const bed = this.currentDistrictBed();
+      if (bed && bed !== this._audioState.bed) {
+        this.music.playBed(bed, { fade: 2 });
+        this._audioState.bed = bed;
+      }
+    }
+    if (over && !this._audioState.roundOver) {
+      const mine = state.winner && state.winner === $("pilot-name").value;
+      this.music.oneShot(mine ? "sting-victory" : "sting-recap", { gain: 1, duckDb: -12, duckSeconds: 5 });
+    } else if (!over && this._audioState.roundOver) {
+      this.music.unduck(0.6);
+      this._audioState.bed = null; // force a fresh district resolve next tick
+    }
+    this._audioState.roundOver = over;
+    if (p && !p.alive) {
+      this._audioState.dead = true;
+    } else if (p && this._audioState.dead) {
+      this._audioState.dead = false;
+      this.music.oneShot("respawn", { gain: 0.6 });
+      this.music.unduck(0.4);
+    }
   }
   renderScores() {
     const rows = [...this.state.players]

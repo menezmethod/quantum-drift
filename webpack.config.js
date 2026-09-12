@@ -15,6 +15,7 @@ module.exports = (_, argv) => ({
       patterns: [
         { from: "src/assets/models", to: "assets/models" },
         { from: "src/assets/sounds", to: "assets/sounds" },
+        { from: "src/assets/music", to: "assets/music" },
       ],
     }),
   ],

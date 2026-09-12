@@ -1,6 +1,6 @@
 # Quantum Drift
 
-Spaceship arena combat with drift movement, independent mouse aim, and authoritative multiplayer. Four selectable arenas, four camera views, overhead hull/protection indicators, bot practice, private rooms, persistent pilot records, and match recaps. The original arena and three weapon systems remain playable.
+Spaceship arena combat with drift movement, independent mouse aim, and authoritative multiplayer. One connected, population-gated world (Confluence), four camera views, overhead hull/protection indicators, bot practice, private rooms, persistent pilot records, match recaps, and a full music/SFX soundtrack.
 
 ## Play
 
@@ -18,6 +18,7 @@ Open **http://localhost:8080**. `npm start` builds the client and starts the ser
 - **Create room** gives you a private room code. Turn off bot fill for human-only matches.
 - **Copy invite** copies a link for friends. They enter a callsign and press Join. Up to eight humans fit in a room.
 - Rounds end after 20 eliminations or five minutes. The next round starts automatically after ten seconds.
+- A generated soundtrack and SFX play by default; toggle with **Sound on/off**. See [docs/AUDIO.md](docs/AUDIO.md) for the cue map and how to rebuild the assets.
 
 For another computer on your LAN, open the **LAN play** address printed by the server (for example `http://192.168.0.9:8080`). Create/copy the invite from that address so friends get a reachable link; `localhost` always means their own computer. Allow incoming connections to the chosen port if your firewall prompts.
 

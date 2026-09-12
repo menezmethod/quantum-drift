@@ -44,3 +44,9 @@ logs
 
 # Downloadable release output
 /release-artifacts/
+
+# Astra / dream-loop local working context
+/.dream-loop/
+
+# Suno raw WAV masters (source for scripts/audio/build-soundtrack.sh)
+/_raw/
