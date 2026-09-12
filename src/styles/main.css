@@ -812,43 +812,20 @@ th {
   }
 }
 @media (pointer: coarse) {
-  #touch-controls {
-    display: flex;
-    position: fixed;
-    left: 14px;
-    right: 14px;
-    bottom: 120px;
-    justify-content: space-between;
-    pointer-events: none;
-  }
-  #touch-controls > div {
-    display: flex;
-    gap: 5px;
-    align-items: end;
-    pointer-events: auto;
-  }
-  #touch-controls button {
-    padding: 15px 13px;
-    touch-action: none;
-    background: #17354bbd;
-  }
-  #touch-controls .touch-move {
-    display: grid;
-    grid-template-columns: repeat(3, 42px);
-  }
-  .touch-move button:first-child {
-    grid-column: 2;
-  }
-  .touch-move button:nth-child(2) {
-    grid-column: 1;
-  }
-  .touch-fire button:nth-child(2) {
-    background: #305672c9;
-  }
   .vitals {
     bottom: 230px;
   }
   .flight-hint {
+    display: none;
+  }
+  /* Icon-first weapon pills: energy cost is one tap away in Controls, not
+     permanently on screen fighting the joystick/fire for thumb space. */
+  .weapon {
+    min-width: 0;
+    padding: 10px 12px;
+    gap: 6px;
+  }
+  .weapon small {
     display: none;
   }
 }
@@ -880,6 +857,71 @@ th {
   }
 }
 
-/* Combat drags must not select HUD text. */
-body { user-select: none; -webkit-user-select: none; }
+/* Combat drags must not select HUD text, trigger pull-to-refresh, or show the
+   iOS text-selection callout. */
+body { user-select: none; -webkit-user-select: none; overscroll-behavior: none; -webkit-touch-callout: none; }
 input, textarea { user-select: text; -webkit-user-select: text; }
+
+/* Touch controls: gated on runtime touch detection (a real touch pointerdown
+   adds .touch-active to body; a real mouse move removes it), not `pointer:
+   coarse` alone -- an iPad with a trackpad/Magic Keyboard reports `fine` and
+   must still get a touch stick when played by finger. */
+/* Fixed, viewport-spanning, and non-interactive itself so it has a real box
+   (visible to layout/tests) without stealing pointer events from the arena;
+   the joystick zone and fire button re-enable pointer-events for themselves. */
+body.touch-active #touch-controls { display: block; position: fixed; inset: 0; pointer-events: none; }
+#touch-move-zone {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 58vw;
+  height: 46vh;
+  touch-action: none;
+  pointer-events: auto;
+}
+#touch-joystick {
+  position: fixed;
+  width: 104px;
+  height: 104px;
+  margin-left: -52px;
+  margin-top: -52px;
+  border-radius: 50%;
+  background: #0c1f30a8;
+  border: 1px solid #3a5c78;
+  pointer-events: none;
+}
+#touch-joystick .stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 48px;
+  margin-left: -24px;
+  margin-top: -24px;
+  border-radius: 50%;
+  background: #5eeaff55;
+  border: 1px solid #5eeaffaa;
+}
+#touch-fire {
+  position: fixed;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(28px, env(safe-area-inset-bottom));
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: #b3364aa8;
+  border: 1px solid #ff6b85;
+  color: #fff;
+  font-size: 14px;
+  touch-action: none;
+  pointer-events: auto;
+}
+#touch-fire:active { background: #d63f58cc; transform: scale(0.94); }
+/* Arena/Scores/Sound normally sit bottom-right with the weapon footer, the
+   same corner as Fire. Move them out of the way entirely rather than trim
+   margins against a circular button. */
+body.touch-active .flight-tools {
+  position: fixed;
+  top: max(78px, calc(env(safe-area-inset-top) + 60px));
+  right: max(14px, env(safe-area-inset-right));
+}

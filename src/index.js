@@ -1,5 +1,6 @@
 import "./styles/main.css";
 import { io } from "socket.io-client";
+import { stickVector, reanchor } from "./input/stick";
 import { ArenaRenderer } from "./core/ArenaRenderer";
 import {Interface} from "./interface/Interface";
 import {MusicBus, BED_FOR_DISTRICT} from "./audio/MusicBus";
@@ -43,6 +44,7 @@ class Game {
     this.mouse = null;
     this.firing = false;
     this.aim = null;
+    this.stick = { x: 0, z: 0, active: false };
     this.ping = 0;
     this.connected = false;
     this.soundOn = storage.get("qd-sound", "on") === "on";
@@ -184,10 +186,13 @@ class Game {
       this.unlockAudio();
       this.mouse = { x: e.clientX, y: e.clientY };
       this.firing = true;
+      this.firePointerId = e.pointerId;
       $("arena").setPointerCapture(e.pointerId);
     });
-    window.addEventListener("pointerup", () => {
-      this.firing = false;
+    // Scoped to the pointer that started firing: with a movement thumb also
+    // down, lifting it must not stop fire from the other thumb.
+    window.addEventListener("pointerup", (e) => {
+      if (e.pointerId === this.firePointerId) this.firing = false;
     });
     window.addEventListener("pointercancel", () => this.clearInput());
     $("arena").addEventListener("contextmenu", (e) => e.preventDefault());
@@ -195,7 +200,6 @@ class Game {
       button.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         this.unlockAudio();
-        this.mouse = null;
         button.setPointerCapture(e.pointerId);
         this.keys.add(button.dataset.control);
       });
@@ -204,6 +208,61 @@ class Game {
           this.keys.delete(button.dataset.control),
         );
     });
+    this.bindTouchStick();
+    // A touch-capable device gets on-screen controls, sticky once shown --
+    // `pointer: coarse` alone misses an iPad with a Magic Keyboard/trackpad
+    // (it reports `fine`), so gate on `maxTouchPoints` and any real touch,
+    // not the media query. Deliberately not hidden again on a later mouse
+    // move: that would also fire (wrongly) on a synthetic/assistive click
+    // that carries a mouse-shaped pointer event on a real touch device.
+    if (navigator.maxTouchPoints > 0) document.body.classList.add("touch-active");
+    window.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "touch" || e.pointerType === "pen")
+        document.body.classList.add("touch-active");
+    }, true);
+  }
+  bindTouchStick() {
+    const zone = $("touch-move-zone"),
+      stick = $("touch-joystick"),
+      knob = stick.querySelector(".stick-knob"),
+      radius = 52;
+    let pointerId = null,
+      origin = null;
+    const place = (o) => {
+      stick.style.left = `${o.x}px`;
+      stick.style.top = `${o.y}px`;
+    };
+    zone.addEventListener("pointerdown", (e) => {
+      this.unlockAudio();
+      pointerId = e.pointerId;
+      origin = { x: e.clientX, y: e.clientY };
+      place(origin);
+      stick.hidden = false;
+      zone.setPointerCapture(e.pointerId);
+    });
+    zone.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== pointerId) return;
+      const point = { x: e.clientX, y: e.clientY };
+      origin = reanchor(origin, point, radius);
+      place(origin);
+      this.stick = stickVector(origin, point, radius);
+      knob.style.transform = this.stick.active
+        ? `translate(${this.stick.x * 22}px, ${-this.stick.z * 22}px)`
+        : "";
+    });
+    const release = (e) => {
+      if (e.pointerId !== pointerId) return;
+      pointerId = null;
+      origin = null;
+      stick.hidden = true;
+      knob.style.transform = "";
+      this.stick = { x: 0, z: 0, active: false };
+    };
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
+      zone.addEventListener(type, release);
+  }
+  vibrate(pattern) {
+    try { navigator.vibrate?.(pattern); } catch {}
   }
   active() {
     return (
@@ -218,6 +277,9 @@ class Game {
   clearInput() {
     this.keys.clear();
     this.firing = false;
+    this.stick = { x: 0, z: 0, active: false };
+    const stick = $("touch-joystick");
+    if (stick) stick.hidden = true;
   }
   key(e, down) {
     const modal=['help','scoreboard','menu'].map($).find(el=>!el.hidden);
@@ -324,8 +386,8 @@ class Game {
   input() {
     const k = this.keys,
       on = (...codes) => (codes.some((code) => k.has(code)) ? 1 : 0);
-    const horizontal=on('KeyD','ArrowRight','KeyE')-on('KeyA','ArrowLeft','KeyQ');
-    const vertical=on('KeyW','ArrowUp')-on('KeyS','ArrowDown');
+    const horizontal=this.stick.active?this.stick.x:on('KeyD','ArrowRight','KeyE')-on('KeyA','ArrowLeft','KeyQ');
+    const vertical=this.stick.active?this.stick.z:on('KeyW','ArrowUp')-on('KeyS','ArrowDown');
     const move=this.renderer.screenMovement(horizontal,vertical);
     return {
       seq: ++this.seq,
@@ -609,14 +671,18 @@ class Game {
     this.renderer.event(e);
     if (e.type === "fire")
       this.playSound(e.weapon, e.player === this.playerId ? 1 : 0.18);
-    if (e.type === "hit" && e.attacker === this.playerId)
+    if (e.type === "hit" && e.attacker === this.playerId) {
       this.hitUntil = performance.now() + 130;
-    if (e.type === "hit" && e.player === this.playerId)
+      this.vibrate(15);
+    }
+    if (e.type === "hit" && e.player === this.playerId) {
       this.damageUntil = performance.now() + 220;
+      this.vibrate(30);
+    }
     if (e.type === "kill") {
       const entry = document.createElement("p");
       entry.textContent = `${e.killer}  ›  ${e.victim}  /  ${WEAPONS[e.weapon].name}`;
-      if (e.attacker === this.playerId) entry.className = "your-kill";
+      if (e.attacker === this.playerId) { entry.className = "your-kill"; this.vibrate([20, 40, 20]); }
       $("kill-feed").prepend(entry);
       while ($("kill-feed").children.length > 4)
         $("kill-feed").lastChild.remove();
