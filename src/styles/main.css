@@ -68,6 +68,16 @@ button.primary:hover {
   font-size: 12px;
   background: #102238b8;
 }
+#fullscreen-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
+}
+#fullscreen-button svg {
+  width: 15px;
+  height: 15px;
+}
 .text-button {
   background: none;
   border: 0;
@@ -300,6 +310,22 @@ h1 {
   align-items: center;
   font-size: 11px;
   color: #b4c9de;
+}
+/* Decorative chrome dims after a few idle seconds of flight (see
+   resetIdleHud in index.js) and snaps back on any input. Vitals, weapons,
+   the clock itself, and the menu button are exempt -- they're what you'd
+   actually need mid-idle, everything else is just brand/status noise. */
+.match-brand,
+#connection,
+.match-clock span,
+.flight-hint {
+  transition: opacity 0.6s ease;
+}
+body.hud-idle .match-brand,
+body.hud-idle #connection,
+body.hud-idle .match-clock span,
+body.hud-idle .flight-hint {
+  opacity: 0;
 }
 #kill-feed {
   position: fixed;
@@ -738,9 +764,6 @@ th {
     right: 10px;
   }
   .vitals {
-    position: fixed;
-    left: 12px;
-    bottom: 113px;
     width: 124px;
     padding: 8px 10px;
   }
@@ -776,9 +799,6 @@ th {
     padding: 5px;
   }
   .flight-tools kbd {
-    display: none;
-  }
-  .flight-hint {
     display: none;
   }
   .help-columns {
@@ -830,12 +850,6 @@ th {
   }
 }
 @media (pointer: coarse) {
-  .vitals {
-    bottom: 230px;
-  }
-  .flight-hint {
-    display: none;
-  }
   /* Icon-first weapon pills: energy cost is one tap away in Controls, not
      permanently on screen fighting the joystick/fire for thumb space. */
   .weapon {
@@ -925,32 +939,25 @@ body.touch-active #touch-controls { display: block; position: fixed; inset: 0; p
   background: #5eeaff55;
   border: 1px solid #5eeaffaa;
 }
-#touch-fire {
-  position: fixed;
-  right: max(20px, env(safe-area-inset-right));
-  bottom: max(28px, env(safe-area-inset-bottom));
-  width: 84px;
-  height: 84px;
-  border-radius: 50%;
-  background: #b3364aa8;
-  border: 1px solid #ff6b85;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  touch-action: none;
-  pointer-events: auto;
-}
-#touch-fire svg {
-  width: 34px;
-  height: 34px;
-}
-#touch-fire:active { background: #d63f58cc; transform: scale(0.94); }
+/* There is no Fire button: tapping anywhere on the arena outside the
+   joystick zone aims and fires at that point, via the same pointerdown
+   handler desktop's mouse click already uses. */
 /* Arena/Scores/Sound move into the Flight menu on touch (see
-   relocateFlightTools in index.js), so .combat-bar only ever holds vitals +
-   weapons there -- no more arithmetic to keep it clear of Fire's corner. */
+   relocateFlightTools in index.js). The whole bottom of the screen is a
+   gesture surface now (joystick zone bottom-left, tap-to-fire everywhere
+   else), so vitals + weapons move up to the top-right, clear of both the
+   radar (top-left) and every gesture zone. */
 body.touch-active .combat-bar {
-  justify-content: flex-start;
+  top: max(84px, calc(env(safe-area-inset-top) + 84px));
+  bottom: auto;
+  left: auto;
+  right: max(16px, env(safe-area-inset-right));
+  flex-direction: column;
+  align-items: end;
+  gap: 8px;
+}
+body.touch-active .vitals {
+  width: 150px;
 }
 #menu .flight-tools {
   flex-direction: row;

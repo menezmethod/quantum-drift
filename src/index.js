@@ -45,6 +45,7 @@ class Game {
     this.firing = false;
     this.aim = null;
     this.stick = { x: 0, z: 0, active: false };
+    this.idleTimer = null;
     this.ping = 0;
     this.connected = false;
     this.soundOn = storage.get("qd-sound", "on") === "on";
@@ -165,6 +166,16 @@ class Game {
     $("score-button").onclick = () => this.scores(!$("scoreboard").hidden);
     $("close-scores").onclick = () => this.scores(true);
     $("view-button").onclick = () => this.cycleView();
+    $("fullscreen-button").onclick = () => {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen?.().catch(() => {});
+    };
+    document.addEventListener("fullscreenchange", () => {
+      const on = !!document.fullscreenElement;
+      $("fullscreen-button").setAttribute("aria-label", on ? "Exit fullscreen" : "Enter fullscreen");
+      $("fullscreen-button").querySelector(".icon-enter").hidden = on;
+      $("fullscreen-button").querySelector(".icon-exit").hidden = !on;
+    });
     $("sound-button").onclick = () => {
       this.soundOn = !this.soundOn;
       this.updateSound();
@@ -218,6 +229,9 @@ class Game {
     // events over a real touch device.
     const setTouchActive = (on) => {
       document.body.classList.toggle("touch-active", on);
+      $("hud").querySelector(".flight-hint-desktop").hidden = on;
+      $("hud").querySelector(".flight-hint-touch").hidden = !on;
+      $("fullscreen-button").hidden = !on;
       if (on) this.relocateFlightTools();
     };
     if (navigator.maxTouchPoints > 0) setTouchActive(true);
@@ -225,6 +239,19 @@ class Game {
       if (e.pointerType === "touch" || e.pointerType === "pen") setTouchActive(true);
       else if (e.pointerType === "mouse") setTouchActive(false);
     }, true);
+    // Decorative chrome (brand, connection status) dims after a few idle
+    // seconds during actual flight and snaps back on any input -- on every
+    // device, not just touch, since "too much on screen" wasn't a mobile-only
+    // complaint. Vitals, weapons, clock and the menu button are exempt: they
+    // stay fully visible, since they're what you'd actually need mid-idle.
+    for (const type of ["pointerdown", "pointermove", "keydown"])
+      window.addEventListener(type, () => this.resetIdleHud(), { passive: true });
+  }
+  resetIdleHud() {
+    clearTimeout(this.idleTimer);
+    document.body.classList.remove("hud-idle");
+    if (!this.active()) return;
+    this.idleTimer = setTimeout(() => document.body.classList.add("hud-idle"), 2500);
   }
   // Weapon pills and Arena/Scores/Sound both live in .combat-bar with the
   // Fire button competing for the same bottom-right thumb zone. On touch,
@@ -692,6 +719,7 @@ class Game {
     if (e.type === "hit" && e.player === this.playerId) {
       this.damageUntil = performance.now() + 220;
       this.vibrate(30);
+      this.resetIdleHud();
     }
     if (e.type === "kill") {
       const entry = document.createElement("p");
