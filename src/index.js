@@ -166,6 +166,16 @@ class Game {
     $("score-button").onclick = () => this.scores(!$("scoreboard").hidden);
     $("close-scores").onclick = () => this.scores(true);
     $("view-button").onclick = () => this.cycleView();
+    $("fullscreen-button").onclick = () => {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen?.().catch(() => {});
+    };
+    document.addEventListener("fullscreenchange", () => {
+      const on = !!document.fullscreenElement;
+      $("fullscreen-button").setAttribute("aria-label", on ? "Exit fullscreen" : "Enter fullscreen");
+      $("fullscreen-button").querySelector(".icon-enter").hidden = on;
+      $("fullscreen-button").querySelector(".icon-exit").hidden = !on;
+    });
     $("sound-button").onclick = () => {
       this.soundOn = !this.soundOn;
       this.updateSound();
@@ -221,6 +231,7 @@ class Game {
       document.body.classList.toggle("touch-active", on);
       $("hud").querySelector(".flight-hint-desktop").hidden = on;
       $("hud").querySelector(".flight-hint-touch").hidden = !on;
+      $("fullscreen-button").hidden = !on;
       if (on) this.relocateFlightTools();
     };
     if (navigator.maxTouchPoints > 0) setTouchActive(true);

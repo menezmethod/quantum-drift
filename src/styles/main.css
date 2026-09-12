@@ -68,6 +68,16 @@ button.primary:hover {
   font-size: 12px;
   background: #102238b8;
 }
+#fullscreen-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
+}
+#fullscreen-button svg {
+  width: 15px;
+  height: 15px;
+}
 .text-button {
   background: none;
   border: 0;
