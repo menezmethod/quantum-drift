@@ -1,6 +1,6 @@
-# Quantum Drift
+# SaucerJam
 
-Spaceship arena combat with drift movement, independent mouse aim, and authoritative multiplayer. One connected, population-gated world (Confluence), four camera views, overhead hull/protection indicators, bot practice, private rooms, persistent pilot records, match recaps, and a full music/SFX soundtrack.
+**Working public name: SaucerJam.** Large-scale saucer arena combat with drift movement, independent mouse aim, and authoritative multiplayer. One connected, population-gated world (Confluence), four camera views, overhead hull/protection indicators, bot practice, private rooms, persistent pilot records, match recaps, and a full music/SFX soundtrack.
 
 ## Public launch foundation
 
@@ -106,7 +106,7 @@ Pilot records include lifetime and per-map score, wins, kills/deaths, damage, ac
 
 Beyond the test suite above, `node scripts/verification/confluence.cjs` checks two browsers, seven connected pilots, and synchronized map expansion/reset. `npm run capture -- --map foundry --camera tactical --time dusk --state combat --out test-results/capture` captures a single reference scene. These staged diagnostics require `?showcase`; their synthetic counters never become online records. Headless SwiftShader FPS is a regression measure, not a native GPU benchmark.
 
-Capacity defaults to eight rooms (up to eight humans each) and 96 connected sockets. These are protective admission limits, not a measured 64-player performance guarantee. Configure `MAX_ROOMS` and `MAX_CONNECTIONS` only after load testing your host.
+Capacity defaults remain protective limits, not performance claims. The current engineering target is a measured, playable **128-player battle**. Thousands of players is a future distributed-architecture research goal only if real demand justifies it. See [roadmap](docs/ROADMAP.md).
 
 ## Junction mini-release (v1.1.0)
 
