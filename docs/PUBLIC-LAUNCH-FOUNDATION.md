@@ -4,6 +4,8 @@
 
 ## Product identity
 
+**Working public name: SaucerJam.**
+
 This is **not an ARC remake**.
 
 It is an independently built large-scale multiplayer arena game inspired by the *feeling* of older arena games such as ARC: instant controls, fast respawns, chaotic team fights, ricochets, projectiles, and large populations.
@@ -38,7 +40,7 @@ The repo is already MIT licensed. Existing MIT releases remain usable under MIT.
 
 ### Recommended future direction
 
-My preferred structure is:
+Preferred structure:
 
 - **AGPL-3.0** for future canonical game/server code
 - separate trademark/brand policy
@@ -73,6 +75,28 @@ Avoid:
 
 ## Name strategy
 
+### Working name: SaucerJam
+
+SaucerJam is the current working public name.
+
+Initial screening found no strong exact collision across Steam, itch.io, GitHub, or indexed web results. That is **not formal trademark clearance**.
+
+Before trademark filing or broad commercial launch, complete:
+- live USPTO exact + similar-mark search
+- common-law/web search
+- Steam / itch.io / app-store search
+- GitHub search
+- domain ownership
+- social-handle ownership
+- attorney review if monetization becomes material
+
+Preferred brand language:
+- **SaucerJam**
+- **Join the Jam**
+- **Jam Night**
+- **Build a Saucer**
+- **The Archive Opens**
+
 ### Rejected in preliminary search
 
 Do not use without a new legal clearance:
@@ -81,34 +105,13 @@ Do not use without a new legal clearance:
 - Riftwake
 - Voidwake
 - Driftforge
-- **Orbline** — active ORBLINE Co., Ltd. in Japan operates in mobile apps/games; an existing OrbLine Strategy game also exists. Too much same-industry collision risk.
-- **Vectorfall** — existing 2026 shooter on itch.io.
-- **Fluxward** — active AI consultancy/software brand at fluxward.com.
-- **Phasefront** — active technology company at phasefront.io and existing software project usage.
-- **Corewake** — active AI consultancy/software brand at corewake.com.
-- **Hexwake** — active applied-AI/software brand and existing game-concept usage.
-- **Starweld** — existing marine/industrial brand usage and starweld.com; old U.S. trademark is cancelled, but the brand/domain collision is unnecessary.
-
-### Working shortlist
-
-These are **not trademark-cleared**. Exact-name screening only:
-
-1. **GoOrbie** — no strong exact game/software collision surfaced, but "Orbie" itself is crowded with active games/apps, so treat as yellow, not green.
-2. **OrbieRush** — strongest playful working candidate from the current pass; no meaningful exact collision surfaced in initial web/GitHub screening.
-3. **OrbieZap** — similarly clean exact-name screen, but inherits the same crowded "Orbie" root risk.
-
-Recommendation: use "Orbie" more safely as a mascot/character or campaign phrase unless a formal trademark search shows a combined mark is comfortably registrable. Prefer a truly coined master brand if we want the cleanest long-term path.
-
-### Final name gate
-
-A finalist must pass:
-- USPTO search
-- common-law/web search
-- Steam / itch.io / app-store search
-- GitHub search
-- domain availability
-- social-handle search
-- no confusingly similar game/software brand
+- Orbline
+- Vectorfall
+- Fluxward
+- Phasefront
+- Corewake
+- Hexwake
+- Starweld
 
 USPTO references:
 - https://www.uspto.gov/trademarks/basics/why-search-similar-trademarks
@@ -169,24 +172,45 @@ Avoid pay-to-win.
 The durable moat is:
 **official brand + canonical universe + community + hosted service + moderation + marketplace + physical goods.**
 
-## Technical north star
+## Scale strategy
 
-Long-term goal:
+### Near-term engineering goal: 128 concurrent players
 
-> One battlefield that grows from a handful of players to hundreds, and eventually thousands, without losing readable instant combat.
+The next meaningful scale target is **128 real players in one coherent battle experience**.
 
-Do not market unmeasured concurrency.
+We do not claim 128 until it is load-tested on production-like infrastructure and gameplay remains readable.
 
-Milestones:
-`8 -> 32 -> 64 -> 128 -> 256 -> distributed world`
+Progression:
+`8 -> 32 -> 64 -> 128`
 
-Likely technical path:
-- spatial partitioning / interest management
-- delta snapshots
-- client prediction/interpolation
+Focus areas:
+- interest management / spatial culling
+- compact state snapshots / deltas
+- authoritative simulation performance
+- projectile and collision cost
+- bandwidth budgets per player
+- browser render cost
+- bot-driven load testing
+- observability for tick time, snapshot size, latency, packet loss, and CPU
+
+### Long-term north star: thousands
+
+Thousands of players is a **future research goal**, not a launch promise.
+
+We pursue it only when:
+1. real player demand justifies the complexity;
+2. 128-player battles are already fun and stable;
+3. metrics show where the current architecture stops scaling.
+
+Likely later solutions:
+- spatial partitioning
 - authoritative simulation cells
-- migration between cells
-- load testing before every public population claim
+- server-to-server handoff
+- regional/world shards that feel contiguous
+- hierarchical interest management
+- event-driven state replication
+
+The architecture should earn complexity from demand instead of prematurely building an MMO backend for an empty game.
 
 ## What makes this game original
 
