@@ -1,19 +1,23 @@
-# Go-To-Market, Community, and Monetization
+# SaucerJam — Go-To-Market, Community, and Monetization
 
 ## Positioning
 
 Core story:
 
-> A large-scale browser arena game inspired by the lost feeling of early online multiplayer, rebuilt for modern networks and evolved openly by players, developers, artists, and AI agents.
+> SaucerJam is a large-scale browser arena game inspired by the lost feeling of early online multiplayer, rebuilt for modern networks and evolved openly by players, developers, artists, and AI agents.
+
+Primary CTA:
+
+> **Join the Jam.**
 
 Do not lead with "AI-made game."
 
 Lead with:
 - instant browser play
-- massive battles
+- massive saucer battles
 - skill-based weapons
 - evolving world
-- community ownership of direction
+- community-driven evolution
 
 AI is an enabling layer, not the value proposition.
 
@@ -22,13 +26,12 @@ AI is an enabling layer, not the value proposition.
 ### 1. Lost-game nostalgia
 
 Story:
-> I spent years remembering a multiplayer game from childhood that I could never find. It turned out to be ARC. Instead of remaking it, we're building what that feeling could become today.
 
-This is authentic, memorable, and legally safer than presenting the game as an ARC remake.
+> I spent years remembering a multiplayer game from childhood that I could never find. It turned out to be ARC. Instead of remaking it, we're building what that feeling could become today.
 
 ### 2. UAP / disclosure zeitgeist
 
-Use the current cultural interest in UAPs as **theme**, not factual endorsement.
+Use current UAP interest as **theme**, not factual endorsement.
 
 Good:
 - retro saucers
@@ -44,35 +47,43 @@ Avoid:
 - presenting rumors as facts
 - using actual agency seals/logos
 - suggesting endorsement by DoD/AARO
-- copying real classified-looking documents closely enough to imply authenticity
+- copying official documents closely enough to imply authenticity
 
-Current official AARO releases make UAP imagery culturally relevant:
+Reference:
 - https://www.aaro.mil/UAP-Cases/Official-UAP-Imagery/
 
-Campaign idea:
+Campaign:
 **THE ARCHIVE OPENS**
-A seasonal content drop framed as newly recovered fictional telemetry, craft schematics, and community-created vehicles.
+
+Fictional telemetry, craft schematics, sightings, community-created vehicles, and limited events.
 
 ### 3. Open evolution
 
 Tagline territory:
+- **Join the Jam.**
 - **Play it. Fork it. Evolve it.**
-- **The battlefield belongs to everyone.**
-- **Built to be played. Designed to evolve.**
+- **Build a Saucer. Enter the Jam.**
 
 Community ideas become prototypes; prototypes become temporary servers; proven ideas can become canonical.
 
-### 4. Scale
+### 4. Scale as an event
 
-Do not say "thousands of players" until proven.
+**Current target: 128 concurrent players.**
 
-Public milestones make better marketing:
+Public milestones:
 - 32-player test
-- 64-player night
-- 128-player stress test
-- 256-player war
+- 64-player Jam Night
+- 128-player **Big Jam**
 
-Each milestone becomes an event and engineering story.
+Do not market "thousands" as current capability.
+
+Thousands becomes the next research direction **only after 128 is stable and real demand exists**.
+
+Every scale milestone should generate:
+- a playable event
+- engineering measurements
+- gameplay feedback
+- a public devlog/story
 
 ## Player acquisition
 
@@ -80,21 +91,21 @@ Initial channels:
 1. playable website first — no install
 2. itch.io browser release
 3. GitHub
-4. Show HN / Hacker News when the engineering story is strong
+4. Show HN when the engineering story is strong
 5. game-dev communities
-6. relevant Reddit communities, without spamming
-7. Discord once there is enough activity to sustain it
+6. relevant Reddit communities without spamming
+7. Discord once activity can sustain it
 8. LinkedIn for the engineering/portfolio story
 
-The first CTA should always be **PLAY**, not "read the repo."
+The first CTA is **PLAY / JOIN THE JAM**, not "read the repo."
 
 ## Cold-start solution
 
 An empty multiplayer game feels dead.
 
 Use:
-- bots to guarantee immediate action
-- scheduled community battle nights
+- bots for immediate action
+- scheduled Jam Nights
 - one public arena initially
 - visible upcoming event/countdown
 - easy invite links
@@ -102,7 +113,7 @@ Use:
 
 ## Community model
 
-Use GitHub Discussions first instead of building a custom Reddit clone.
+Use GitHub Discussions first.
 
 Suggested categories:
 - Ideas
@@ -118,15 +129,14 @@ Popular ideas can graduate into RFCs and experimental builds.
 ## AI-agent angle
 
 Long-term differentiator:
-
 - agents can play through a supported interface
 - agents can build experimental changes through branches/PRs
 - agent-created changes never auto-merge
-- community can play the experimental version
+- community can play experimental versions
 - maintainers decide canonical adoption
 
 Possible events:
-- human vs agent arena
+- Human vs Agent Jam
 - autonomous pilot tournament
 - best ricochet bot
 - community-agent co-design challenge
@@ -136,16 +146,16 @@ Possible events:
 Do not monetize aggressively before people care.
 
 ### Phase 1 — audience
-Free game, contributors, public playtests.
+Free game, contributors, public Jam Nights.
 
 ### Phase 2 — identity
-Cosmetics, supporter badge/packs, optional founder items.
+Cosmetics, supporter badges/packs, optional founder items.
 
 ### Phase 3 — creators
 Community ships, skins, lore packs, marketplace revenue share.
 
 ### Phase 4 — physical
-Approved 3D-printable ships and collectibles.
+Approved 3D-printable saucers and collectibles.
 
 ### Phase 5 — platform
 Official hosted worlds, tournaments, private/community servers, commercial support.
@@ -164,22 +174,24 @@ Policy:
 - judge submissions by originality, legality, performance, and player value
 - never imply AI makes artists unnecessary
 
-The message is:
-> Tools are open. Standards are high.
+Message:
+
+> **Tools are open. Standards are high.**
 
 ## Launch gates
 
 Do not push a broad public launch until:
 
-- [ ] final name passes clearance
+- [ ] SaucerJam passes final live trademark/domain/handle clearance
 - [ ] questionable assets are replaced/documented
 - [ ] licensing decision is reviewed
 - [ ] contributor terms exist
 - [ ] official play URL works with near-zero friction
-- [ ] bots solve empty-server problem
-- [ ] basic moderation/reporting path exists
+- [ ] bots solve the empty-server problem
+- [ ] basic moderation/reporting exists
 - [ ] analytics measure joins, retention, match completion, and invites
 - [ ] 64-player load test is measured before claiming ARC-scale concurrency
+- [ ] 128-player test exists before promoting "Big Jam"
 
 ## North-star sentence
 
