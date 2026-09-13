@@ -1,38 +1,97 @@
-# Quantum Drift — Incremental roadmap
+# SaucerJam — Incremental roadmap
 
-Updated 9 September 2026. This delivery order supersedes the sequence in COMBAT-FIRST-PLAN.md; that document remains the longer-term design reference.
+Updated 13 September 2026.
 
 ## Direction
 
-Gameplay → deeper fights → beautiful game. Preserve the released movement, independent aiming, stable overhead view, weapon economy, and intense fighting pockets. Build ONE connected world with variable population boundaries; do not add selectable arenas.
+Gameplay -> deeper fights -> scale -> beautiful game.
 
-Build on the current stack. One bounded enhancement per cycle. Original Blender assets and major visual redevelopment come last, after layouts and systems earn their place. Confluence is implemented in v1.2.0. Continue only on user request; the previous schedule was deleted.
+Preserve the released movement, independent aiming, stable overhead view, weapon economy, and intense fighting pockets. Build ONE connected world with variable population boundaries; do not fragment players across unnecessary selectable arenas.
 
-## Priority by value, effort, and dependencies
+## Current product goal
 
-Effort is relative total work, including verification; these are not time or token guarantees. S = localized change; M = several connected pieces; L = simulation, presentation, and network integration. Split L work before implementation.
+**Make a 128-player SaucerJam battle genuinely fun and stable.**
 
-| Order | Deliverable | Effort | Why this comes here | Ownership |
-| --- | --- | --- | --- | --- |
-| 1 | Delivered: Confluence connected world and population gates | S–M | High gameplay payoff with little engine risk | Astra sets layout; Cursor implements map data |
-| 2 | Refine that map’s obstacles and correct reproduced collision/visibility defects | S–M; larger if networking is involved | Makes cover trustworthy and fights intentional | Cursor handles placement; Astra diagnoses shared collision/prediction problems |
-| 3 | Small combat-readability improvements identified during play | S each | Cheap targeted improvements; no speculative HUD redesign | Cursor implements one specific issue per task |
-| 4 | Energy and instant-health pickups | M | Gives players reasons to contest locations | Astra defines authoritative rules; Cursor builds visuals/HUD |
-| 5 | One paired portal shortcut | M–L | Adds pursuit and escapes after map flow is understood | Astra owns teleport/network behavior; Cursor builds presentation |
-| 6 | Temporary shield pickup | M | Reuses pickup system but changes damage rules | Astra owns balance/damage contract; Cursor implements indicators |
-| 7 | Team colors, team-aware spawns, team deathmatch | L, split into small steps | Adds coordination without objective complexity | Astra owns team rules; delegate UI and fixtures |
-| 8 | District refinement and private-match options | S–M per piece | Reuses proven systems and lessons | Cursor implements scoped map/settings work |
-| 9 | Capture-the-core | L | Requires reliable teams, spawns, scoring, and portal policy | Astra designs/integrates; delegate bounded components |
-| 10 | Original Blender ships, cover kit, landmarks, lighting, richer sound | M–L, asset by asset | Beautifies proven gameplay without wasting art on discarded layouts | Astra art direction/acceptance; Blender-capable agent produces assets |
+Do not jump directly to "thousands." The distributed-world architecture becomes worthwhile only after:
+- 128 players are measured and stable;
+- players actually want larger battles;
+- we understand the real bottleneck from production telemetry.
 
-Reorder when play reveals a higher-value defect. Collision bugs that undermine fighting are fixed immediately, not deferred behind a feature. Pickups come before portals because they establish reusable state and contested routes; the portal slot can move earlier if its bounded prototype is demonstrably cheaper and more valuable.
+Scale progression:
 
-Optional later experiments: limited-shot ricochet overcharge and one machinery interaction. Neither is required for the game’s identity. Drop machinery if it distracts from fighting.
+`8 -> 32 -> 64 -> 128 -> demand validation -> distributed-world research`
 
-## Delivered world foundation — v1.2.0
+## Scale workstream
 
-One 120×120 world containing four 60×60 districts. Industrial core remains open; forest, rails, and ice unlock at 3/5/7 humans after five seconds. Bots do not trigger expansion. Territory closes only at round reset. Practice opens everything. Two crossings per adjacent border preserve flanking routes.
+Before increasing hard caps, measure:
+- authoritative simulation tick time
+- CPU/memory per active player
+- outgoing/incoming bandwidth per player
+- snapshot size and frequency
+- projectile/collision cost
+- client render cost with many visible players
+- latency / packet loss behavior
+- reconnect behavior under load
 
-Next small release: playtest the core and district crossings with humans, then refine cover density and escape routes. Do not introduce another map. Thresholds are provisional balance settings, not a claim that eight players fill every district equally well.
+Likely optimizations toward 128:
+1. spatial interest management
+2. compact/delta replication
+3. object pooling and projectile budgets
+4. simulation profiling and hot-path cleanup
+5. bot-driven reproducible load tests
 
-Then add contested energy/health pickups, one portal pair, shields, teams, and game modes one verified release at a time. Bespoke Blender landmarks and ships come after the combat layout is proven. Machinery must intensify fights to justify inclusion.
+If demand later justifies thousands, research:
+- authoritative simulation cells
+- seamless cell handoff
+- hierarchical interest management
+- server-to-server state transfer
+- geographically distributed world regions
+
+## Gameplay roadmap
+
+| Order | Deliverable | Why |
+| --- | --- | --- |
+| 1 | Refine Confluence cover/collision | Fighting must feel trustworthy |
+| 2 | Combat readability fixes from real play | Preserve simple, readable chaos |
+| 3 | Energy + instant-health pickups | Creates contested locations |
+| 4 | Portal shortcut | Enables pursuit/escapes |
+| 5 | Temporary shield pickup | Adds tactical timing |
+| 6 | Team colors + team spawns + TDM | Large battles need coordination |
+| 7 | Capture-the-core | Gives factions a reason to collide |
+| 8 | 32-player measured test | First real scale milestone |
+| 9 | 64-player Jam Night | Match the classic large-battle feeling |
+| 10 | 128-player Big Jam | Current scale target |
+| 11 | Original signature ships/landmarks/audio | Build SaucerJam's own identity |
+| 12 | Distributed-world research | Only if player demand earns it |
+
+## World foundation
+
+Confluence is one connected world containing multiple districts. Territory expands with human population so a small lobby remains dense while a large lobby gains room to breathe.
+
+Future expansion should be **population-driven**, not map-menu-driven.
+
+The map itself becomes part of SaucerJam's identity:
+- low population = tight fight
+- medium population = districts open
+- high population = full battlefield
+- future scale = more territory/cells open as population requires it
+
+## Art direction
+
+Temporary clean licensed assets are acceptable for prototyping.
+
+Signature SaucerJam ships, landmarks, factions, and collectibles should become original work with tracked provenance.
+
+Art follows gameplay. Do not spend heavily on assets for systems/maps that may be discarded.
+
+## Community evolution
+
+Long-term feature loop:
+
+`Idea -> Discussion -> RFC -> Prototype -> Playtest -> Vote/feedback -> Maintainer decision -> Canonical release`
+
+Community voting guides priority; it does not bypass performance, security, moderation, or IP review.
+
+## North star
+
+> **128 players first. Thousands only when players give us a reason to solve thousands.**
