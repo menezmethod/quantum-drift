@@ -68,16 +68,6 @@ button.primary:hover {
   font-size: 12px;
   background: #102238b8;
 }
-#fullscreen-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 7px;
-}
-#fullscreen-button svg {
-  width: 15px;
-  height: 15px;
-}
 .text-button {
   background: none;
   border: 0;
@@ -904,25 +894,14 @@ input, textarea { user-select: text; -webkit-user-select: text; }
    coarse` alone -- an iPad with a trackpad/Magic Keyboard reports `fine` and
    must still get a touch stick when played by finger. */
 /* Fixed, viewport-spanning, and non-interactive itself so it has a real box
-   (visible to layout/tests) without stealing pointer events from the arena;
-   the joystick zone and fire button re-enable pointer-events for themselves. */
+   (visible to layout/tests) without stealing pointer events from the arena --
+   the joystick knob is purely visual now (pointer-events: none below); all
+   touch/mouse input is handled directly on #arena with per-pointer roles
+   (move vs. fire), not a bounded hit-region div. A bounded zone meant a
+   touch either landed in it or silently became something else depending on
+   exactly where a thumb rested, which is what made the joystick unreliable
+   thumb-to-thumb and device-to-device. */
 body.touch-active #touch-controls { display: block; position: fixed; inset: 0; pointer-events: none; }
-#touch-move-zone {
-  position: fixed;
-  left: 0;
-  bottom: 0;
-  /* A dedicated thumb pad, not a giant catch-all -- a second finger landing
-     here while it's already active is now routed to fire (see
-     bindTouchStick), but keeping the pad modest still leaves most of the
-     screen unambiguously "tap here to aim and fire" on first touch too.
-     dvh (not vh) so this tracks the actually-visible viewport under real
-     mobile browser chrome, not a stale large-viewport guess. */
-  width: min(45vw, 260px);
-  height: min(42dvh, 260px);
-  min-height: 180px;
-  touch-action: none;
-  pointer-events: auto;
-}
 #touch-joystick {
   position: fixed;
   width: 104px;

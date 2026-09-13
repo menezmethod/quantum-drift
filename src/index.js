@@ -45,6 +45,8 @@ class Game {
     this.firing = false;
     this.aim = null;
     this.stick = { x: 0, z: 0, active: false };
+    this.stickOrigin = null;
+    this.touchRoles = new Map();
     this.idleTimer = null;
     this.ping = 0;
     this.connected = false;
@@ -166,26 +168,6 @@ class Game {
     $("score-button").onclick = () => this.scores(!$("scoreboard").hidden);
     $("close-scores").onclick = () => this.scores(true);
     $("view-button").onclick = () => this.cycleView();
-    // iPhone Safari (and every browser on iOS, which all run on WebKit by
-    // Apple's requirement) has never implemented the Fullscreen API for
-    // ordinary elements -- document.fullscreenEnabled is false, so
-    // requestFullscreen() silently no-ops there. That's a platform limit,
-    // not a bug: the real "fullscreen" path on iPhone is a home-screen web
-    // app, so point at that instead of a button that visibly does nothing.
-    $("fullscreen-button").onclick = () => {
-      if (!document.fullscreenEnabled)
-        return this.notice("For fullscreen on iPhone: Share, then Add to Home Screen.", 5);
-      if (document.fullscreenElement) document.exitFullscreen();
-      else document.documentElement.requestFullscreen?.().catch(() => {});
-    };
-    if (!document.fullscreenEnabled)
-      $("fullscreen-button").setAttribute("aria-label", "Fullscreen tip (add to home screen on iPhone)");
-    document.addEventListener("fullscreenchange", () => {
-      const on = !!document.fullscreenElement;
-      $("fullscreen-button").setAttribute("aria-label", on ? "Exit fullscreen" : "Enter fullscreen");
-      $("fullscreen-button").querySelector(".icon-enter").hidden = on;
-      $("fullscreen-button").querySelector(".icon-exit").hidden = !on;
-    });
     $("sound-button").onclick = () => {
       this.soundOn = !this.soundOn;
       this.updateSound();
@@ -199,16 +181,55 @@ class Game {
     window.addEventListener("keyup", (e) => this.key(e, false));
     window.addEventListener("blur", () => this.clearInput());
     document.addEventListener("visibilitychange", () => this.clearInput());
+    // All pointer input (mouse aim/fire, and touch move+fire) is dispatched
+    // directly on #arena by assigning each pointer a role, rather than a
+    // bounded hit-region div for movement. A bounded zone means a touch
+    // either lands inside it or silently becomes something else depending
+    // on exactly where a thumb rests -- that's what made the joystick work
+    // for one thumb and not the other, and stop working after backgrounding
+    // and re-gripping at a slightly different spot. Real twin-stick mobile
+    // games assign roles per pointer on the full surface instead.
+    $("arena").addEventListener("pointerdown", (e) => {
+      if (!this.active()) return;
+      if (e.pointerType === "mouse") {
+        if (e.button === 0) this.startFire(e);
+        return;
+      }
+      // First touch in the lower part of the screen (either side) claims
+      // movement, if nothing already has; every other touch -- including a
+      // second finger anywhere once movement is claimed -- aims and fires.
+      const movementClaimed = [...this.touchRoles.values()].includes("move");
+      if (!movementClaimed && e.clientY > innerHeight * 0.35) {
+        this.touchRoles.set(e.pointerId, "move");
+        this.unlockAudio();
+        this.stickOrigin = { x: e.clientX, y: e.clientY };
+        this.placeStick(this.stickOrigin);
+        $("touch-joystick").hidden = false;
+        $("arena").setPointerCapture(e.pointerId);
+      } else {
+        this.touchRoles.set(e.pointerId, "fire");
+        this.startFire(e);
+      }
+    });
     $("arena").addEventListener("pointermove", (e) => {
+      if (this.touchRoles.get(e.pointerId) === "move") {
+        const point = { x: e.clientX, y: e.clientY };
+        this.stickOrigin = reanchor(this.stickOrigin, point, 52);
+        this.placeStick(this.stickOrigin);
+        this.stick = stickVector(this.stickOrigin, point, 52);
+        const knob = $("touch-joystick").querySelector(".stick-knob");
+        knob.style.transform = this.stick.active
+          ? `translate(${this.stick.x * 22}px, ${-this.stick.z * 22}px)`
+          : "";
+        return;
+      }
       this.mouse = { x: e.clientX, y: e.clientY };
     });
-    $("arena").addEventListener("pointerdown", (e) => {
-      if (e.button !== 0 || !this.active()) return;
-      this.startFire(e);
-    });
-    // Scoped to the pointer that started firing: with a movement thumb also
-    // down, lifting it must not stop fire from the other thumb.
+    // Scoped per pointer: with a movement thumb also down, lifting the fire
+    // thumb must not stop fire from the other one, or vice versa.
     window.addEventListener("pointerup", (e) => {
+      if (this.touchRoles.get(e.pointerId) === "move") this.resetStick();
+      this.touchRoles.delete(e.pointerId);
       if (e.pointerId === this.firePointerId) this.firing = false;
     });
     window.addEventListener("pointercancel", () => this.clearInput());
@@ -225,7 +246,21 @@ class Game {
           this.keys.delete(button.dataset.control),
         );
     });
-    this.bindTouchStick();
+    // ponytail: throwaway on-device diagnostic, ?debug=touch only -- a live
+    // readout of pointer roles and coordinates so a device input bug is one
+    // screenshot instead of a guess-rebuild-reship round trip.
+    if (new URLSearchParams(location.search).get("debug") === "touch") {
+      const readout = document.createElement("div");
+      readout.style.cssText =
+        "position:fixed;top:50%;left:8px;z-index:999;background:#000c;color:#0f0;font:11px monospace;padding:6px;white-space:pre;pointer-events:none;";
+      document.body.append(readout);
+      const report = (extra) =>
+        (readout.textContent = `roles: ${JSON.stringify([...this.touchRoles])}\n${extra || ""}`);
+      report();
+      window.addEventListener("pointerdown", (e) => report(`down ${e.pointerType} (${Math.round(e.clientX)},${Math.round(e.clientY)})`), true);
+      window.addEventListener("pointermove", (e) => report(`move ${e.pointerId} (${Math.round(e.clientX)},${Math.round(e.clientY)})`), true);
+      window.addEventListener("pointerup", (e) => report(`up ${e.pointerId}`), true);
+    }
     // A touch-capable device gets on-screen controls -- `pointer: coarse`
     // alone misses an iPad with a Magic Keyboard/trackpad (it reports
     // `fine`), so gate on `maxTouchPoints` and any real touch, not the media
@@ -237,7 +272,6 @@ class Game {
       document.body.classList.toggle("touch-active", on);
       $("hud").querySelector(".flight-hint-desktop").hidden = on;
       $("hud").querySelector(".flight-hint-touch").hidden = !on;
-      $("fullscreen-button").hidden = !on;
       if (on) this.relocateFlightTools();
     };
     if (navigator.maxTouchPoints > 0) setTouchActive(true);
@@ -264,9 +298,9 @@ class Game {
     window.addEventListener("orientationchange", () => setTimeout(syncTopBarHeight, 200));
     syncTopBarHeight();
   }
-  // Aim and start firing toward a pointer's position -- shared by the arena
-  // (mouse/first touch) and the joystick zone (a second finger that lands
-  // inside the zone while it's already driving movement; see bindTouchStick).
+  // Aim and start firing toward a pointer's position -- shared by mouse
+  // clicks and any touch assigned the "fire" role (see the arena pointer
+  // handlers in bind()).
   startFire(e) {
     this.unlockAudio();
     this.mouse = { x: e.clientX, y: e.clientY };
@@ -289,85 +323,20 @@ class Game {
   relocateFlightTools() {
     $("menu").querySelector(".dialog").append(document.querySelector(".flight-tools"));
   }
-  bindTouchStick() {
-    const zone = $("touch-move-zone"),
-      stick = $("touch-joystick"),
-      knob = stick.querySelector(".stick-knob"),
-      radius = 52;
-    let pointerId = null,
-      origin = null;
-    // ponytail: throwaway on-device diagnostic, ?debug=touch only -- shows
-    // the zone's real rect and live pointer state so a device layout/input
-    // bug is one screenshot instead of a guess-rebuild-reship round trip.
-    if (new URLSearchParams(location.search).get("debug") === "touch") {
-      zone.style.outline = "2px solid #ff0";
-      zone.style.background = "#ff03";
-      const readout = document.createElement("div");
-      readout.style.cssText =
-        "position:fixed;top:50%;left:8px;z-index:999;background:#000c;color:#0f0;font:11px monospace;padding:6px;white-space:pre;pointer-events:none;";
-      document.body.append(readout);
-      const report = (extra) => {
-        const r = zone.getBoundingClientRect();
-        readout.textContent = `zone: ${Math.round(r.width)}x${Math.round(r.height)} @ (${Math.round(r.left)},${Math.round(r.top)})\npointerId: ${pointerId}\n${extra || ""}`;
-      };
-      report();
-      window.addEventListener("pointerdown", (e) => report(`down ${e.pointerType} (${Math.round(e.clientX)},${Math.round(e.clientY)})`), true);
-      window.addEventListener("pointermove", (e) => { if (e.pointerId === pointerId) report(`move (${Math.round(e.clientX)},${Math.round(e.clientY)})`); });
-      window.addEventListener("pointerup", () => report("up"), true);
-      window.addEventListener("resize", () => report());
-    }
-    const place = (o) => {
-      stick.style.left = `${o.x}px`;
-      stick.style.top = `${o.y}px`;
-    };
-    // The single owner of "no stick is active" -- clearInput() calls this
-    // too, so a stale pointerId (blur, round recap, death, tab hidden -- any
-    // of which can fire without a matching pointerup reaching the zone)
-    // can't permanently lock the joystick out.
-    this.resetStick = () => {
-      pointerId = null;
-      origin = null;
-      stick.hidden = true;
-      knob.style.transform = "";
-      this.stick = { x: 0, z: 0, active: false };
-    };
-    zone.addEventListener("pointerdown", (e) => {
-      // Self-healing: if the tracked pointer isn't actually still captured
-      // by the zone, it's stale (clearInput missed it somehow) -- take over
-      // rather than refusing forever.
-      if (pointerId !== null && !zone.hasPointerCapture(pointerId)) this.resetStick();
-      // A second finger landing in the move zone while the first already
-      // drives the stick isn't a movement input -- it's the other thumb
-      // reaching to fire, and the zone's own hit region would otherwise
-      // swallow it (it sits on top of the arena) or hijack the stick to the
-      // new finger. Route it to fire instead, exactly like touching the
-      // arena directly would.
-      if (pointerId !== null) {
-        if (this.active()) this.startFire(e);
-        return;
-      }
-      this.unlockAudio();
-      pointerId = e.pointerId;
-      origin = { x: e.clientX, y: e.clientY };
-      place(origin);
-      stick.hidden = false;
-      zone.setPointerCapture(e.pointerId);
-    });
-    zone.addEventListener("pointermove", (e) => {
-      if (e.pointerId !== pointerId) return;
-      const point = { x: e.clientX, y: e.clientY };
-      origin = reanchor(origin, point, radius);
-      place(origin);
-      this.stick = stickVector(origin, point, radius);
-      knob.style.transform = this.stick.active
-        ? `translate(${this.stick.x * 22}px, ${-this.stick.z * 22}px)`
-        : "";
-    });
-    const release = (e) => {
-      if (e.pointerId === pointerId) this.resetStick();
-    };
-    for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
-      zone.addEventListener(type, release);
+  placeStick(o) {
+    const stick = $("touch-joystick");
+    stick.style.left = `${o.x}px`;
+    stick.style.top = `${o.y}px`;
+  }
+  // The single owner of "no stick is active" -- clearInput() calls this
+  // too, so an external reset (blur, round recap, death, tab hidden) can't
+  // leave the joystick in a stuck state.
+  resetStick() {
+    const stick = $("touch-joystick");
+    stick.hidden = true;
+    stick.querySelector(".stick-knob").style.transform = "";
+    this.stick = { x: 0, z: 0, active: false };
+    this.stickOrigin = null;
   }
   vibrate(pattern) {
     try { navigator.vibrate?.(pattern); } catch {}
@@ -385,7 +354,8 @@ class Game {
   clearInput() {
     this.keys.clear();
     this.firing = false;
-    this.resetStick?.();
+    this.touchRoles.clear();
+    this.resetStick();
   }
   key(e, down) {
     const modal=['help','scoreboard','menu'].map($).find(el=>!el.hidden);

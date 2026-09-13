@@ -334,54 +334,56 @@ async function main() {
       ),
       false,
     );
-    // There is no Fire button: HUD chrome (vitals/weapons/radar) must never
-    // sit inside the joystick's drag zone, or it silently steals taps meant
-    // for those buttons (the bug behind the original "buggy joystick"
-    // report -- confirmed via elementFromPoint before this fix).
+    // There is no Fire button and no bounded joystick zone: touch/mouse
+    // input is dispatched on #arena with per-pointer roles instead. HUD
+    // chrome (vitals/weapons vs. radar) must still never overlap itself.
     const noHudOverlap = async (page) =>
       page.evaluate(() => {
-        const zone = document.getElementById("touch-move-zone").getBoundingClientRect();
-        const weapons = document.querySelector(".weapons").getBoundingClientRect();
         const vitals = document.querySelector(".vitals").getBoundingClientRect();
         const radar = document.querySelector(".radar").getBoundingClientRect();
         const clear = (r1, r2) =>
           r1.right <= r2.left || r2.right <= r1.left || r1.bottom <= r2.top || r2.bottom <= r1.top;
-        return clear(zone, weapons) && clear(zone, vitals) && clear(vitals, radar);
+        return clear(vitals, radar);
       });
-    assert.ok(await noHudOverlap(mobile), "touch HUD elements overlap the joystick zone (portrait)");
-    // Tapping the arena away from the joystick zone must aim and fire --
-    // dispatched as real touch input (CDP), since a synthetic DOM
-    // PointerEvent can't hold the pointer capture the arena handler needs.
+    assert.ok(await noHudOverlap(mobile), "vitals overlap the radar (portrait)");
+    // The first touch in the lower part of the screen claims movement; a
+    // second finger anywhere fires -- dispatched as real touch input (CDP),
+    // since a synthetic DOM PointerEvent can't hold the pointer capture the
+    // arena handler needs.
     const cdp = await mobile.context().newCDPSession(mobile);
     const energyBefore = await mobile.evaluate(
       () => window.__qd.getSnapshot().state.players.find((p) => p.id === "local").energy,
     );
-    const fireX = 390 * 0.85, fireY = 844 * 0.4; // right side, clear of the bottom-left joystick zone
     await cdp.send("Input.dispatchTouchEvent", {
       type: "touchStart",
-      touchPoints: [{ x: fireX, y: fireY, id: 1 }],
+      touchPoints: [{ x: 390 * 0.2, y: 844 * 0.8, id: 1 }],
+    });
+    await sleep(80);
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [
+        { x: 390 * 0.2, y: 844 * 0.8, id: 1 },
+        { x: 390 * 0.8, y: 844 * 0.4, id: 2 },
+      ],
     });
     await sleep(250);
     await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     const energyAfter = await mobile.evaluate(
       () => window.__qd.getSnapshot().state.players.find((p) => p.id === "local").energy,
     );
-    assert.ok(energyAfter < energyBefore, "tapping the arena did not fire (energy unchanged)");
+    assert.ok(energyAfter < energyBefore, "second finger did not fire (energy unchanged)");
     console.log(
-      "PASS: mobile layout, no HUD overlap with the joystick zone, tap-to-fire, and playable missing-model fallback",
+      "PASS: mobile layout, HUD overlap-free, move+fire role assignment, and playable missing-model fallback",
     );
     // Regression: an external reset (round recap, blur, death) that fires
-    // without a matching pointerup ever reaching the zone must not
-    // permanently lock the joystick out. Headless tests never blur/hide/end
-    // a round mid-drag, which is exactly how this shipped broken once.
-    const zoneCenter = await mobile.evaluate(() => {
-      const r = document.getElementById("touch-move-zone").getBoundingClientRect();
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-    });
+    // without a matching pointerup must not permanently lock the joystick
+    // out. Headless tests never blur/hide/end a round mid-drag, which is
+    // exactly how this shipped broken once.
+    const dragPoint = await mobile.evaluate(() => ({ x: innerWidth * 0.25, y: innerHeight * 0.75 }));
     const cdpMobile = await mobile.context().newCDPSession(mobile);
     await cdpMobile.send("Input.dispatchTouchEvent", {
       type: "touchStart",
-      touchPoints: [{ x: zoneCenter.x, y: zoneCenter.y, id: 9 }],
+      touchPoints: [{ x: dragPoint.x, y: dragPoint.y, id: 9 }],
     });
     await sleep(80);
     // Force clearInput() without ever sending a touchEnd for id 9 -- the
@@ -394,12 +396,12 @@ async function main() {
     // A fresh drag afterward must still move the stick, not silently no-op.
     await cdpMobile.send("Input.dispatchTouchEvent", {
       type: "touchStart",
-      touchPoints: [{ x: zoneCenter.x, y: zoneCenter.y, id: 10 }],
+      touchPoints: [{ x: dragPoint.x, y: dragPoint.y, id: 10 }],
     });
     await sleep(60);
     await cdpMobile.send("Input.dispatchTouchEvent", {
       type: "touchMove",
-      touchPoints: [{ x: zoneCenter.x + 40, y: zoneCenter.y, id: 10 }],
+      touchPoints: [{ x: dragPoint.x + 40, y: dragPoint.y, id: 10 }],
     });
     await sleep(150);
     const knobMoved = await mobile.evaluate(() => {
@@ -409,6 +411,27 @@ async function main() {
     await cdpMobile.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     assert.ok(knobMoved, "joystick stayed locked out after an external reset mid-drag");
     console.log("PASS: joystick survives an external input reset mid-drag (no stale pointerId lockout)");
+    // Whichever thumb reaches the screen first must be able to drive
+    // movement -- the exact "right thumb doesn't work" report a bounded
+    // left-corner hit-region caused.
+    const rightThumbPoint = await mobile.evaluate(() => ({ x: innerWidth * 0.75, y: innerHeight * 0.75 }));
+    await cdpMobile.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: rightThumbPoint.x, y: rightThumbPoint.y, id: 11 }],
+    });
+    await sleep(60);
+    await cdpMobile.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: rightThumbPoint.x - 40, y: rightThumbPoint.y, id: 11 }],
+    });
+    await sleep(150);
+    const rightThumbMoved = await mobile.evaluate(() => {
+      const knob = document.querySelector("#touch-joystick .stick-knob");
+      return knob.style.transform !== "";
+    });
+    await cdpMobile.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    assert.ok(rightThumbMoved, "a touch starting on the right side could not drive movement");
+    console.log("PASS: movement works starting from either side of the screen");
     // A landscape phone (short viewport height) is a distinct failure mode
     // from portrait and was previously untested.
     const landscape = await newPage({
@@ -420,10 +443,10 @@ async function main() {
     await landscape.waitForFunction(
       () => window.__qd.getSnapshot().mode === "practice",
     );
-    assert.ok(await noHudOverlap(landscape), "touch HUD elements overlap the joystick zone (landscape)");
+    assert.ok(await noHudOverlap(landscape), "vitals overlap the radar (landscape)");
     await landscape.screenshot({ path: path.join(out, "mobile-landscape.png") });
     await landscape.close();
-    console.log("PASS: landscape HUD has no overlap with the joystick zone");
+    console.log("PASS: landscape HUD has no overlap");
     assert.deepEqual(errors, []);
     console.log("PASS: no browser exceptions or broken application requests");
   } finally {
