@@ -2,6 +2,14 @@
 
 Spaceship arena combat with drift movement, independent mouse aim, and authoritative multiplayer. One connected, population-gated world (Confluence), four camera views, overhead hull/protection indicators, bot practice, private rooms, persistent pilot records, match recaps, and a full music/SFX soundtrack.
 
+## Public launch foundation
+
+Before adding public-facing assets, community contributions, branding, monetization, or launch campaigns, read:
+
+- [Public launch foundation](docs/PUBLIC-LAUNCH-FOUNDATION.md) — IP, licensing, naming, governance, monetization, scale goals.
+- [Asset provenance](docs/ASSET-PROVENANCE.md) — approved asset sources and provenance rules.
+- [Go-to-market](docs/GO-TO-MARKET.md) — player acquisition, UAP/disclosure-themed marketing, community growth, and monetization sequence.
+
 ## Play
 
 Install Node.js 20 or newer, then run from this directory:
