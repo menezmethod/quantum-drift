@@ -81,17 +81,17 @@ Do not use without a new legal clearance:
 - Riftwake
 - Voidwake
 - Driftforge
+- **Orbline** — active ORBLINE Co., Ltd. in Japan operates in mobile apps/games; an existing OrbLine Strategy game also exists. Too much same-industry collision risk.
 
 ### Working shortlist
 
 These are **not trademark-cleared**:
 1. **Fluxward** — strongest current candidate.
-2. **Orbline** — clean, memorable.
-3. **Starweld**
-4. **Vectorfall**
-5. **Phasefront**
-6. **Corewake**
-7. **Hexwake**
+2. **Starweld**
+3. **Vectorfall**
+4. **Phasefront**
+5. **Corewake**
+6. **Hexwake**
 
 ### Final name gate
 
