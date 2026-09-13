@@ -45,6 +45,9 @@ class Game {
     this.firing = false;
     this.aim = null;
     this.stick = { x: 0, z: 0, active: false };
+    this.stickOrigin = null;
+    this.touchRoles = new Map();
+    this.idleTimer = null;
     this.ping = 0;
     this.connected = false;
     this.soundOn = storage.get("qd-sound", "on") === "on";
@@ -178,20 +181,56 @@ class Game {
     window.addEventListener("keyup", (e) => this.key(e, false));
     window.addEventListener("blur", () => this.clearInput());
     document.addEventListener("visibilitychange", () => this.clearInput());
-    $("arena").addEventListener("pointermove", (e) => {
-      this.mouse = { x: e.clientX, y: e.clientY };
-    });
+    // All pointer input (mouse aim/fire, and touch move+fire) is dispatched
+    // directly on #arena by assigning each pointer a role, rather than a
+    // bounded hit-region div for movement. A bounded zone means a touch
+    // either lands inside it or silently becomes something else depending
+    // on exactly where a thumb rests -- that's what made the joystick work
+    // for one thumb and not the other, and stop working after backgrounding
+    // and re-gripping at a slightly different spot. Real twin-stick mobile
+    // games assign roles per pointer on the full surface instead.
     $("arena").addEventListener("pointerdown", (e) => {
-      if (e.button !== 0 || !this.active()) return;
-      this.unlockAudio();
-      this.mouse = { x: e.clientX, y: e.clientY };
-      this.firing = true;
-      this.firePointerId = e.pointerId;
-      $("arena").setPointerCapture(e.pointerId);
+      if (!this.active()) return;
+      if (e.pointerType === "mouse") {
+        if (e.button === 0) this.startFire(e);
+        return;
+      }
+      // Left thumb always moves, right thumb (or anything else) always
+      // shoots wherever it lands -- a fixed split, not "whichever touch
+      // came first," so it's exactly as predictable as the two-joystick
+      // reference: the left side is always the stick, full stop.
+      const movementClaimed = [...this.touchRoles.values()].includes("move");
+      if (!movementClaimed && e.clientX < innerWidth * 0.5) {
+        this.touchRoles.set(e.pointerId, "move");
+        this.unlockAudio();
+        this.stickOrigin = { x: e.clientX, y: e.clientY };
+        this.placeStick(this.stickOrigin);
+        $("touch-joystick").classList.add("dragging");
+        $("arena").setPointerCapture(e.pointerId);
+      } else {
+        this.touchRoles.set(e.pointerId, "fire");
+        this.startFire(e);
+      }
     });
-    // Scoped to the pointer that started firing: with a movement thumb also
-    // down, lifting it must not stop fire from the other thumb.
+    $("arena").addEventListener("pointermove", (e) => {
+      if (this.touchRoles.get(e.pointerId) === "move") {
+        const point = { x: e.clientX, y: e.clientY };
+        this.stickOrigin = reanchor(this.stickOrigin, point, 52);
+        this.placeStick(this.stickOrigin);
+        this.stick = stickVector(this.stickOrigin, point, 52);
+        const knob = $("touch-joystick").querySelector(".stick-knob");
+        knob.style.transform = this.stick.active
+          ? `translate(${this.stick.x * 22}px, ${-this.stick.z * 22}px)`
+          : "";
+        return;
+      }
+      this.mouse = { x: e.clientX, y: e.clientY };
+    });
+    // Scoped per pointer: with a movement thumb also down, lifting the fire
+    // thumb must not stop fire from the other one, or vice versa.
     window.addEventListener("pointerup", (e) => {
+      if (this.touchRoles.get(e.pointerId) === "move") this.resetStick();
+      this.touchRoles.delete(e.pointerId);
       if (e.pointerId === this.firePointerId) this.firing = false;
     });
     window.addEventListener("pointercancel", () => this.clearInput());
@@ -208,7 +247,21 @@ class Game {
           this.keys.delete(button.dataset.control),
         );
     });
-    this.bindTouchStick();
+    // ponytail: throwaway on-device diagnostic, ?debug=touch only -- a live
+    // readout of pointer roles and coordinates so a device input bug is one
+    // screenshot instead of a guess-rebuild-reship round trip.
+    if (new URLSearchParams(location.search).get("debug") === "touch") {
+      const readout = document.createElement("div");
+      readout.style.cssText =
+        "position:fixed;top:50%;left:8px;z-index:999;background:#000c;color:#0f0;font:11px monospace;padding:6px;white-space:pre;pointer-events:none;";
+      document.body.append(readout);
+      const report = (extra) =>
+        (readout.textContent = `roles: ${JSON.stringify([...this.touchRoles])}\n${extra || ""}`);
+      report();
+      window.addEventListener("pointerdown", (e) => report(`down ${e.pointerType} (${Math.round(e.clientX)},${Math.round(e.clientY)})`), true);
+      window.addEventListener("pointermove", (e) => report(`move ${e.pointerId} (${Math.round(e.clientX)},${Math.round(e.clientY)})`), true);
+      window.addEventListener("pointerup", (e) => report(`up ${e.pointerId}`), true);
+    }
     // A touch-capable device gets on-screen controls -- `pointer: coarse`
     // alone misses an iPad with a Magic Keyboard/trackpad (it reports
     // `fine`), so gate on `maxTouchPoints` and any real touch, not the media
@@ -218,6 +271,8 @@ class Game {
     // events over a real touch device.
     const setTouchActive = (on) => {
       document.body.classList.toggle("touch-active", on);
+      $("hud").querySelector(".flight-hint-desktop").hidden = on;
+      $("hud").querySelector(".flight-hint-touch").hidden = !on;
       if (on) this.relocateFlightTools();
     };
     if (navigator.maxTouchPoints > 0) setTouchActive(true);
@@ -225,6 +280,40 @@ class Game {
       if (e.pointerType === "touch" || e.pointerType === "pen") setTouchActive(true);
       else if (e.pointerType === "mouse") setTouchActive(false);
     }, true);
+    // Decorative chrome (brand, connection status) dims after a few idle
+    // seconds during actual flight and snaps back on any input -- on every
+    // device, not just touch, since "too much on screen" wasn't a mobile-only
+    // complaint. Vitals, weapons, clock and the menu button are exempt: they
+    // stay fully visible, since they're what you'd actually need mid-idle.
+    for (const type of ["pointerdown", "pointermove", "keydown"])
+      window.addEventListener(type, () => this.resetIdleHud(), { passive: true });
+    // The top bar's rendered height (real fonts, safe-area insets, whether
+    // session-tools wraps) varies by device in ways a guessed pixel value
+    // got wrong on a real iPhone -- measure it and keep it live instead.
+    const syncTopBarHeight = () =>
+      document.documentElement.style.setProperty(
+        "--top-bar-height",
+        `${$("hud").querySelector(".top-bar").getBoundingClientRect().height}px`,
+      );
+    new ResizeObserver(syncTopBarHeight).observe($("hud").querySelector(".top-bar"));
+    window.addEventListener("orientationchange", () => setTimeout(syncTopBarHeight, 200));
+    syncTopBarHeight();
+  }
+  // Aim and start firing toward a pointer's position -- shared by mouse
+  // clicks and any touch assigned the "fire" role (see the arena pointer
+  // handlers in bind()).
+  startFire(e) {
+    this.unlockAudio();
+    this.mouse = { x: e.clientX, y: e.clientY };
+    this.firing = true;
+    this.firePointerId = e.pointerId;
+    $("arena").setPointerCapture(e.pointerId);
+  }
+  resetIdleHud() {
+    clearTimeout(this.idleTimer);
+    document.body.classList.remove("hud-idle");
+    if (!this.active()) return;
+    this.idleTimer = setTimeout(() => document.body.classList.add("hud-idle"), 2500);
   }
   // Weapon pills and Arena/Scores/Sound both live in .combat-bar with the
   // Fire button competing for the same bottom-right thumb zone. On touch,
@@ -235,45 +324,24 @@ class Game {
   relocateFlightTools() {
     $("menu").querySelector(".dialog").append(document.querySelector(".flight-tools"));
   }
-  bindTouchStick() {
-    const zone = $("touch-move-zone"),
-      stick = $("touch-joystick"),
-      knob = stick.querySelector(".stick-knob"),
-      radius = 52;
-    let pointerId = null,
-      origin = null;
-    const place = (o) => {
-      stick.style.left = `${o.x}px`;
-      stick.style.top = `${o.y}px`;
-    };
-    zone.addEventListener("pointerdown", (e) => {
-      this.unlockAudio();
-      pointerId = e.pointerId;
-      origin = { x: e.clientX, y: e.clientY };
-      place(origin);
-      stick.hidden = false;
-      zone.setPointerCapture(e.pointerId);
-    });
-    zone.addEventListener("pointermove", (e) => {
-      if (e.pointerId !== pointerId) return;
-      const point = { x: e.clientX, y: e.clientY };
-      origin = reanchor(origin, point, radius);
-      place(origin);
-      this.stick = stickVector(origin, point, radius);
-      knob.style.transform = this.stick.active
-        ? `translate(${this.stick.x * 22}px, ${-this.stick.z * 22}px)`
-        : "";
-    });
-    const release = (e) => {
-      if (e.pointerId !== pointerId) return;
-      pointerId = null;
-      origin = null;
-      stick.hidden = true;
-      knob.style.transform = "";
-      this.stick = { x: 0, z: 0, active: false };
-    };
-    for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
-      zone.addEventListener(type, release);
+  placeStick(o) {
+    const stick = $("touch-joystick");
+    stick.style.left = `${o.x}px`;
+    stick.style.top = `${o.y}px`;
+  }
+  // The single owner of "no stick is active" -- clearInput() calls this
+  // too, so an external reset (blur, round recap, death, tab hidden) can't
+  // leave the joystick in a stuck state. Snaps back to its fixed home
+  // position (CSS) rather than hiding -- it's always visible, matching a
+  // persistent on-screen stick instead of one that only appears on touch.
+  resetStick() {
+    const stick = $("touch-joystick");
+    stick.classList.remove("dragging");
+    stick.style.left = "";
+    stick.style.top = "";
+    stick.querySelector(".stick-knob").style.transform = "";
+    this.stick = { x: 0, z: 0, active: false };
+    this.stickOrigin = null;
   }
   vibrate(pattern) {
     try { navigator.vibrate?.(pattern); } catch {}
@@ -291,9 +359,8 @@ class Game {
   clearInput() {
     this.keys.clear();
     this.firing = false;
-    this.stick = { x: 0, z: 0, active: false };
-    const stick = $("touch-joystick");
-    if (stick) stick.hidden = true;
+    this.touchRoles.clear();
+    this.resetStick();
   }
   key(e, down) {
     const modal=['help','scoreboard','menu'].map($).find(el=>!el.hidden);
@@ -692,6 +759,7 @@ class Game {
     if (e.type === "hit" && e.player === this.playerId) {
       this.damageUntil = performance.now() + 220;
       this.vibrate(30);
+      this.resetIdleHud();
     }
     if (e.type === "kill") {
       const entry = document.createElement("p");

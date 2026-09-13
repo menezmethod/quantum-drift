@@ -334,9 +334,109 @@ async function main() {
       ),
       false,
     );
-    // Fire and the weapon pills must never overlap in either orientation --
-    // a landscape phone (short height) is a distinct failure mode from
-    // portrait and was previously untested.
+    // There is no Fire button and no bounded joystick zone: touch/mouse
+    // input is dispatched on #arena with per-pointer roles instead. HUD
+    // chrome (vitals/weapons vs. radar) must still never overlap itself.
+    const noHudOverlap = async (page) =>
+      page.evaluate(() => {
+        const vitals = document.querySelector(".vitals").getBoundingClientRect();
+        const radar = document.querySelector(".radar").getBoundingClientRect();
+        const clear = (r1, r2) =>
+          r1.right <= r2.left || r2.right <= r1.left || r1.bottom <= r2.top || r2.bottom <= r1.top;
+        return clear(vitals, radar);
+      });
+    assert.ok(await noHudOverlap(mobile), "vitals overlap the radar (portrait)");
+    // The first touch in the lower part of the screen claims movement; a
+    // second finger anywhere fires -- dispatched as real touch input (CDP),
+    // since a synthetic DOM PointerEvent can't hold the pointer capture the
+    // arena handler needs.
+    const cdp = await mobile.context().newCDPSession(mobile);
+    const energyBefore = await mobile.evaluate(
+      () => window.__qd.getSnapshot().state.players.find((p) => p.id === "local").energy,
+    );
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: 390 * 0.2, y: 844 * 0.8, id: 1 }],
+    });
+    await sleep(80);
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [
+        { x: 390 * 0.2, y: 844 * 0.8, id: 1 },
+        { x: 390 * 0.8, y: 844 * 0.4, id: 2 },
+      ],
+    });
+    await sleep(250);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    const energyAfter = await mobile.evaluate(
+      () => window.__qd.getSnapshot().state.players.find((p) => p.id === "local").energy,
+    );
+    assert.ok(energyAfter < energyBefore, "second finger did not fire (energy unchanged)");
+    console.log(
+      "PASS: mobile layout, HUD overlap-free, move+fire role assignment, and playable missing-model fallback",
+    );
+    // Regression: an external reset (round recap, blur, death) that fires
+    // without a matching pointerup must not permanently lock the joystick
+    // out. Headless tests never blur/hide/end a round mid-drag, which is
+    // exactly how this shipped broken once.
+    const dragPoint = await mobile.evaluate(() => ({ x: innerWidth * 0.25, y: innerHeight * 0.75 }));
+    const cdpMobile = await mobile.context().newCDPSession(mobile);
+    await cdpMobile.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: dragPoint.x, y: dragPoint.y, id: 9 }],
+    });
+    await sleep(80);
+    // Force clearInput() without ever sending a touchEnd for id 9 -- the
+    // exact "stale pointerId" scenario.
+    await mobile.evaluate(() =>
+      document.dispatchEvent(new CustomEvent("qd:interface-modal", { detail: { open: false } })),
+    );
+    await cdpMobile.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await sleep(80);
+    // A fresh drag afterward must still move the stick, not silently no-op.
+    await cdpMobile.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: dragPoint.x, y: dragPoint.y, id: 10 }],
+    });
+    await sleep(60);
+    await cdpMobile.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: dragPoint.x + 40, y: dragPoint.y, id: 10 }],
+    });
+    await sleep(150);
+    const knobMoved = await mobile.evaluate(() => {
+      const knob = document.querySelector("#touch-joystick .stick-knob");
+      return knob.style.transform !== "";
+    });
+    await cdpMobile.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    assert.ok(knobMoved, "joystick stayed locked out after an external reset mid-drag");
+    console.log("PASS: joystick survives an external input reset mid-drag (no stale pointerId lockout)");
+    // The split is fixed, not "whichever touch came first": left always
+    // moves, right always shoots -- matching the reference two-thumb
+    // layout the user asked for. A touch starting on the right must fire,
+    // never claim the stick.
+    const energyBeforeRight = await mobile.evaluate(
+      () => window.__qd.getSnapshot().state.players.find((p) => p.id === "local").energy,
+    );
+    const rightPoint = await mobile.evaluate(() => ({ x: innerWidth * 0.75, y: innerHeight * 0.75 }));
+    await cdpMobile.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: rightPoint.x, y: rightPoint.y, id: 11 }],
+    });
+    await sleep(200);
+    const rightSideKnobMoved = await mobile.evaluate(() => {
+      const knob = document.querySelector("#touch-joystick .stick-knob");
+      return knob.style.transform !== "";
+    });
+    const energyAfterRight = await mobile.evaluate(
+      () => window.__qd.getSnapshot().state.players.find((p) => p.id === "local").energy,
+    );
+    await cdpMobile.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    assert.ok(!rightSideKnobMoved, "a touch starting on the right side incorrectly moved the stick");
+    assert.ok(energyAfterRight < energyBeforeRight, "a touch starting on the right side did not fire");
+    console.log("PASS: left always moves, right always shoots (fixed split)");
+    // A landscape phone (short viewport height) is a distinct failure mode
+    // from portrait and was previously untested.
     const landscape = await newPage({
       viewport: { width: 852, height: 393 },
       isMobile: true,
@@ -346,21 +446,10 @@ async function main() {
     await landscape.waitForFunction(
       () => window.__qd.getSnapshot().mode === "practice",
     );
-    const noOverlap = await landscape.evaluate(() => {
-      const a = document.getElementById("touch-fire").getBoundingClientRect();
-      const b = document.querySelector(".weapons").getBoundingClientRect();
-      const c = document.querySelector(".vitals").getBoundingClientRect();
-      const d = document.querySelector(".radar").getBoundingClientRect();
-      const clear = (r1, r2) =>
-        r1.right <= r2.left || r2.right <= r1.left || r1.bottom <= r2.top || r2.bottom <= r1.top;
-      return clear(a, b) && clear(a, c) && clear(c, d);
-    });
-    assert.ok(noOverlap, "touch HUD elements overlap in landscape");
+    assert.ok(await noHudOverlap(landscape), "vitals overlap the radar (landscape)");
     await landscape.screenshot({ path: path.join(out, "mobile-landscape.png") });
     await landscape.close();
-    console.log(
-      "PASS: mobile layout, touch controls, landscape HUD, and playable missing-model fallback",
-    );
+    console.log("PASS: landscape HUD has no overlap");
     assert.deepEqual(errors, []);
     console.log("PASS: no browser exceptions or broken application requests");
   } finally {

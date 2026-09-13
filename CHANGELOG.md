@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 — 2026-09-12
+
+- Added a Suno v6 original soundtrack.
+- Replaced on-screen mobile controls: a floating arcade-style joystick for movement (appears wherever you first touch), and tap-to-fire -- touch the arena where you want to shoot instead of a dedicated Fire button, matching mouse aim-and-click on desktop.
+- Fixed two real touch input bugs uncovered by the rewrite: lifting the movement thumb no longer stops fire from the other thumb, and touching a movement control no longer wiped independent mouse aim.
+- Decluttered the HUD on every device: non-essential chrome (brand, connection status, round subtitle, the move/fire hint) now dims after a few idle seconds of flight and snaps back instantly on input or taking damage. Hull/Energy, weapon selection, the clock, and Menu always stay fully visible.
+- Moved Arena/Scores/Sound off the touch play screen into the existing Flight menu; weapon selection is icon-first on touch.
+- Fixed a hit-test bug where the joystick's drag zone silently swallowed taps meant for HUD buttons underneath it, and a landscape-viewport layout bug where the radar overlapped the vitals panel.
+- Verified 85 unit tests and 13 browser tests, including real dual-touch input (simultaneous joystick drag + independent tap-to-fire) and both portrait and landscape mobile viewports.
+
 ## 1.2.0 — 2026-09-09
 
 - Replaced public map selection and rotation with Confluence: one connected 120×120 world with industrial, forest, rail, and ice districts.
