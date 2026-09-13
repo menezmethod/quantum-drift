@@ -286,11 +286,46 @@ class Game {
       radius = 52;
     let pointerId = null,
       origin = null;
+    // ponytail: throwaway on-device diagnostic, ?debug=touch only -- shows
+    // the zone's real rect and live pointer state so a device layout/input
+    // bug is one screenshot instead of a guess-rebuild-reship round trip.
+    if (new URLSearchParams(location.search).get("debug") === "touch") {
+      zone.style.outline = "2px solid #ff0";
+      zone.style.background = "#ff03";
+      const readout = document.createElement("div");
+      readout.style.cssText =
+        "position:fixed;top:50%;left:8px;z-index:999;background:#000c;color:#0f0;font:11px monospace;padding:6px;white-space:pre;pointer-events:none;";
+      document.body.append(readout);
+      const report = (extra) => {
+        const r = zone.getBoundingClientRect();
+        readout.textContent = `zone: ${Math.round(r.width)}x${Math.round(r.height)} @ (${Math.round(r.left)},${Math.round(r.top)})\npointerId: ${pointerId}\n${extra || ""}`;
+      };
+      report();
+      window.addEventListener("pointerdown", (e) => report(`down ${e.pointerType} (${Math.round(e.clientX)},${Math.round(e.clientY)})`), true);
+      window.addEventListener("pointermove", (e) => { if (e.pointerId === pointerId) report(`move (${Math.round(e.clientX)},${Math.round(e.clientY)})`); });
+      window.addEventListener("pointerup", () => report("up"), true);
+      window.addEventListener("resize", () => report());
+    }
     const place = (o) => {
       stick.style.left = `${o.x}px`;
       stick.style.top = `${o.y}px`;
     };
+    // The single owner of "no stick is active" -- clearInput() calls this
+    // too, so a stale pointerId (blur, round recap, death, tab hidden -- any
+    // of which can fire without a matching pointerup reaching the zone)
+    // can't permanently lock the joystick out.
+    this.resetStick = () => {
+      pointerId = null;
+      origin = null;
+      stick.hidden = true;
+      knob.style.transform = "";
+      this.stick = { x: 0, z: 0, active: false };
+    };
     zone.addEventListener("pointerdown", (e) => {
+      // Self-healing: if the tracked pointer isn't actually still captured
+      // by the zone, it's stale (clearInput missed it somehow) -- take over
+      // rather than refusing forever.
+      if (pointerId !== null && !zone.hasPointerCapture(pointerId)) this.resetStick();
       // A second finger landing in the move zone while the first already
       // drives the stick isn't a movement input -- it's the other thumb
       // reaching to fire, and the zone's own hit region would otherwise
@@ -319,12 +354,7 @@ class Game {
         : "";
     });
     const release = (e) => {
-      if (e.pointerId !== pointerId) return;
-      pointerId = null;
-      origin = null;
-      stick.hidden = true;
-      knob.style.transform = "";
-      this.stick = { x: 0, z: 0, active: false };
+      if (e.pointerId === pointerId) this.resetStick();
     };
     for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
       zone.addEventListener(type, release);
@@ -345,9 +375,7 @@ class Game {
   clearInput() {
     this.keys.clear();
     this.firing = false;
-    this.stick = { x: 0, z: 0, active: false };
-    const stick = $("touch-joystick");
-    if (stick) stick.hidden = true;
+    this.resetStick?.();
   }
   key(e, down) {
     const modal=['help','scoreboard','menu'].map($).find(el=>!el.hidden);

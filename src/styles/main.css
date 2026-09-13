@@ -914,9 +914,12 @@ body.touch-active #touch-controls { display: block; position: fixed; inset: 0; p
   /* A dedicated thumb pad, not a giant catch-all -- a second finger landing
      here while it's already active is now routed to fire (see
      bindTouchStick), but keeping the pad modest still leaves most of the
-     screen unambiguously "tap here to aim and fire" on first touch too. */
-  width: min(42vw, 260px);
-  height: min(38vh, 260px);
+     screen unambiguously "tap here to aim and fire" on first touch too.
+     dvh (not vh) so this tracks the actually-visible viewport under real
+     mobile browser chrome, not a stale large-viewport guess. */
+  width: min(45vw, 260px);
+  height: min(42dvh, 260px);
+  min-height: 180px;
   touch-action: none;
   pointer-events: auto;
 }

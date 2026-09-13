@@ -370,6 +370,45 @@ async function main() {
     console.log(
       "PASS: mobile layout, no HUD overlap with the joystick zone, tap-to-fire, and playable missing-model fallback",
     );
+    // Regression: an external reset (round recap, blur, death) that fires
+    // without a matching pointerup ever reaching the zone must not
+    // permanently lock the joystick out. Headless tests never blur/hide/end
+    // a round mid-drag, which is exactly how this shipped broken once.
+    const zoneCenter = await mobile.evaluate(() => {
+      const r = document.getElementById("touch-move-zone").getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    const cdpMobile = await mobile.context().newCDPSession(mobile);
+    await cdpMobile.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: zoneCenter.x, y: zoneCenter.y, id: 9 }],
+    });
+    await sleep(80);
+    // Force clearInput() without ever sending a touchEnd for id 9 -- the
+    // exact "stale pointerId" scenario.
+    await mobile.evaluate(() =>
+      document.dispatchEvent(new CustomEvent("qd:interface-modal", { detail: { open: false } })),
+    );
+    await cdpMobile.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await sleep(80);
+    // A fresh drag afterward must still move the stick, not silently no-op.
+    await cdpMobile.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: zoneCenter.x, y: zoneCenter.y, id: 10 }],
+    });
+    await sleep(60);
+    await cdpMobile.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: zoneCenter.x + 40, y: zoneCenter.y, id: 10 }],
+    });
+    await sleep(150);
+    const knobMoved = await mobile.evaluate(() => {
+      const knob = document.querySelector("#touch-joystick .stick-knob");
+      return knob.style.transform !== "";
+    });
+    await cdpMobile.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    assert.ok(knobMoved, "joystick stayed locked out after an external reset mid-drag");
+    console.log("PASS: joystick survives an external input reset mid-drag (no stale pointerId lockout)");
     // A landscape phone (short viewport height) is a distinct failure mode
     // from portrait and was previously untested.
     const landscape = await newPage({
