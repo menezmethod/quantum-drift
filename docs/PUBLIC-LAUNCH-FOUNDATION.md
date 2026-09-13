@@ -82,16 +82,22 @@ Do not use without a new legal clearance:
 - Voidwake
 - Driftforge
 - **Orbline** — active ORBLINE Co., Ltd. in Japan operates in mobile apps/games; an existing OrbLine Strategy game also exists. Too much same-industry collision risk.
+- **Vectorfall** — existing 2026 shooter on itch.io.
+- **Fluxward** — active AI consultancy/software brand at fluxward.com.
+- **Phasefront** — active technology company at phasefront.io and existing software project usage.
+- **Corewake** — active AI consultancy/software brand at corewake.com.
+- **Hexwake** — active applied-AI/software brand and existing game-concept usage.
+- **Starweld** — existing marine/industrial brand usage and starweld.com; old U.S. trademark is cancelled, but the brand/domain collision is unnecessary.
 
 ### Working shortlist
 
-These are **not trademark-cleared**:
-1. **Fluxward** — strongest current candidate.
-2. **Starweld**
-3. **Vectorfall**
-4. **Phasefront**
-5. **Corewake**
-6. **Hexwake**
+These are **not trademark-cleared**. Exact-name screening only:
+
+1. **GoOrbie** — no strong exact game/software collision surfaced, but "Orbie" itself is crowded with active games/apps, so treat as yellow, not green.
+2. **OrbieRush** — strongest playful working candidate from the current pass; no meaningful exact collision surfaced in initial web/GitHub screening.
+3. **OrbieZap** — similarly clean exact-name screen, but inherits the same crowded "Orbie" root risk.
+
+Recommendation: use "Orbie" more safely as a mascot/character or campaign phrase unless a formal trademark search shows a combined mark is comfortably registrable. Prefer a truly coined master brand if we want the cleanest long-term path.
 
 ### Final name gate
 
