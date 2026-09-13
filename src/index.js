@@ -194,11 +194,7 @@ class Game {
     });
     $("arena").addEventListener("pointerdown", (e) => {
       if (e.button !== 0 || !this.active()) return;
-      this.unlockAudio();
-      this.mouse = { x: e.clientX, y: e.clientY };
-      this.firing = true;
-      this.firePointerId = e.pointerId;
-      $("arena").setPointerCapture(e.pointerId);
+      this.startFire(e);
     });
     // Scoped to the pointer that started firing: with a movement thumb also
     // down, lifting it must not stop fire from the other thumb.
@@ -246,6 +242,27 @@ class Game {
     // stay fully visible, since they're what you'd actually need mid-idle.
     for (const type of ["pointerdown", "pointermove", "keydown"])
       window.addEventListener(type, () => this.resetIdleHud(), { passive: true });
+    // The top bar's rendered height (real fonts, safe-area insets, whether
+    // session-tools wraps) varies by device in ways a guessed pixel value
+    // got wrong on a real iPhone -- measure it and keep it live instead.
+    const syncTopBarHeight = () =>
+      document.documentElement.style.setProperty(
+        "--top-bar-height",
+        `${$("hud").querySelector(".top-bar").getBoundingClientRect().height}px`,
+      );
+    new ResizeObserver(syncTopBarHeight).observe($("hud").querySelector(".top-bar"));
+    window.addEventListener("orientationchange", () => setTimeout(syncTopBarHeight, 200));
+    syncTopBarHeight();
+  }
+  // Aim and start firing toward a pointer's position -- shared by the arena
+  // (mouse/first touch) and the joystick zone (a second finger that lands
+  // inside the zone while it's already driving movement; see bindTouchStick).
+  startFire(e) {
+    this.unlockAudio();
+    this.mouse = { x: e.clientX, y: e.clientY };
+    this.firing = true;
+    this.firePointerId = e.pointerId;
+    $("arena").setPointerCapture(e.pointerId);
   }
   resetIdleHud() {
     clearTimeout(this.idleTimer);
@@ -274,6 +291,16 @@ class Game {
       stick.style.top = `${o.y}px`;
     };
     zone.addEventListener("pointerdown", (e) => {
+      // A second finger landing in the move zone while the first already
+      // drives the stick isn't a movement input -- it's the other thumb
+      // reaching to fire, and the zone's own hit region would otherwise
+      // swallow it (it sits on top of the arena) or hijack the stick to the
+      // new finger. Route it to fire instead, exactly like touching the
+      // arena directly would.
+      if (pointerId !== null) {
+        if (this.active()) this.startFire(e);
+        return;
+      }
       this.unlockAudio();
       pointerId = e.pointerId;
       origin = { x: e.clientX, y: e.clientY };

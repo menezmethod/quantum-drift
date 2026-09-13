@@ -911,8 +911,12 @@ body.touch-active #touch-controls { display: block; position: fixed; inset: 0; p
   position: fixed;
   left: 0;
   bottom: 0;
-  width: 58vw;
-  height: 46vh;
+  /* A dedicated thumb pad, not a giant catch-all -- a second finger landing
+     here while it's already active is now routed to fire (see
+     bindTouchStick), but keeping the pad modest still leaves most of the
+     screen unambiguously "tap here to aim and fire" on first touch too. */
+  width: min(42vw, 260px);
+  height: min(38vh, 260px);
   touch-action: none;
   pointer-events: auto;
 }
@@ -948,7 +952,10 @@ body.touch-active #touch-controls { display: block; position: fixed; inset: 0; p
    else), so vitals + weapons move up to the top-right, clear of both the
    radar (top-left) and every gesture zone. */
 body.touch-active .combat-bar {
-  top: max(84px, calc(env(safe-area-inset-top) + 84px));
+  /* The top bar's real rendered height varies by device/browser-chrome in
+     ways a guessed pixel value kept getting wrong (confirmed on an actual
+     iPhone). --top-bar-height is measured and kept live in index.js. */
+  top: calc(var(--top-bar-height, 90px) + 8px);
   bottom: auto;
   left: auto;
   right: max(16px, env(safe-area-inset-right));
