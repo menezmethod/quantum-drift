@@ -166,10 +166,20 @@ class Game {
     $("score-button").onclick = () => this.scores(!$("scoreboard").hidden);
     $("close-scores").onclick = () => this.scores(true);
     $("view-button").onclick = () => this.cycleView();
+    // iPhone Safari (and every browser on iOS, which all run on WebKit by
+    // Apple's requirement) has never implemented the Fullscreen API for
+    // ordinary elements -- document.fullscreenEnabled is false, so
+    // requestFullscreen() silently no-ops there. That's a platform limit,
+    // not a bug: the real "fullscreen" path on iPhone is a home-screen web
+    // app, so point at that instead of a button that visibly does nothing.
     $("fullscreen-button").onclick = () => {
+      if (!document.fullscreenEnabled)
+        return this.notice("For fullscreen on iPhone: Share, then Add to Home Screen.", 5);
       if (document.fullscreenElement) document.exitFullscreen();
       else document.documentElement.requestFullscreen?.().catch(() => {});
     };
+    if (!document.fullscreenEnabled)
+      $("fullscreen-button").setAttribute("aria-label", "Fullscreen tip (add to home screen on iPhone)");
     document.addEventListener("fullscreenchange", () => {
       const on = !!document.fullscreenElement;
       $("fullscreen-button").setAttribute("aria-label", on ? "Exit fullscreen" : "Enter fullscreen");
