@@ -411,27 +411,30 @@ async function main() {
     await cdpMobile.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     assert.ok(knobMoved, "joystick stayed locked out after an external reset mid-drag");
     console.log("PASS: joystick survives an external input reset mid-drag (no stale pointerId lockout)");
-    // Whichever thumb reaches the screen first must be able to drive
-    // movement -- the exact "right thumb doesn't work" report a bounded
-    // left-corner hit-region caused.
-    const rightThumbPoint = await mobile.evaluate(() => ({ x: innerWidth * 0.75, y: innerHeight * 0.75 }));
+    // The split is fixed, not "whichever touch came first": left always
+    // moves, right always shoots -- matching the reference two-thumb
+    // layout the user asked for. A touch starting on the right must fire,
+    // never claim the stick.
+    const energyBeforeRight = await mobile.evaluate(
+      () => window.__qd.getSnapshot().state.players.find((p) => p.id === "local").energy,
+    );
+    const rightPoint = await mobile.evaluate(() => ({ x: innerWidth * 0.75, y: innerHeight * 0.75 }));
     await cdpMobile.send("Input.dispatchTouchEvent", {
       type: "touchStart",
-      touchPoints: [{ x: rightThumbPoint.x, y: rightThumbPoint.y, id: 11 }],
+      touchPoints: [{ x: rightPoint.x, y: rightPoint.y, id: 11 }],
     });
-    await sleep(60);
-    await cdpMobile.send("Input.dispatchTouchEvent", {
-      type: "touchMove",
-      touchPoints: [{ x: rightThumbPoint.x - 40, y: rightThumbPoint.y, id: 11 }],
-    });
-    await sleep(150);
-    const rightThumbMoved = await mobile.evaluate(() => {
+    await sleep(200);
+    const rightSideKnobMoved = await mobile.evaluate(() => {
       const knob = document.querySelector("#touch-joystick .stick-knob");
       return knob.style.transform !== "";
     });
+    const energyAfterRight = await mobile.evaluate(
+      () => window.__qd.getSnapshot().state.players.find((p) => p.id === "local").energy,
+    );
     await cdpMobile.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-    assert.ok(rightThumbMoved, "a touch starting on the right side could not drive movement");
-    console.log("PASS: movement works starting from either side of the screen");
+    assert.ok(!rightSideKnobMoved, "a touch starting on the right side incorrectly moved the stick");
+    assert.ok(energyAfterRight < energyBeforeRight, "a touch starting on the right side did not fire");
+    console.log("PASS: left always moves, right always shoots (fixed split)");
     // A landscape phone (short viewport height) is a distinct failure mode
     // from portrait and was previously untested.
     const landscape = await newPage({

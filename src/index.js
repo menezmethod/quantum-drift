@@ -195,16 +195,17 @@ class Game {
         if (e.button === 0) this.startFire(e);
         return;
       }
-      // First touch in the lower part of the screen (either side) claims
-      // movement, if nothing already has; every other touch -- including a
-      // second finger anywhere once movement is claimed -- aims and fires.
+      // Left thumb always moves, right thumb (or anything else) always
+      // shoots wherever it lands -- a fixed split, not "whichever touch
+      // came first," so it's exactly as predictable as the two-joystick
+      // reference: the left side is always the stick, full stop.
       const movementClaimed = [...this.touchRoles.values()].includes("move");
-      if (!movementClaimed && e.clientY > innerHeight * 0.35) {
+      if (!movementClaimed && e.clientX < innerWidth * 0.5) {
         this.touchRoles.set(e.pointerId, "move");
         this.unlockAudio();
         this.stickOrigin = { x: e.clientX, y: e.clientY };
         this.placeStick(this.stickOrigin);
-        $("touch-joystick").hidden = false;
+        $("touch-joystick").classList.add("dragging");
         $("arena").setPointerCapture(e.pointerId);
       } else {
         this.touchRoles.set(e.pointerId, "fire");
@@ -330,10 +331,14 @@ class Game {
   }
   // The single owner of "no stick is active" -- clearInput() calls this
   // too, so an external reset (blur, round recap, death, tab hidden) can't
-  // leave the joystick in a stuck state.
+  // leave the joystick in a stuck state. Snaps back to its fixed home
+  // position (CSS) rather than hiding -- it's always visible, matching a
+  // persistent on-screen stick instead of one that only appears on touch.
   resetStick() {
     const stick = $("touch-joystick");
-    stick.hidden = true;
+    stick.classList.remove("dragging");
+    stick.style.left = "";
+    stick.style.top = "";
     stick.querySelector(".stick-knob").style.transform = "";
     this.stick = { x: 0, z: 0, active: false };
     this.stickOrigin = null;

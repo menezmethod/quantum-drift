@@ -904,6 +904,13 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 body.touch-active #touch-controls { display: block; position: fixed; inset: 0; pointer-events: none; }
 #touch-joystick {
   position: fixed;
+  /* Home position: always visible in the bottom-left corner (not only
+     while touched) so the movement stick is discoverable, matching the
+     reference control layout. left/top (not left/bottom) throughout so
+     the same -52px centering margin works for both this resting position
+     and wherever bind()'s pointerdown/pointermove place it while dragging. */
+  left: max(94px, calc(env(safe-area-inset-left) + 94px));
+  top: calc(100dvh - max(94px, calc(env(safe-area-inset-bottom) + 94px)));
   width: 104px;
   height: 104px;
   margin-left: -52px;
@@ -912,6 +919,14 @@ body.touch-active #touch-controls { display: block; position: fixed; inset: 0; p
   background: #0c1f30a8;
   border: 1px solid #3a5c78;
   pointer-events: none;
+  display: none;
+  transition: left 0.15s ease, top 0.15s ease;
+}
+body.touch-active #touch-joystick {
+  display: block;
+}
+#touch-joystick.dragging {
+  transition: none;
 }
 #touch-joystick .stick-knob {
   position: absolute;
