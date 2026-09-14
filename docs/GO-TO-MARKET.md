@@ -1,5 +1,7 @@
 # SaucerJam — Go-To-Market, Community, and Monetization
 
+> Last reviewed: September 2026.
+
 ## Positioning
 
 Core story:
@@ -49,13 +51,13 @@ Avoid:
 - suggesting endorsement by DoD/AARO
 - copying official documents closely enough to imply authenticity
 
-Reference:
+Reference (context only, not an asset source — do not reuse AARO imagery, seals, or document formatting):
 - https://www.aaro.mil/UAP-Cases/Official-UAP-Imagery/
 
 Campaign:
 **THE ARCHIVE OPENS**
 
-Fictional telemetry, craft schematics, sightings, community-created vehicles, and limited events.
+Fictional telemetry, craft schematics, sightings, community-created vehicles, and limited events. Every "declassified"/redacted-style drop must carry an explicit fiction label (e.g. "fictional in-game lore" in the post or asset itself) so it cannot be mistaken for a real government document.
 
 ### 3. Open evolution
 
@@ -184,7 +186,7 @@ Do not push a broad public launch until:
 
 - [ ] SaucerJam passes final live trademark/domain/handle clearance
 - [ ] questionable assets are replaced/documented
-- [ ] licensing decision is reviewed
+- [ ] licensing decision recorded (MIT retained; revisit conditions met and attorney-reviewed before any change — see `docs/PUBLIC-LAUNCH-FOUNDATION.md`)
 - [ ] contributor terms exist
 - [ ] official play URL works with near-zero friction
 - [ ] bots solve the empty-server problem

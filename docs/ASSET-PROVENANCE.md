@@ -18,7 +18,7 @@ For each external asset record:
 
 ### Kenney — first choice
 
-Current asset pages for these packs state **CC0**.
+Current asset pages for these packs state **CC0** (verify at download time — Kenney can change license terms per pack over time; verified for this doc in September 2026).
 
 | Need | Pack | Source |
 |---|---|---|
@@ -48,9 +48,11 @@ Important: verify the **specific pack's license at download time**. Do not assum
 | Path | Status | Action |
 |---|---|---|
 | `src/assets/models/ships/avrocar_vz-9-av_experimental_aircraft.glb` | provenance unclear | replace or document exact license |
-| `src/assets/models/ships/cryptos_saucer.glb` | provenance unclear / high risk | replace |
+| `src/assets/models/ships/cryptos_saucer.glb` | provenance unclear / high risk | replace (do not attempt to document — risk profile too high to keep) |
 | `src/assets/models/ships/ufo.glb` | provenance unclear | replace or document |
 | Suno music/SFX | generated asset | preserve commercial-rights evidence |
+
+All three ship models above remain in-tree as of this PR; none has been replaced or documented yet. Do not use them in marketing screenshots/trailers — see the marketing-capture note in `docs/PUBLIC-LAUNCH-FOUNDATION.md`.
 
 ## Preferred original-art pipeline
 

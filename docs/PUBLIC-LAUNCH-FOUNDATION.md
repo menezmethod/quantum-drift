@@ -1,6 +1,8 @@
 # Public Launch Foundation
 
 > Working product/IP policy. Not legal advice. Before trademark filing or a meaningful commercial launch, have a U.S. IP attorney review the final name, licenses, contributor terms, and asset register.
+>
+> Last reviewed: September 2026.
 
 ## Product identity
 
@@ -30,17 +32,29 @@ Replace or prove provenance for:
 - `src/assets/models/ships/cryptos_saucer.glb`
 - `src/assets/models/ships/ufo.glb`
 
-Do not use unverified assets in screenshots, trailers, merch, or 3D prints.
+All three remain in-tree as of this PR (see `docs/ASSET-PROVENANCE.md`). Do not use unverified assets in screenshots, trailers, merch, or 3D prints — capture marketing material with the game's procedural/asset-independent ship rendering (see `npm run test:browser`'s asset-independent ship coverage) until each flagged model is replaced or its license is documented.
 
 ## License strategy
+
+### Decision (September 2026)
+
+**MIT is retained. This PR changes no license.**
+
+AGPL-3.0 is revisited only when all four are true:
+1. code ownership is verified across all contributors and AI-generated code;
+2. CLA vs DCO is chosen and implemented;
+3. an effective version/date for the switch is fixed;
+4. an IP attorney review is completed.
+
+Until then, treat AGPL as an option under consideration, not an adopted direction. If maximum adoption keeps mattering more than reciprocity, staying on MIT permanently is also defensible; the moat then comes from the official brand, servers, community, moderation, marketplace, and physical products rather than the license.
 
 ### Current reality
 
 The repo is already MIT licensed. Existing MIT releases remain usable under MIT.
 
-### Recommended future direction
+### Option under consideration (not adopted): AGPL-3.0
 
-Preferred structure:
+Preferred structure if the four conditions above are ever met:
 
 - **AGPL-3.0** for future canonical game/server code
 - separate trademark/brand policy
@@ -51,14 +65,6 @@ Why AGPL: it is still open source and commercially usable, but modified network-
 
 Reference:
 - https://choosealicense.com/licenses/agpl-3.0/
-
-Do **not** change the license yet. First:
-1. verify code ownership;
-2. decide the effective version/date;
-3. choose CLA vs DCO;
-4. get a short legal review.
-
-If maximum adoption matters more than reciprocity, keeping MIT is also defensible; then the moat is the official brand, servers, community, moderation, marketplace, and physical products.
 
 ## ARC acknowledgment
 
@@ -97,10 +103,13 @@ Preferred brand language:
 - **Build a Saucer**
 - **The Archive Opens**
 
+### Legacy name (being retired)
+
+**Quantum Drift** is the name the repo, package, deploy targets, and in-game title currently ship under. It is not a rejected candidate — it is the outgoing name being replaced by SaucerJam. Keep using it in shipping surfaces until the rename below is actually executed; do not reintroduce it as a *new* public-facing name once retired.
+
 ### Rejected in preliminary search
 
 Do not use without a new legal clearance:
-- Quantum Drift
 - Shardwake
 - Riftwake
 - Voidwake
@@ -116,6 +125,10 @@ Do not use without a new legal clearance:
 USPTO references:
 - https://www.uspto.gov/trademarks/basics/why-search-similar-trademarks
 - https://www.uspto.gov/trademarks/search/comprehensive-clearance-search-similar-trademarks
+
+### Rename scope — not yet done
+
+This PR documents the target name only. It does not rename anything. As of this PR, the repo name, `package.json` name, deploy targets/URLs, and in-game title/UI still read **Quantum Drift** by design. Renaming the repository, package, deployments, and in-game strings to SaucerJam is deferred to separate, human-driven follow-up work (repo visibility/ownership decisions included), not part of this docs foundation.
 
 ## AI-generated content
 

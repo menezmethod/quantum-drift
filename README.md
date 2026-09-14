@@ -1,6 +1,6 @@
 # SaucerJam
 
-**Working public name: SaucerJam.** Large-scale saucer arena combat with drift movement, independent mouse aim, and authoritative multiplayer. One connected, population-gated world (Confluence), four camera views, overhead hull/protection indicators, bot practice, private rooms, persistent pilot records, match recaps, and a full music/SFX soundtrack.
+**Working public name: SaucerJam.** Saucer arena combat with drift movement, independent mouse aim, and authoritative multiplayer, scaling from today's up-to-eight-human rooms toward a measured 128-player target (see [roadmap](docs/ROADMAP.md)). One connected, population-gated world (Confluence), four camera views, overhead hull/protection indicators, bot practice, private rooms, persistent pilot records, match recaps, and a full music/SFX soundtrack.
 
 ## Public launch foundation
 
