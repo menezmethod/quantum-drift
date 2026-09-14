@@ -6,7 +6,7 @@
 
 ## Product identity
 
-**Working public name: SaucerJam.**
+**Confirmed public name: SaucerJam.** (Formal trademark clearance is still pending — see Name strategy below.)
 
 This is **not an ARC remake**.
 
@@ -81,11 +81,11 @@ Avoid:
 
 ## Name strategy
 
-### Working name: SaucerJam
+### Confirmed name: SaucerJam
 
-SaucerJam is the current working public name.
+SaucerJam is confirmed as the product's public name — no longer a shortlist candidate.
 
-Initial screening found no strong exact collision across Steam, itch.io, GitHub, or indexed web results. That is **not formal trademark clearance**.
+Initial screening found no strong exact collision across Steam, itch.io, GitHub, or indexed web results. That is **not formal trademark clearance**; the name is decided, but the clearance work below is still outstanding and is a separate risk (a third party could still hold rights to it).
 
 Before trademark filing or broad commercial launch, complete:
 - live USPTO exact + similar-mark search
